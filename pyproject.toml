@@ -1,0 +1,22 @@
+[project]
+name = "polymath-tmd"
+version = "0.1.0"
+description = "Polymath TMD — Technology Management Desk"
+requires-python = ">=3.13"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["**/migrations/*", "design"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "DJ"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "config"]
+
+[tool.pytest.ini_options]
+python_files = ["tests.py", "test_*.py"]
+# --ds (not DJANGO_SETTINGS_MODULE) so tests use test settings even inside containers,
+# where the environment variable points at dev or prod.
+addopts = "--ds=config.settings.test --reuse-db -q"

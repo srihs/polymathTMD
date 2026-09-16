@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>390px phone frame</title>
+<style>html,body{margin:0;background:#fff}iframe{border:0;display:block}</style>
+</head>
+<body>
+<!-- Usage: _frame.html?src=../dashboard.html%3Fdemo%3Ddrawer -->
+<iframe id="f" width="390" height="844" title="Phone preview"></iframe>
+<script>
+  var src = new URLSearchParams(location.search).get('src') || '../dashboard.html';
+  document.getElementById('f').src = src;
+</script>
+</body>
+</html>

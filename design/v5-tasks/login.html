@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en-LK">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Polymath Inventory</title>
+<link rel="icon" href="../assets/favicon-32.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Nunito:wght@700;800&family=Nunito+Sans:ital,wght@0,400;0,600;0,700;0,800;1,400&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="page-login">
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<main id="main" class="login-page" tabindex="-1">
+  <div class="login-shell">
+    <div class="login-form">
+      <div class="login-brand">
+        <img src="../assets/crest.png" alt="Polymath College crest">
+        <div class="brand-text">
+          <span class="brand-name">Polymath College</span>
+          <span class="brand-app">Polymath Inventory</span>
+          <span class="motto">Vivere Disce ~ Learn to Live</span>
+        </div>
+      </div>
+
+      <h1>Welcome back</h1>
+      <p class="lead">Sign in to look after the school&rsquo;s stock.</p>
+
+      <div class="alert alert-danger" id="login-error" role="alert" hidden style="margin-bottom:20px">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12Z" opacity=".5"/><path d="M12 6.25C12.4142 6.25 12.75 6.58579 12.75 7V13C12.75 13.4142 12.4142 13.75 12 13.75C11.5858 13.75 11.25 13.4142 11.25 13V7C11.25 6.58579 11.5858 6.25 12 6.25Z"/><path d="M12 17C12.5523 17 13 16.5523 13 16C13 15.4477 12.5523 15 12 15C11.4477 15 11 15.4477 11 16C11 16.5523 11.4477 17 12 17Z"/></g></svg>
+        <div><p class="alert-title">We couldn&rsquo;t sign you in</p>
+        <p class="alert-text">That username or password didn&rsquo;t match. Try again, or ask the office to reset it.</p></div>
+        <span></span>
+      </div>
+
+      <form action="dashboard.html" method="post" novalidate data-login-form>
+        <div class="field" data-field>
+          <label class="field-label" for="username">Username</label>
+          <p class="field-help" id="username-help">Usually your first name and the first letter of your surname, e.g. <strong>nimali.p</strong></p>
+          <input class="input" id="username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="username-help">
+        </div>
+        <div class="field" data-field>
+          <label class="field-label" for="password">Password</label>
+          <div class="input-affix">
+            <input class="input" id="password" name="password" type="password" autocomplete="current-password" aria-describedby="password-help">
+            <button class="btn btn-ghost btn-sm affix-btn" type="button" data-toggle-password="password" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M2 12C2 13.6394 2.42496 14.1915 3.27489 15.2957C4.97196 17.5004 7.81811 20 12 20C16.1819 20 19.028 17.5004 20.7251 15.2957C21.575 14.1915 22 13.6394 22 12C22 10.3606 21.575 9.80853 20.7251 8.70433C19.028 6.49956 16.1819 4 12 4C7.81811 4 4.97196 6.49956 3.27489 8.70433C2.42496 9.80853 2 10.3606 2 12Z" opacity=".5"/><path fill-rule="evenodd" d="M8.25 12C8.25 9.92893 9.92893 8.25 12 8.25C14.0711 8.25 15.75 9.92893 15.75 12C15.75 14.0711 14.0711 15.75 12 15.75C9.92893 15.75 8.25 14.0711 8.25 12ZM9.75 12C9.75 10.7574 10.7574 9.75 12 9.75C13.2426 9.75 14.25 10.7574 14.25 12C14.25 13.2426 13.2426 14.25 12 14.25C10.7574 14.25 9.75 13.2426 9.75 12Z" clip-rule="evenodd"/></g></svg><span>Show</span></button>
+          </div>
+          <p class="field-help" id="password-help">Passwords are case sensitive. Check that Caps Lock is off.</p>
+        </div>
+        <button class="btn btn-primary btn-lg btn-block" type="submit" style="margin-top:8px">Sign in<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M12.4044 8.30273L15.8351 11.6296C16.0549 11.8428 16.0549 12.1573 15.8351 12.3704L9.20467 18.8001C8.79094 19.2013 8 18.9581 8 18.4297V12.7071L12.4044 8.30273Z"/><path d="M8 11.2929L8 5.5703C8 5.04189 8.79094 4.79869 9.20467 5.1999L11.6864 7.60648L8 11.2929Z" opacity=".5"/></g></svg></button>
+      </form>
+
+      <p class="login-help"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" opacity=".5"/><path d="M12 7.75C11.3787 7.75 10.875 8.25368 10.875 8.875C10.875 9.28921 10.5392 9.625 10.125 9.625C9.71079 9.625 9.375 9.28921 9.375 8.875C9.375 7.42525 10.5503 6.25 12 6.25C13.4497 6.25 14.625 7.42525 14.625 8.875C14.625 9.58584 14.3415 10.232 13.883 10.704C13.7907 10.7989 13.7027 10.8869 13.6187 10.9708C13.4029 11.1864 13.2138 11.3753 13.0479 11.5885C12.8289 11.8699 12.75 12.0768 12.75 12.25V13C12.75 13.4142 12.4142 13.75 12 13.75C11.5858 13.75 11.25 13.4142 11.25 13V12.25C11.25 11.5948 11.555 11.0644 11.8642 10.6672C12.0929 10.3733 12.3804 10.0863 12.6138 9.85346C12.6842 9.78321 12.7496 9.71789 12.807 9.65877C13.0046 9.45543 13.125 9.18004 13.125 8.875C13.125 8.25368 12.6213 7.75 12 7.75Z"/><path d="M12 17C12.5523 17 13 16.5523 13 16C13 15.4477 12.5523 15 12 15C11.4477 15 11 15.4477 11 16C11 16.5523 11.4477 17 12 17Z"/></g></svg><span>Forgot your password, or new to the school? Ask the office to set up or reset your account.</span></p>
+    </div>
+
+    <div class="login-art" aria-hidden="true">
+      <div>
+        <img class="login-chip" src="../assets/crest-chip.png" alt="">
+        <h2 style="margin-top:28px">Every store job, one big button away.</h2>
+        <p>Receive a delivery, give items to a class, or check what&rsquo;s running low. We guide you step by step.</p>
+      </div>
+      <div class="float-stack">
+        <div class="float-card fc-1"><span class="task-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M2 12C2 7.28595 2 4.92893 3.46447 3.46447C4.92893 2 7.28595 2 12 2C16.714 2 19.0711 2 20.5355 3.46447C22 4.92893 22 7.28595 22 12C22 16.714 22 19.0711 20.5355 20.5355C19.0711 22 16.714 22 12 22C7.28595 22 4.92893 22 3.46447 20.5355C2 19.0711 2 16.714 2 12Z" opacity=".5"/><path d="M3.46451 20.5355C4.92902 22 7.28611 22 12.0003 22C16.7145 22 19.0716 22 20.5361 20.5355C21.8931 19.1785 21.9927 17.0551 22 13H18.8402C17.935 13 17.4824 13 17.0846 13.183C16.6868 13.3659 16.3922 13.7096 15.8031 14.3968L15.1977 15.1032C14.6086 15.7904 14.314 16.1341 13.9162 16.317C13.5183 16.5 13.0658 16.5 12.1606 16.5H11.84C10.9348 16.5 10.4822 16.5 10.0844 16.317C9.68655 16.1341 9.392 15.7904 8.80291 15.1032L8.19747 14.3968C7.60837 13.7096 7.31382 13.3659 6.91599 13.183C6.51815 13 6.06555 13 5.16035 13H2C2.0073 17.0551 2.10744 19.1785 3.46451 20.5355Z"/><path d="M12.5305 11.3301C12.3899 11.4708 12.1991 11.5498 12.0002 11.5498C11.8013 11.5498 11.6105 11.4708 11.4699 11.3301L8.16987 8.03014C7.87697 7.73724 7.87697 7.26237 8.16987 6.96948C8.46276 6.67658 8.93763 6.67658 9.23053 6.96947L11.2502 8.98914L11.2502 2.00024C11.4933 2 11.7431 2 12 2C12.257 2 12.507 2 12.7502 2.00024V8.98914L14.7699 6.96947C15.0628 6.67658 15.5376 6.67658 15.8305 6.96947C16.1234 7.26237 16.1234 7.73724 15.8305 8.03013L12.5305 11.3301Z"/></g></svg></span><span><strong>Received 50 reams</strong>A4 Copy Paper &middot; 142 &rarr; 192</span></div>
+        <div class="float-card fc-2"><span class="task-icon" style="--icon-color:#16A3AD"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M2 12C2 7.28595 2 4.92893 3.46447 3.46447C4.92893 2 7.28595 2 12 2C16.714 2 19.0711 2 20.5355 3.46447C22 4.92893 22 7.28595 22 12C22 16.714 22 19.0711 20.5355 20.5355C19.0711 22 16.714 22 12 22C7.28595 22 4.92893 22 3.46447 20.5355C2 19.0711 2 16.714 2 12Z" opacity=".5"/><path d="M3.46451 20.5355C4.92902 22 7.28611 22 12.0003 22C16.7145 22 19.0716 22 20.5361 20.5355C21.8931 19.1785 21.9927 17.0551 22 13H18.8402C17.935 13 17.4824 13 17.0846 13.183C16.6868 13.3659 16.3922 13.7096 15.8031 14.3968L15.1977 15.1032C14.6086 15.7904 14.314 16.1341 13.9162 16.317C13.5183 16.5 13.0658 16.5 12.1606 16.5H11.84C10.9348 16.5 10.4822 16.5 10.0844 16.317C9.68655 16.1341 9.392 15.7904 8.80291 15.1032L8.19747 14.3968C7.60837 13.7096 7.31382 13.3659 6.91599 13.183C6.51815 13 6.06555 13 5.16035 13H2C2.0073 17.0551 2.10744 19.1785 3.46451 20.5355Z"/><path d="M12.5305 5.96967C12.3899 5.82902 12.1991 5.75 12.0002 5.75C11.8013 5.75 11.6105 5.82902 11.4699 5.96967L8.16987 9.26967C7.87697 9.56256 7.87697 10.0374 8.16987 10.3303C8.46276 10.6232 8.93763 10.6232 9.23053 10.3303L11.2502 8.31066L11.2502 16.4973C10.7163 16.489 10.3847 16.4552 10.0844 16.317C9.68655 16.1341 9.392 15.7904 8.80291 15.1032L8.19747 14.3968C7.60837 13.7096 7.31382 13.3659 6.91599 13.183C6.51815 13 6.06555 13 5.16035 13H2C2.0073 17.0551 2.10744 19.1785 3.46451 20.5355C4.92902 22 7.28611 22 12.0003 22C16.7145 22 19.0716 22 20.5361 20.5355C21.8931 19.1785 21.9927 17.0551 22 13H18.8402C17.935 13 17.4824 13 17.0846 13.183C16.6868 13.3659 16.3922 13.7096 15.8031 14.3968L15.1977 15.1032C14.6086 15.7904 14.314 16.1341 13.9162 16.317C13.6158 16.4552 13.2842 16.489 12.7502 16.4973V8.31066L14.7699 10.3303C15.0628 10.6232 15.5376 10.6232 15.8305 10.3303C16.1234 10.0374 16.1234 9.56256 15.8305 9.26967L12.5305 5.96967Z"/></g></svg></span><span><strong>Gave out 12 books</strong>Exercise Books to Grade 6B</span></div>
+        <div class="float-card fc-3"><span class="task-icon" style="background:var(--warning-bg);--icon-color:var(--warning)"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M12 3C9.68925 3 8.23007 5.58716 5.31171 10.7615L4.94805 11.4063C2.52291 15.7061 1.31034 17.856 2.40626 19.428C3.50217 21 6.21356 21 11.6363 21H12.3637C17.7864 21 20.4978 21 21.5937 19.428C22.6897 17.856 21.4771 15.7061 19.0519 11.4063L18.6883 10.7615C15.7699 5.58716 14.3107 3 12 3Z" opacity=".5"/><path d="M12 7.25C12.4142 7.25 12.75 7.58579 12.75 8V13C12.75 13.4142 12.4142 13.75 12 13.75C11.5858 13.75 11.25 13.4142 11.25 13V8C11.25 7.58579 11.5858 7.25 12 7.25Z"/><path d="M12 17C12.5523 17 13 16.5523 13 16C13 15.4477 12.5523 15 12 15C11.4477 15 11 15.4477 11 16C11 16.5523 11.4477 17 12 17Z"/></g></svg></span><span><strong>3 cricket balls left</strong>Reorder at 12 &middot; tap to reorder</span></div>
+      </div>
+    </div>
+  </div>
+</main>
+<div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+<template id="tpl-icons"><span data-icon="ok"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" opacity=".5"/><path d="M16.0303 8.96967C16.3232 9.26256 16.3232 9.73744 16.0303 10.0303L11.0303 15.0303C10.7374 15.3232 10.2626 15.3232 9.96967 15.0303L7.96967 13.0303C7.67678 12.7374 7.67678 12.2626 7.96967 11.9697C8.26256 11.6768 8.73744 11.6768 9.03033 11.9697L10.5 13.4393L12.7348 11.2045L14.9697 8.96967C15.2626 8.67678 15.7374 8.67678 16.0303 8.96967Z"/></g></svg></span><span data-icon="info"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" opacity=".5"/><path d="M12 17.75C12.4142 17.75 12.75 17.4142 12.75 17V11C12.75 10.5858 12.4142 10.25 12 10.25C11.5858 10.25 11.25 10.5858 11.25 11V17C11.25 17.4142 11.5858 17.75 12 17.75Z"/><path d="M12 7C12.5523 7 13 7.44771 13 8C13 8.55229 12.5523 9 12 9C11.4477 9 11 8.55229 11 8C11 7.44771 11.4477 7 12 7Z"/></g></svg></span><span data-icon="warn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M12 3C9.68925 3 8.23007 5.58716 5.31171 10.7615L4.94805 11.4063C2.52291 15.7061 1.31034 17.856 2.40626 19.428C3.50217 21 6.21356 21 11.6363 21H12.3637C17.7864 21 20.4978 21 21.5937 19.428C22.6897 17.856 21.4771 15.7061 19.0519 11.4063L18.6883 10.7615C15.7699 5.58716 14.3107 3 12 3Z" opacity=".5"/><path d="M12 7.25C12.4142 7.25 12.75 7.58579 12.75 8V13C12.75 13.4142 12.4142 13.75 12 13.75C11.5858 13.75 11.25 13.4142 11.25 13V8C11.25 7.58579 11.5858 7.25 12 7.25Z"/><path d="M12 17C12.5523 17 13 16.5523 13 16C13 15.4477 12.5523 15 12 15C11.4477 15 11 15.4477 11 16C11 16.5523 11.4477 17 12 17Z"/></g></svg></span><span data-icon="error"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12Z" opacity=".5"/><path d="M12 6.25C12.4142 6.25 12.75 6.58579 12.75 7V13C12.75 13.4142 12.4142 13.75 12 13.75C11.5858 13.75 11.25 13.4142 11.25 13V7C11.25 6.58579 11.5858 6.25 12 6.25Z"/><path d="M12 17C12.5523 17 13 16.5523 13 16C13 15.4477 12.5523 15 12 15C11.4477 15 11 15.4477 11 16C11 16.5523 11.4477 17 12 17Z"/></g></svg></span><span data-icon="close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" opacity=".5"/><path d="M8.96967 8.96967C9.26256 8.67678 9.73744 8.67678 10.0303 8.96967L12 10.9394L13.9697 8.96969C14.2626 8.6768 14.7374 8.6768 15.0303 8.96969C15.3232 9.26258 15.3232 9.73746 15.0303 10.0304L13.0607 12L15.0303 13.9696C15.3232 14.2625 15.3232 14.7374 15.0303 15.0303C14.7374 15.3232 14.2625 15.3232 13.9696 15.0303L12 13.0607L10.0304 15.0303C9.73746 15.3232 9.26258 15.3232 8.96969 15.0303C8.6768 14.7374 8.6768 14.2626 8.96969 13.9697L10.9394 12L8.96967 10.0303C8.67678 9.73744 8.67678 9.26256 8.96967 8.96967Z"/></g></svg></span><span data-icon="undo"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path fill-rule="evenodd" d="M7.53033 3.46967C7.23744 3.17678 6.76256 3.17678 6.46967 3.46967L3.46967 6.46967C3.17678 6.76256 3.17678 7.23744 3.46967 7.53033L6.46967 10.5303C6.76256 10.8232 7.23744 10.8232 7.53033 10.5303C7.82322 10.2374 7.82322 9.76256 7.53033 9.46967L5.06066 7L7.53033 4.53033C7.82322 4.23744 7.82322 3.76256 7.53033 3.46967Z" clip-rule="evenodd"/><path d="M5.81066 6.25H15C18.1756 6.25 20.75 8.82436 20.75 12C20.75 15.1756 18.1756 17.75 15 17.75H8C7.58579 17.75 7.25 17.4142 7.25 17C7.25 16.5858 7.58579 16.25 8 16.25H15C17.3472 16.25 19.25 14.3472 19.25 12C19.25 9.65279 17.3472 7.75 15 7.75H5.81066L5.06066 7L5.81066 6.25Z" opacity=".5"/></g></svg></span></template>
+<script src="app.js"></script>
+</body>
+</html>
+

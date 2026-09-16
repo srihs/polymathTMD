@@ -1,0 +1,20 @@
+# Development overlay: runserver with live reload, source bind-mounted, MySQL port published
+# so tools (and manage.py/pytest run outside Docker) can reach it on 127.0.0.1.
+#   docker compose -f compose.yaml -f compose.dev.yaml up --build
+
+services:
+  web:
+    build:
+      target: dev
+    image: polymath-tmd:dev
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      DEBUG: "True"
+      USE_HTTPS: "False"
+    volumes:
+      - .:/app
+
+  db:
+    ports:
+      - "${DB_PORT:-3306}:3306"

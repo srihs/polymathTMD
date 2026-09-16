@@ -1,0 +1,62 @@
+# Production-like stack: gunicorn + MySQL.
+#   docker compose up -d --build
+# For development with live reload, add the dev overlay:
+#   docker compose -f compose.yaml -f compose.dev.yaml up --build
+
+name: polymath-tmd
+
+x-mysql-env: &mysql-env
+  MYSQL_DATABASE: ${MYSQL_DATABASE:-polymath_tmd}
+  MYSQL_USER: ${MYSQL_USER:-polymath}
+  MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    environment:
+      <<: *mysql-env
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+    volumes:
+      - mysqldata:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # TCP ping only succeeds once first-run initialisation has finished.
+      test: ["CMD-SHELL", "MYSQL_PWD=$${MYSQL_ROOT_PASSWORD} mysqladmin ping -h 127.0.0.1 -u root --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  web:
+    build:
+      context: .
+      target: prod
+    image: polymath-tmd:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *mysql-env
+      DB_HOST: db
+      DB_PORT: "3306"
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      DJANGO_MIGRATE: "1"
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      SITE_NAME: ${SITE_NAME:-Polymath TMD}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-}
+      USE_HTTPS: ${USE_HTTPS:-True}
+      TIME_ZONE: ${TIME_ZONE:-Asia/Colombo}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-3}
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    volumes:
+      - media:/app/media
+
+volumes:
+  mysqldata:
+  media:

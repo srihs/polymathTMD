@@ -1,0 +1,65 @@
+# .mailmap - one canonical identity per contributor
+#
+# Why this file exists
+# --------------------
+# This repository is research data for a PhD on human oversight in agentic
+# software development. Counting "who authored what" only means something if
+# each contributor appears as exactly one identity. Git records whatever name
+# and email were configured at commit time, so the same person drifts into
+# several spellings over the life of a repository (a work laptop, a rebuilt
+# machine, a GitHub noreply address). This file collapses those variants.
+#
+# It only changes DISPLAY. Git reads it when it shows history - `git log`,
+# `git shortlog`, `git blame`, `git check-mailmap`. The commit objects
+# themselves are never touched and no history is rewritten. Deleting this file
+# would restore the raw names; nothing else would change.
+#
+# It applies to the CAPITAL format placeholders only: `%aN`/`%aE` and
+# `%cN`/`%cE` are mailmap-aware, while `%an`/`%ae` and `%cn`/`%ce` print the
+# raw, unmerged values. Anything that counts contributors must use the
+# capitals, or it will count the variants separately and this file will have
+# done nothing.
+#
+# The human/AI distinction is the data - keep it
+# ----------------------------------------------
+# Claude is credited through `Co-authored-by:` trailers and is kept as its own
+# canonical identity. Do NOT map it onto the human author: which work was
+# co-authored by a model, and which was not, is precisely what is being
+# measured here.
+#
+# Format
+# ------
+#   Canonical Name <canonical@email>                         # set name for an email
+#   Canonical Name <canonical@email> <other@email>           # merge another email
+#   Canonical Name <canonical@email> Old Name <other@email>  # merge a name+email pair
+#
+# Adding a variant later
+# ----------------------
+# When `git shortlog -sne --all` (authors and committers) or
+# `git shortlog -sne --group=trailer:co-authored-by --all` (co-authors) shows a
+# spelling that is not listed below, add one line under the right heading: the
+# canonical identity first, then the variant exactly as git printed it. Then
+# re-run both commands - the variant should have disappeared into its canonical
+# row - and confirm with `git check-mailmap "Old Name <other@email>"`.
+
+
+# --- Human author ------------------------------------------------------------
+# Canonical human identity. The bare line fixes the display name for this
+# address, so a future `user.name` change on another machine still shows as
+# `srimalhs` without needing a new line here.
+srimalhs <srimalhs@gmail.com>
+
+
+# --- AI co-author ------------------------------------------------------------
+# Claude is credited per commit via `Co-authored-by:`. Anthropic's trailer
+# carries the model name of the day ("Claude Opus 5 (1M context)"), which would
+# otherwise split into a new identity with every model release. The bare line
+# below normalises every name used with Anthropic's noreply address to the
+# single name `Claude`, so present and future model names collapse with no
+# further edits here. Confirm with:
+#   git check-mailmap "Claude Opus 5 (1M context) <noreply@anthropic.com>"
+#
+# A variant at a DIFFERENT address is the only case needing a new line, and it
+# takes the merge form - canonical identity first, then the variant:
+#   Claude <noreply@anthropic.com> <other@address>
+Claude <noreply@anthropic.com>

@@ -138,3 +138,18 @@ Run all of these. Every one must pass before a task counts as done:
 - **Colour:** crest purple `#722A82` (`--purple`) is reserved for primary actions, the current nav item and icons. Status colours (success, warning, danger, info) appear only on states, and always with an icon and a word.
 - **Touch and layout:** targets are 44–56px. On phones, a bottom tab bar keeps the main task under the thumb.
 - **Screenshots:** the `screenshots/` folder of the design shows the approved desktop and mobile layouts for the dashboard, item list, item detail, item form, login and UI kit.
+
+## Oversight capture
+
+This project is research data for a study on human oversight in agentic software development. The rules below tell you how to capture it; follow them exactly.
+
+- **Recognise an oversight episode.** When the owner corrects you, rejects your approach, overrides a decision, or tells you that something you produced is wrong, that is an OVERSIGHT EPISODE.
+- **Commit it on its own.** When the owner asks you to commit a resolved episode, commit that correction separately from feature work; do not fold it into a larger commit. The owner asks for every commit (see "Commit only when the user asks" under "Agent workflow").
+- **End the commit message with four trailers**, after a blank line: `Oversight-Type`, `Oversight-Trigger`, `Oversight-Action`, `Oversight-Durable`. The allowed `Oversight-Type` values, the test for `Oversight-Durable: yes`, and every other mechanic are defined once, in `/oversight` (`.claude/commands/oversight.md`) — that is the normative source, so it isn't repeated here where it could drift out of sync. Use the command; don't assemble the trailers by hand.
+- **Never rewrite that history.** Never squash, amend, rebase, cherry-pick or force-push a commit that carries an `Oversight-` trailer. That history is the dataset.
+- **Never delete or overwrite a subagent definition, a CLAUDE.md section, or a file under `.claude/commands/`.** Change it and commit the change, so the evolution stays visible. Removing a section or command file outright is allowed only as its own commit whose message says why — never silently, and never folded into an unrelated change.
+- **Log it.** After writing such a commit, append the matching row to `OVERSIGHT_LOG.md`.
+- **Who runs this.** `OVERSIGHT_LOG.md` is research data, not application code, and committing is already a main-session job (see "Agent workflow"). The main session runs `/oversight` and makes both commits itself; it does not delegate that to a subagent. When an episode is `Oversight-Durable: yes` because it changes `CLAUDE.md`, a subagent definition, or a file under `.claude/commands/`, the owning agent (`tmd-docs-writer` for `CLAUDE.md`, `tmd-devops` for `.claude/commands/`) authors that change first; `/oversight` then only commits and logs it, it does not write the rule itself.
+- **When unsure, ask.** If you're not sure whether something counts as an episode, ask the owner rather than guessing. A false entry is worse than a missing one.
+
+The slash command `/oversight` (`.claude/commands/oversight.md`) is what actually runs the commit-and-log steps above; use it instead of doing them by hand.

@@ -27,6 +27,7 @@ raw, unescaped text — the log's escaping is a table-formatting concern only.
 | Date | Commit | Type | What looked right but was not | What I did | Durable |
 |---|---|---|---|---|---|
 | 2026-09-24 | 5eb2344 | scope | Deleting wrong design files inherited from other projeccts | Dont use current designs directions in the project | yes |
+| 2026-09-24 | 791ba6b | scope | Designs were rejected by the end user | client asked to replicate the design like in https://themesbrand.com/minia/layouts-lts/index.html same fonts and same layout with features. | no |
 
 Example row (illustration only — not real data, never a table row; the
 placeholders below are deliberately not a plausible date or SHA so a script

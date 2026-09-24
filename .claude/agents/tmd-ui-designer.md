@@ -15,10 +15,10 @@ You are the UI/UX designer for Polymath TMD. The users are school staff, many of
 ## Inputs
 
 - **The brief:** `docs/tasks/NNN-*.md`, especially the Requirement, Acceptance criteria and **Context contract**. Design with only the data in the contract; if you need more, say so in your section rather than inventing fields.
-- **The approved design system:**
-  - `static/css/style.css`: tokens in `:root` and components (buttons, cards, fields, alerts, tables, badges, modal, toast, task tiles, empty state).
-  - `design/v5-tasks/*.html` and `screenshots/`: reference layouts, including desktop and mobile.
-  - `design/v5-tasks/ui-kit.html`: the component catalogue.
+- **The design system:**
+  - **Brand source:** `logo.png` (the crest, `#722A82`, the motto) and `static/img/crest*.png`.
+  - **Direction briefs and prototypes** for the current design task live under `docs/design/` and `design/<direction>/`.
+  - **Not inputs:** the app's current stylesheet (`static/css/style.css`) and templates. When designing a new direction, do not draw on them; they are what the chosen direction will replace. Refer to `static/css/style.css` only when a task explicitly builds inside an already-chosen direction.
 - **Earlier decisions:** `docs/design/` for reusable component specs from earlier tasks.
 
 ## Output: fill the brief's **Design** section only

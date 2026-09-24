@@ -25,7 +25,7 @@ Create `docs/tasks/NNN-short-slug.md` from `docs/tasks/_template.md`. `NNN` is t
 
 ## How to work
 
-1. **Read before planning.** Read the relevant existing code, templates, `docs/tasks/` (earlier briefs and decisions) and, for UI, `design/v5-tasks/` (HTML, `README.md`, `screenshots/`), so the plan fits what exists.
+1. **Read before planning.** Read the relevant existing code, templates, `docs/tasks/` (earlier briefs and decisions) and, for UI, the current design prototypes under `design/` (if any) and `docs/design/`, so the plan fits what exists.
 2. **Structure with skills.** Use `ux-strategy:information-architecture` to organise screens and navigation. Load other skills on demand when they help:
    - `interaction-design:state-machine` for records with statuses or lifecycles.
    - `prototyping-testing:user-flow-diagram` for multi-step flows.

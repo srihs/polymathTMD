@@ -105,7 +105,7 @@ Run all of these. Every one must pass before a task counts as done:
 - **`/healthz/`** isn't a URL route. `apps.core.middleware.HealthCheckMiddleware` sits *first* in `MIDDLEWARE` and answers before host validation, the HTTPS redirect and sessions, so Docker and load-balancer probes work over plain HTTP with any Host header. Keep it first.
 - **Templates** live in the project-level `templates/`, namespaced by app (`templates/core/…`). Auth templates live in `templates/registration/`. Everything extends `base.html`, which loads the fonts, `css/style.css`, the toast container, the shared icon `<template id="tpl-icons">` (`partials/icon_templates.html`, which `app.js` clones for toasts) and `js/app.js`.
 - **Front end:**
-  - **Origin:** `static/css/style.css` and `static/js/app.js` were copied from the approved prototype in `design/v5-tasks/`. `design/` is reference only: it isn't served, isn't in the image, and its `?demo=` hooks and fake data don't belong in real pages.
+  - **Origin:** `static/css/style.css` and `static/js/app.js` were copied from an earlier prototype, `design/v5-tasks/`, which the owner has since removed. `design/` now holds the prototypes for the five directions from task 002; it is reference only, not served and not in the image.
   - **JavaScript:** `app.js` is a single IIFE of progressive enhancements. Pages must work without it, and it finds elements by `data-*` hooks.
   - **Icons:** Solar Bold Duotone, inlined as SVG. `login.html` still inlines its icons, which is known duplication. New icons should be added once as a partial and included.
 - **Database: MySQL only.** There's no SQLite fallback anywhere, tests included, and none should be added.
@@ -131,13 +131,12 @@ Run all of these. Every one must pass before a task counts as done:
 - **In Git Bash on the host, `python` resolves to the Windows Store alias** and hangs. Use `py -3.13` or `.venv/Scripts/python.exe`.
 - **Windows bind mounts** make every file look executable inside Linux containers. Shell scripts that images normally *source*, like the MySQL init scripts, get *executed* instead, so they must not rely on the parent script's functions.
 
-## UI conventions (from `design/v5-tasks/README.md`)
+## UI conventions
 
 - **Users:** school staff, many of them non-technical. Organise screens around tasks (verbs), not data. Use plain everyday wording, say what to type in each field, and write errors that explain how to fix the problem while keeping what the user typed.
-- **Fonts:** Nunito for headings and buttons, Nunito Sans for body text (16–17px), Cinzel only for the "Polymath College" wordmark.
-- **Colour:** crest purple `#722A82` (`--purple`) is reserved for primary actions, the current nav item and icons. Status colours (success, warning, danger, info) appear only on states, and always with an icon and a word.
-- **Touch and layout:** targets are 44–56px. On phones, a bottom tab bar keeps the main task under the thumb.
-- **Screenshots:** the `screenshots/` folder of the design shows the approved desktop and mobile layouts for the dashboard, item list, item detail, item form, login and UI kit.
+- **Touch and layout:** targets are 44–56px. Status colours (success, warning, danger, info) appear only on states, and always with an icon and a word.
+- **Accessibility:** meet WCAG AA.
+- **Current app tokens (provisional until a design direction is chosen):** the fonts, colours and other design tokens the app runs today live only in `:root` of `static/css/style.css` — that's the single source, not this file. Per the owner, this stylesheet and its templates are **not** inputs for the new design directions in task 002; they are what the chosen direction will replace.
 
 ## Oversight capture
 

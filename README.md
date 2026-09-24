@@ -9,7 +9,7 @@ A Django web app with server-rendered HTML templates and vanilla JavaScript. The
 | Language | Python 3.13 |
 | Framework | Django 5.2 LTS |
 | Templates | Django templates (HTML5), in `templates/` |
-| Front end | Plain CSS (`static/css/style.css`) and vanilla JS (`static/js/app.js`), both from `design/v5-tasks` |
+| Front end | Plain CSS (`static/css/style.css`) and vanilla JS (`static/js/app.js`), originally copied from an earlier design prototype |
 | Fonts | Nunito, Nunito Sans, Cinzel (Google Fonts) |
 | Database | MySQL 8.4 LTS (utf8mb4), driver `mysqlclient` |
 | Static files | WhiteNoise (compressed, cache-busted in production) |

@@ -1,0 +1,43 @@
+{# Layout settings panel (brief 004 criteria 12-13): a modal <dialog> with the four settings of the tmd-layout contract. JS only: the openers are hidden without JS, and app.js checks the radios, applies and saves choices, and handles Reset and Close. The Sidebar size radios always show the size chosen here, not the menu toggle's page-only collapse. Present once on shell pages, never on sign-in. Context: none. #}
+<dialog class="sheet" data-settings aria-labelledby="sheet-title">
+  <div class="sheet__head">
+    <h2 id="sheet-title">Layout settings</h2>
+    <button class="button button--quiet" type="button" data-settings-close><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>Close</button>
+  </div>
+  <div class="sheet__body">
+    <p class="sheet__note">Your choices are saved in this browser only.</p>
+    <fieldset>
+      <legend>Colour mode</legend>
+      <div class="sheet__options sheet__options--pair">
+        <label class="choice"><input type="radio" name="theme" value="light" data-setting>Light</label>
+        <label class="choice"><input type="radio" name="theme" value="dark" data-setting>Dark</label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Page width</legend>
+      <div class="sheet__options sheet__options--pair">
+        <label class="choice"><input type="radio" name="width" value="full" data-setting>Full width</label>
+        <label class="choice"><input type="radio" name="width" value="boxed" data-setting>Boxed</label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Sidebar size</legend>
+      <div class="sheet__options">
+        <label class="choice"><input type="radio" name="nav-size" value="standard" data-setting>Standard</label>
+        <label class="choice"><input type="radio" name="nav-size" value="compact" data-setting>Compact</label>
+        <label class="choice"><input type="radio" name="nav-size" value="icons" data-setting>Icons only</label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Sidebar colour</legend>
+      <div class="sheet__options">
+        <label class="choice"><input type="radio" name="nav-tone" value="light" data-setting><span class="choice__swatch choice__swatch--light" aria-hidden="true"></span>Light</label>
+        <label class="choice"><input type="radio" name="nav-tone" value="dark" data-setting><span class="choice__swatch choice__swatch--dark" aria-hidden="true"></span>Dark</label>
+        <label class="choice"><input type="radio" name="nav-tone" value="purple" data-setting><span class="choice__swatch choice__swatch--purple" aria-hidden="true"></span>Purple</label>
+      </div>
+    </fieldset>
+  </div>
+  <div class="sheet__foot">
+    <button class="button button--secondary" type="button" data-settings-reset>Reset to default</button>
+  </div>
+</dialog>

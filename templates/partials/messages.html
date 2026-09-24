@@ -1,0 +1,15 @@
+{# Django messages as in-flow flash messages, directly under the title row inside <main> (brief 004 D16; docs/design/flash-messages.md). Renders nothing when there are none. The level picks the family (icon and colour): success ok, warning warn, error bad, anything else note; error uses role="alert", the rest role="status". Icon references are written out per branch so every sprite use stays literal. The close button is JS only (hidden in the HTML); without JS the message simply stays in the flow. with: messages (Django message storage; each has .message and .level_tag). #}
+{% if messages %}
+<div class="flashes">
+  {% for message in messages %}{% with level=message.level_tag %}
+  {% if level == "success" %}<div class="flash flash--ok" role="status" data-flash><svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>
+  {% elif level == "warning" %}<div class="flash flash--warn" role="status" data-flash><svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+  {% elif level == "error" %}<div class="flash flash--bad" role="alert" data-flash><svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg>
+  {% else %}<div class="flash flash--note" role="status" data-flash><svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg>
+  {% endif %}
+    <p class="flash__text">{{ message }}</p>
+    <button class="button button--quiet button--icon" type="button" data-flash-close hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg><span class="visually-hidden">Close this message</span></button>
+  </div>
+  {% endwith %}{% endfor %}
+</div>
+{% endif %}

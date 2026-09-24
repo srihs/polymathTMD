@@ -1,0 +1,8 @@
+{# Notifications bell, empty state (brief 004, criterion 38): no count badge, and the panel says there are none. A <details data-pop>, so it opens without JS; app.js adds Escape and click-outside. Brief 005 passes real items. Context: none. #}
+<details class="pop" data-pop>
+  <summary class="icon-button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg><span class="visually-hidden">Notifications, none yet</span></summary>
+  <div class="pop__panel">
+    <p class="pop__head">Notifications</p>
+    <p class="pop__note">No notifications yet.</p>
+  </div>
+</details>

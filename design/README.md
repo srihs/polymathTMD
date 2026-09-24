@@ -140,11 +140,13 @@ browser only. The exact values, defaults and how they're stored are in
 unchanged, as a record of the comparison that led the client to ask for
 this look-alike instead of any of the five.
 
-**Not yet ported.** `f-desk/` is a static prototype so the client can put it
-side by side with their own reference and approve the look-alike before
-anything is ported into the Django app (`templates/`, `static/`). That
-porting is separate, later work, and it does not start until the client's
-approval is recorded.
+**Ported, and now frozen.** The client approved this look-alike, in its
+light mode / purple sidebar / standard size / full width configuration, and
+task 004 ported it into the Django app (`templates/`, `static/`), which is
+now the app's real theme. `f-desk/` itself is not touched by that port: it
+stays here as the frozen, approved record, and its own 39 screenshots are
+not recaptured. See `docs/tasks/004-app-theme-f-desk.md` for what moved and
+what a later task (005 onward) still has to bring over.
 
 What was and wasn't copied, and every third-party piece used and why, is
 recorded in full in `f-desk/README.md`'s own **Reference and licence**

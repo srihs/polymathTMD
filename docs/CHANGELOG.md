@@ -2,6 +2,67 @@
 
 Newest first. One entry per task. Each entry lists user-visible changes, then technical notes.
 
+## 2026-09-24 — 004: The approved design becomes the app's theme
+
+- Sign-in and Home now use the client-approved look: a purple sidebar, a top bar, a page title
+  and breadcrumb row, and a settings panel for colour mode, page width, sidebar size and sidebar
+  colour. The app opens light with the purple sidebar even if the device prefers dark; dark mode
+  stays one click away, in the settings panel or the top bar's colour-mode button, and the choice
+  is remembered in that browser.
+- The top bar's search field and notifications bell are visible, matching the approved look, but
+  say plainly that they aren't ready yet: the search field reads "Search is coming soon" and can't
+  be typed into or submitted, and the bell's panel says "No notifications yet." Both arrive for
+  real with the Zoom link request feature (task 005).
+- The sidebar only lists pages that exist today: Home, plus Admin for staff. Home is a single
+  "Hello, {name}" card; no made-up figures, requests or devices are shown.
+- Sign-in now matches the approved concept exactly: the concept's help text, a full-width
+  password field, no show/hide button, and no "Forgot your password" line (owner correction,
+  D18 — "login page design is different than the concept", resolved as "Match the concept
+  exactly"). Kept on purpose, as the owner asked: the error announcement (with its curly
+  apostrophe), focus moving to the password box after a wrong password, username autofocus on
+  first load, and the empty-fields check.
+- Technical notes:
+  - **Files:** `templates/base.html` is now the f-desk document and shell, split into partials
+    under `templates/partials/` (`sidebar.html`, `topbar.html`, `top_search.html`,
+    `notifications.html`, `user_menu.html`, `colour_mode_button.html`, `messages.html`,
+    `footer.html`, `settings_dialog.html`, `icons.html`), each included with
+    `{% include … with … only %}`. `templates/registration/login.html` and `templates/core/home.html`
+    are ported to the new look. `templates/partials/icon_templates.html` (the old JS toast
+    template) is deleted.
+  - `static/css/style.css`, `static/js/app.js` are replaced, and `static/js/theme-init.js` is new:
+    it applies a saved layout choice before first paint and publishes the four settings' allowed
+    values and defaults once, as `window.tmdLayout`, so `app.js` has no second copy.
+  - Icons switch from inlined Solar Bold Duotone to one Feather sprite (MIT), `partials/icons.html`.
+    Fonts switch from Nunito/Nunito Sans/Cinzel to IBM Plex Sans (SIL OFL 1.1).
+  - CSS tokens are now role-named (no value in a token's name) and type sizes are in `rem` with
+    unitless line heights, so the browser's font-size preference works; layout geometry stays in
+    `px`. Colour literals live only in the first `:root` palette block, checked by a test.
+  - `apps/accounts/models.py`: `User.initials` (a read-only model property, no migration), used
+    for the user menu's avatar.
+  - Django `messages` now render through one partial, in the page flow directly under the title
+    row (not a floating toast), because that works with JS off and doesn't cover content on a
+    phone.
+  - **Owner correction (D18), after this task's first close:** `registration/login.html`'s form
+    column was rebuilt to follow `design/f-desk/login.html` exactly. Removed: the show/hide JS
+    block from `static/js/app.js`, `.field__row`/`.signin__help` from `static/css/style.css`, and
+    the now-unused `eye` symbol from `partials/icons.html`. `docs/design/password-field.md` and
+    its Design-section rows are marked superseded, since the app no longer has a show/hide
+    control.
+  - No settings, env var, dependency or route changed.
+  - Tests: 83 passing (up from 36; 76 at this task's first close, then 7 more for D18), covering
+    the shell markup, the CSS token and `rem` rules, the search/notifications placeholders,
+    `User.initials`, and the concept-exact sign-in markup. Three existing `apps/core/tests.py`
+    tests were deliberately rewritten to match text content rather than exact markup, because the
+    sign-out button and Admin link now carry an icon; every `apps/accounts/tests.py` test is
+    unchanged.
+  - Verified PASS (83 tests, dev and prod stacks) and reviewed APPROVE; see
+    `docs/tasks/004-app-theme-f-desk.md`, including its D18 owner-correction record.
+  - Follow-ups recorded for brief 005: the shell assumes a signed-in user, so the public Zoom
+    request form must either override `{% block body %}` like `login.html` does, or branch on
+    `user.is_authenticated` in `topbar.html`/`sidebar.html`; wire the search field to a real form
+    and give the bell real content, or record why not; port `.tag` and check it renders at 10.5px
+    (the client's own choice, held from task 003).
+
 ## 2026-09-24 — 003: Look-alike of the client's reference layout
 
 - The client asked for the Technology Management Desk to look and work like a specific admin

@@ -9,8 +9,8 @@ A Django web app with server-rendered HTML templates and vanilla JavaScript. The
 | Language | Python 3.13 |
 | Framework | Django 5.2 LTS |
 | Templates | Django templates (HTML5), in `templates/` |
-| Front end | Plain CSS (`static/css/style.css`) and vanilla JS (`static/js/app.js`), originally copied from an earlier design prototype |
-| Fonts | Nunito, Nunito Sans, Cinzel (Google Fonts) |
+| Front end | Plain CSS (`static/css/style.css`) and vanilla JS (`static/js/theme-init.js`, `static/js/app.js`), ported from the client-approved `design/f-desk/` prototype |
+| Fonts | IBM Plex Sans, weights 300/400/500/600 (Google Fonts, SIL OFL 1.1) |
 | Database | MySQL 8.4 LTS (utf8mb4), driver `mysqlclient` |
 | Static files | WhiteNoise (compressed, cache-busted in production) |
 | Config | `django-environ`, reading `.env` |
@@ -18,6 +18,11 @@ A Django web app with server-rendered HTML templates and vanilla JavaScript. The
 | App server | Gunicorn |
 | Containers | Docker (multi-stage `Dockerfile`) and Docker Compose |
 | Tests / lint | pytest + pytest-django, Ruff |
+
+## Third-party notices
+
+- **IBM Plex Sans**, loaded from Google Fonts — SIL Open Font License 1.1.
+- **Feather icons** (https://feathericons.com), inlined as one SVG sprite in `templates/partials/icons.html` — MIT licence, © 2013–2017 Cole Bemis.
 
 ## Layout
 

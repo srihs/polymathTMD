@@ -1,23 +1,14 @@
-{# Signed-in home page: greeting, set-up message, Admin link (staff only) and the Sign out POST form. Context: user (authenticated User: first_name, username, is_staff), tmd_site_name (str, via base.html). Partials: none. #}{% extends "base.html" %}
+{# Signed-in home page in the shell: one card greeting the user and saying the desk is set up, with no invented figures (brief 004 criterion 19). Sign out and the staff-only Admin link live in the shell (user menu, sidebar), not here. Context: user (authenticated User: first_name, username), tmd_site_name (str, from the site context processor). Fills title, heading and content; breadcrumb stays empty. Partials: none. #}{% extends "base.html" %}
 
 {% block title %}Home{% endblock %}
 
-{% block body %}
-<main id="main" class="login-page" tabindex="-1">
-  <div class="card" style="width:min(640px, 100%)">
-    <div class="card-head">
-      <h1>Hello, {{ user.first_name|default:user.username }}</h1>
-    </div>
-    <div class="card-body">
-      <p class="muted">{{ tmd_site_name }} is set up and running. Screens will be added here as requirements come in.</p>
-    </div>
-    <div class="card-foot">
-      {% if user.is_staff %}<a class="link-arrow" href="{% url 'admin:index' %}">Admin</a>{% endif %}
-      <form method="post" action="{% url 'accounts:logout' %}">
-        {% csrf_token %}
-        <button class="btn btn-secondary" type="submit">Sign out</button>
-      </form>
-    </div>
+{% block heading %}Home{% endblock %}
+
+{% block content %}
+<section class="box" aria-labelledby="home-hello">
+  <div class="box__head"><h2 class="box__title" id="home-hello">Hello, {{ user.first_name|default:user.username }}</h2></div>
+  <div class="box__body">
+    <p>{{ tmd_site_name }} is set up and running. Screens will be added here as requirements come in.</p>
   </div>
-</main>
+</section>
 {% endblock %}

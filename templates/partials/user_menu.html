@@ -1,0 +1,16 @@
+{# User menu in the top bar: avatar initials and name, opening Layout settings (JS only) and Sign out. Sign out is a POST form because LogoutView is POST-only, and this is the only place it lives (D7). A <details data-pop>, so it opens without JS. with: user (User; initials, get_full_name, username), csrf_token (the request's token, for the sign-out form). #}
+<details class="pop" data-pop>
+  <summary class="whoami"><span class="initials" aria-hidden="true">{{ user.initials }}</span><span class="whoami__name"><span class="visually-hidden">Your account: </span>{{ user.get_full_name|default:user.username }}</span><svg class="icon whoami__chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-down"></use></svg></summary>
+  <div class="pop__panel pop__panel--menu">
+    <div class="pop__head pop__head--user" aria-hidden="true"><span class="initials">{{ user.initials }}</span><span>{{ user.get_full_name|default:user.username }}</span></div>
+    <ul class="pop__list">
+      <li><button class="pop__link" type="button" data-settings-open hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders"></use></svg>Layout settings</button></li>
+      <li class="pop__rule">
+        <form method="post" action="{% url 'accounts:logout' %}">
+          {% csrf_token %}
+          <button class="pop__link" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-log-out"></use></svg>Sign out</button>
+        </form>
+      </li>
+    </ul>
+  </div>
+</details>

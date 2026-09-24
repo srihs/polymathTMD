@@ -1,0 +1,12 @@
+{# Top-bar search PLACEHOLDER (brief 004, criterion 37; docs/design/placeholder-controls.md): a focusable, read-only field that says search is coming soon. Deliberately not a form and no button, so nothing can submit it. At 992px and up the field shows in the bar; below that the summary icon opens it in a panel (works without JS). Brief 005 replaces this with a real GET form. Context: none. #}
+<details class="pop topfind" data-pop>
+  <summary class="icon-button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg><span class="visually-hidden">Search, not available yet</span></summary>
+  <div class="topfind__panel">
+    <label class="visually-hidden" for="top-search">Search</label>
+    <div class="topsearch">
+      <svg class="icon topsearch__icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+      <input class="topsearch__input" type="search" id="top-search" readonly aria-disabled="true" placeholder="Search is coming soon" aria-describedby="top-search-note">
+    </div>
+    <span class="visually-hidden" id="top-search-note">Search is coming soon.</span>
+  </div>
+</details>

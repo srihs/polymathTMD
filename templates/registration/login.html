@@ -1,61 +1,46 @@
-{# Sign-in page for Django's LoginView: brand panel, error alert (shown only after a failed attempt), username/password form. Context: form (AuthenticationForm; form.errors drives the alert, aria-invalid, aria-describedby and autofocus), next (str), tmd_site_name (str, via base.html). Ignore the site variables LoginView adds itself: they hold the request host. Partials: none yet (icons are still inlined, known duplication). #}{% extends "base.html" %}
+{# Sign-in page for Django's LoginView, in f-desk's split layout: form column (brand line, colour-mode button, error notice, username/password form) and the purple brand panel with the crest and motto. The form column matches design/f-desk/login.html exactly (owner correction: the concept's help copy, no show/hide button, no help line). Overrides body, so it has no shell. Context: form (AuthenticationForm; form.errors unhides the notice and drives aria-invalid, aria-describedby and autofocus), next (str), tmd_site_name (str, via base.html). Ignore the site variables LoginView adds itself: they hold the request host. Partials: colour_mode_button. JS hooks: data-login-form, data-login-error(-title/-text), data-login-field. #}{% extends "base.html" %}
 {% load static %}
 
 {% block title %}Sign in{% endblock %}
-{% block body_class %}page-login{% endblock %}
 
 {% block body %}
-<main id="main" class="login-page" tabindex="-1">
-  <div class="login-shell">
-    <div class="login-form">
-      <div class="login-brand">
-        <img src="{% static 'img/crest.png' %}" alt="Polymath College crest">
-        <div class="brand-text">
-          <span class="brand-name">Polymath College</span>
-          <span class="brand-app">Technology Management Desk</span>
-          <span class="motto">Vivere Disce ~ Learn to Live</span>
-        </div>
-      </div>
-
+<main class="signin" id="main" tabindex="-1">
+  <div class="signin__form">
+    <p class="signin__brandline"><img src="{% static 'img/crest-chip.png' %}" alt="" width="28" height="28">Technology Management Desk</p>
+    <div class="signin__mode">{% include "partials/colour_mode_button.html" only %}</div>
+    <div class="signin__middle">
       <h1>Welcome back</h1>
-      <p class="lead">Sign in to the Technology Management Desk.</p>
+      <p class="signin__sub">Sign in to the Technology Management Desk.</p>
 
-      <div class="alert alert-danger" id="login-error" role="alert"{% if not form.errors %} hidden{% endif %} style="margin-bottom:20px">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12Z" opacity=".5"/><path d="M12 6.25C12.4142 6.25 12.75 6.58579 12.75 7V13C12.75 13.4142 12.4142 13.75 12 13.75C11.5858 13.75 11.25 13.4142 11.25 13V7C11.25 6.58579 11.5858 6.25 12 6.25Z"/><path d="M12 17C12.5523 17 13 16.5523 13 16C13 15.4477 12.5523 15 12 15C11.4477 15 11 15.4477 11 16C11 16.5523 11.4477 17 12 17Z"/></g></svg>
-        <div><p class="alert-title">We couldn&rsquo;t sign you in</p>
-        <p class="alert-text">That username or password didn&rsquo;t match. Try again, or ask the office to reset it.</p></div>
-        <span></span>
+      <div class="notice notice--bad" id="login-error" role="alert" tabindex="-1" data-login-error{% if not form.errors %} hidden{% endif %}>
+        <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg>
+        <div>
+          <p class="notice__title" data-login-error-title>We couldn&rsquo;t sign you in</p>
+          <p data-login-error-text>That username or password didn&rsquo;t match. Try again, or ask the office to reset it.</p>
+        </div>
       </div>
 
       <form action="{% url 'accounts:login' %}" method="post" novalidate data-login-form>
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ next }}">
-        <div class="field" data-field>
-          <label class="field-label" for="username">Username</label>
-          <p class="field-help" id="username-help">Usually your first name and the first letter of your surname, e.g. <strong>nimali.p</strong></p>
-          <input class="input" id="username" name="username" type="text" value="{{ form.username.value|default_if_none:'' }}" autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="{% if form.errors %}login-error {% endif %}username-help"{% if form.errors %} aria-invalid="true"{% else %} autofocus{% endif %} required>
+        <div class="field">
+          <label class="field__label" for="username">Username</label>
+          <p class="field__help" id="username-help">The name the school gave you, like nimali.p</p>
+          <input class="input" id="username" name="username" type="text" value="{{ form.username.value|default_if_none:'' }}" autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="{% if form.errors %}login-error {% endif %}username-help"{% if form.errors %} aria-invalid="true"{% else %} autofocus{% endif %} required data-login-field="trim">
         </div>
-        <div class="field" data-field>
-          <label class="field-label" for="password">Password</label>
-          <div class="input-affix">
-            <input class="input" id="password" name="password" type="password" autocomplete="current-password" aria-describedby="{% if form.errors %}login-error {% endif %}password-help"{% if form.errors %} aria-invalid="true" autofocus{% endif %} required>
-            <button class="btn btn-ghost btn-sm affix-btn" type="button" data-toggle-password="password" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M2 12C2 13.6394 2.42496 14.1915 3.27489 15.2957C4.97196 17.5004 7.81811 20 12 20C16.1819 20 19.028 17.5004 20.7251 15.2957C21.575 14.1915 22 13.6394 22 12C22 10.3606 21.575 9.80853 20.7251 8.70433C19.028 6.49956 16.1819 4 12 4C7.81811 4 4.97196 6.49956 3.27489 8.70433C2.42496 9.80853 2 10.3606 2 12Z" opacity=".5"/><path fill-rule="evenodd" d="M8.25 12C8.25 9.92893 9.92893 8.25 12 8.25C14.0711 8.25 15.75 9.92893 15.75 12C15.75 14.0711 14.0711 15.75 12 15.75C9.92893 15.75 8.25 14.0711 8.25 12ZM9.75 12C9.75 10.7574 10.7574 9.75 12 9.75C13.2426 9.75 14.25 10.7574 14.25 12C14.25 13.2426 13.2426 14.25 12 14.25C10.7574 14.25 9.75 13.2426 9.75 12Z" clip-rule="evenodd"/></g></svg><span>Show</span></button>
-          </div>
-          <p class="field-help" id="password-help">Passwords are case sensitive. Check that Caps Lock is off.</p>
+        <div class="field">
+          <label class="field__label" for="password">Password</label>
+          <p class="field__help" id="password-help">Passwords are case sensitive.</p>
+          <input class="input" id="password" name="password" type="password" autocomplete="current-password" aria-describedby="{% if form.errors %}login-error {% endif %}password-help"{% if form.errors %} aria-invalid="true" autofocus{% endif %} required data-login-field>
         </div>
-        <button class="btn btn-primary btn-lg btn-block" type="submit" style="margin-top:8px">Sign in<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M12.4044 8.30273L15.8351 11.6296C16.0549 11.8428 16.0549 12.1573 15.8351 12.3704L9.20467 18.8001C8.79094 19.2013 8 18.9581 8 18.4297V12.7071L12.4044 8.30273Z"/><path d="M8 11.2929L8 5.5703C8 5.04189 8.79094 4.79869 9.20467 5.1999L11.6864 7.60648L8 11.2929Z" opacity=".5"/></g></svg></button>
+        <button class="button button--primary button--block signin__submit" type="submit">Sign in</button>
       </form>
-
-      <p class="login-help"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="currentColor"><path d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" opacity=".5"/><path d="M12 7.75C11.3787 7.75 10.875 8.25368 10.875 8.875C10.875 9.28921 10.5392 9.625 10.125 9.625C9.71079 9.625 9.375 9.28921 9.375 8.875C9.375 7.42525 10.5503 6.25 12 6.25C13.4497 6.25 14.625 7.42525 14.625 8.875C14.625 9.58584 14.3415 10.232 13.883 10.704C13.7907 10.7989 13.7027 10.8869 13.6187 10.9708C13.4029 11.1864 13.2138 11.3753 13.0479 11.5885C12.8289 11.8699 12.75 12.0768 12.75 12.25V13C12.75 13.4142 12.4142 13.75 12 13.75C11.5858 13.75 11.25 13.4142 11.25 13V12.25C11.25 11.5948 11.555 11.0644 11.8642 10.6672C12.0929 10.3733 12.3804 10.0863 12.6138 9.85346C12.6842 9.78321 12.7496 9.71789 12.807 9.65877C13.0046 9.45543 13.125 9.18004 13.125 8.875C13.125 8.25368 12.6213 7.75 12 7.75Z"/><path d="M12 17C12.5523 17 13 16.5523 13 16C13 15.4477 12.5523 15 12 15C11.4477 15 11 15.4477 11 16C11 16.5523 11.4477 17 12 17Z"/></g></svg><span>Forgot your password, or new here? Ask the office to set up or reset your account.</span></p>
     </div>
-
-    <div class="login-art" aria-hidden="true">
-      <div>
-        <img class="login-chip" src="{% static 'img/crest-chip.png' %}" alt="">
-        <h2 style="margin-top:28px">Technology Management Desk</h2>
-        <p>One place to look after the school&rsquo;s technology.</p>
-      </div>
-    </div>
+    <p class="signin__foot">Polymath College · Technology Management Desk</p>
+  </div>
+  <div class="signin__brand">
+    <div class="signin__disc"><img src="{% static 'img/crest.png' %}" alt="Polymath College crest" width="143" height="160"></div>
+    <p class="signin__motto">Vivere Disce ~ Learn to Live</p>
   </div>
 </main>
 {% endblock %}

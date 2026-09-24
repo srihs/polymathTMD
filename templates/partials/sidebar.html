@@ -1,0 +1,19 @@
+{# Sidebar (desktop column, phone drawer): brand link to Home, the phone-only "Close the menu" link, and the Main nav listing only destinations that exist (D6). with: current (str, the page's view name, e.g. "core:home", or ""; sets aria-current), current_ns (str, the page's URL namespace or ""; brief 005 uses it to open a group's <details>), user (User; is_staff shows the Administration group). New sections go between Menu and Administration, which stays last. #}
+{% load static %}<aside class="sidenav" id="nav" data-nav>
+ <div class="sidenav__inner">
+  <a class="sidenav__brand" href="{% url 'core:home' %}"><img class="sidenav__crest" src="{% static 'img/crest-chip.png' %}" alt="" width="32" height="32"><span class="sidenav__wordmark">Technology Management Desk</span></a>
+  <a class="sidenav__close" href="#main" data-nav-close><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>Close the menu</a>
+  <nav class="sidenav__menu" aria-label="Main">
+    <p class="sidenav__group-title" id="nav-menu">Menu</p>
+    <ul class="sidenav__list" aria-labelledby="nav-menu">
+      <li><a class="sidenav__link" href="{% url 'core:home' %}"{% if current == "core:home" %} aria-current="page"{% endif %}><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-home"></use></svg><span class="sidenav__label">Home</span></a></li>
+    </ul>
+    {% if user.is_staff %}
+    <p class="sidenav__group-title" id="nav-admin">Administration</p>
+    <ul class="sidenav__list" aria-labelledby="nav-admin">
+      <li><a class="sidenav__link" href="{% url 'admin:index' %}"><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-shield"></use></svg><span class="sidenav__label">Admin</span></a></li>
+    </ul>
+    {% endif %}
+  </nav>
+ </div>
+</aside>

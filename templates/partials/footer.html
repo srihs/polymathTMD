@@ -1,0 +1,5 @@
+{# Footer on shell pages: the current year and the college on the left, the app name on the right. No links. data-drawer-inert lets app.js make it inert while the phone drawer is open. Context: none (the year comes from Django's now tag). #}
+<footer class="page-foot" data-drawer-inert>
+  <p>{% now "Y" %} &copy; Polymath College</p>
+  <p>Technology Management Desk</p>
+</footer>

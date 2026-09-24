@@ -1,0 +1,15 @@
+{# Top bar on shell pages, in the approved order: (phone) brand box, menu toggle (JS) or the no-JS Menu link to #nav, search placeholder; then colour mode (JS), notifications, Layout settings gear (JS), user menu. data-drawer-inert lets app.js make it inert while the phone drawer is open. with: user (User), csrf_token (token, passed on to the user menu's sign-out form). Partials: top_search, colour_mode_button, notifications, user_menu. #}
+{% load static %}<header class="topbar" data-drawer-inert>
+  <div class="topbar__start">
+    <a class="topbar__brand" href="{% url 'core:home' %}"><img src="{% static 'img/crest-chip.png' %}" alt="" width="32" height="32"><span class="visually-hidden">Home</span></a>
+    <button class="icon-button" type="button" data-nav-toggle aria-controls="nav" aria-expanded="true" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-menu"></use></svg><span class="visually-hidden" data-nav-toggle-label>Hide the menu</span></button>
+    <a class="icon-button icon-button--word" href="#nav" data-nav-link><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-menu"></use></svg>Menu</a>
+    {% include "partials/top_search.html" only %}
+  </div>
+  <div class="topbar__end">
+    {% include "partials/colour_mode_button.html" only %}
+    {% include "partials/notifications.html" only %}
+    <button class="icon-button topbar__settings" type="button" data-settings-open hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg><span class="visually-hidden">Layout settings</span></button>
+    {% include "partials/user_menu.html" with user=user csrf_token=csrf_token only %}
+  </div>
+</header>

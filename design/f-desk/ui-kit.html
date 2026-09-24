@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en-LK" data-width="full" data-nav-size="standard" data-nav-tone="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design kit · Polymath TMD</title>
+<link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
+<script src="theme-init.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&amp;display=swap">
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" focusable="false">
+<symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></symbol>
+<symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></symbol>
+<symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></symbol>
+<symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></symbol>
+<symbol id="i-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></symbol>
+<symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></symbol>
+<symbol id="i-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></symbol>
+<symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></symbol>
+<symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></symbol>
+<symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></symbol>
+<symbol id="i-plus-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></symbol>
+<symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></symbol>
+<symbol id="i-log-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></symbol>
+<symbol id="i-user-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></symbol>
+<symbol id="i-user-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></symbol>
+<symbol id="i-alert-triangle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></symbol>
+<symbol id="i-alert-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></symbol>
+<symbol id="i-alert-octagon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></symbol>
+<symbol id="i-x-octagon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></symbol>
+<symbol id="i-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></symbol>
+<symbol id="i-package" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></symbol>
+<symbol id="i-tool" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></symbol>
+<symbol id="i-minus-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></symbol>
+<symbol id="i-coffee" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"></path><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path><line x1="6" y1="1" x2="6" y2="4"></line><line x1="10" y1="1" x2="10" y2="4"></line><line x1="14" y1="1" x2="14" y2="4"></line></symbol>
+<symbol id="i-loader" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></symbol>
+<symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></symbol>
+<symbol id="i-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></symbol>
+<symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></symbol>
+<symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></symbol>
+<symbol id="i-trash-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></symbol>
+</svg>
+<div class="shell">
+<aside class="sidenav" id="nav" data-nav>
+ <div class="sidenav__inner">
+  <div class="sidenav__brand">
+    <img class="sidenav__crest" src="assets/crest-chip.png" alt="" width="32" height="32">
+    <span class="sidenav__wordmark">Technology Management Desk</span>
+  </div>
+  <a class="sidenav__close" href="#main" data-nav-close><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>Close the menu</a>
+  <nav class="sidenav__menu" aria-label="Main">
+    <p class="sidenav__group-title" id="nav-g1">Menu</p>
+    <ul class="sidenav__list" aria-labelledby="nav-g1">
+      <li><a class="sidenav__link" href="dashboard.html"><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-home"></use></svg><span class="sidenav__label">Home</span></a></li>
+    </ul>
+    <p class="sidenav__group-title" id="nav-g2">Help desk</p>
+    <ul class="sidenav__list" aria-labelledby="nav-g2">
+      <li>
+        <details class="sidenav__parent">
+          <summary class="sidenav__link"><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-inbox"></use></svg><span class="sidenav__label">Requests</span><svg class="icon sidenav__chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg></summary>
+          <ul class="sidenav__children">
+            <li><a class="sidenav__link" href="requests.html"><span class="sidenav__label">All requests</span></a></li>
+            <li><a class="sidenav__link" href="request-form.html"><span class="sidenav__label">Raise a request</span></a></li>
+          </ul>
+        </details>
+      </li>
+    </ul>
+    <p class="sidenav__group-title" id="nav-g3">Equipment</p>
+    <ul class="sidenav__list" aria-labelledby="nav-g3">
+      <li><a class="sidenav__link" href="device.html"><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg><span class="sidenav__label">Devices</span></a></li>
+    </ul>
+    <p class="sidenav__group-title" id="nav-g4">Prototype</p>
+    <ul class="sidenav__list" aria-labelledby="nav-g4">
+      <li><a class="sidenav__link" href="ui-kit.html" aria-current="page"><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-grid"></use></svg><span class="sidenav__label">Design kit</span></a></li>
+    </ul>
+  </nav>
+  <section class="helpcard" aria-labelledby="help-title">
+    <p class="helpcard__title" id="help-title">Something not working?</p>
+    <p class="helpcard__text">Tell us and we'll sort it out.</p>
+    <a class="button" href="request-form.html">Raise a request</a>
+  </section>
+ </div>
+</aside>
+<div class="scrim" data-scrim hidden></div>
+<header class="topbar" data-drawer-inert>
+  <div class="topbar__start">
+    <a class="topbar__brand" href="dashboard.html"><img src="assets/crest-chip.png" alt="" width="32" height="32"><span class="offscreen">Home</span></a>
+    <button class="icon-button" type="button" data-nav-toggle aria-controls="nav" aria-expanded="true" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-menu"></use></svg><span class="offscreen" data-nav-toggle-label>Hide the menu</span></button>
+    <a class="icon-button icon-button--word" href="#nav" data-nav-link><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-menu"></use></svg>Menu</a>
+    <details class="pop topfind" data-pop>
+      <summary class="icon-button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg><span class="offscreen">Search requests</span></summary>
+      <div class="topfind__panel">
+        <form class="topsearch" role="search" method="get" action="requests.html">
+          <label class="offscreen" for="top-q">Search requests</label>
+          <input class="topsearch__input" id="top-q" name="q" type="search" placeholder="Reference or words, e.g. REQ-2048">
+          <button class="topsearch__button" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg><span class="offscreen">Search</span></button>
+        </form>
+      </div>
+    </details>
+  </div>
+  <div class="topbar__end">
+    <button class="icon-button" type="button" data-theme-toggle hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg><span class="offscreen" data-theme-label>Switch to dark mode</span></button>
+    <details class="pop" data-pop>
+      <summary class="icon-button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg><span class="offscreen">Notifications, 3 new</span><span class="count" aria-hidden="true">3</span></summary>
+      <div class="pop__panel">
+        <p class="pop__head" id="alerts-title">Notifications</p>
+        <ul class="pop__list" aria-labelledby="alerts-title">
+          <li><a class="pop__item pop__item--new" href="requests.html">
+            <span class="disc disc--bad"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg></span>
+            <span>
+              <span class="pop__title">REQ-2048 is urgent <span class="tag tag--brand">New</span></span>
+              <span class="pop__body">Projector in Lab 2 shows a blue screen</span>
+              <span class="pop__time"><svg class="icon icon--12" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg><time datetime="2026-09-11T08:15">Fri 11 Sep 2026, 8:15 am</time></span>
+            </span>
+          </a></li>
+          <li><a class="pop__item pop__item--new" href="requests.html">
+            <span class="disc disc--note"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-user-plus"></use></svg></span>
+            <span>
+              <span class="pop__title">REQ-2047 needs someone <span class="tag tag--brand">New</span></span>
+              <span class="pop__body">Laptop will not connect to the staff Wi-Fi. Nobody yet.</span>
+              <span class="pop__time"><svg class="icon icon--12" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg><time datetime="2026-09-10T11:20">Thu 10 Sep 2026, 11:20 am</time></span>
+            </span>
+          </a></li>
+          <li><a class="pop__item pop__item--new" href="requests.html">
+            <span class="disc disc--warn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg></span>
+            <span>
+              <span class="pop__title">REQ-2046 is waiting on someone <span class="tag tag--brand">New</span></span>
+              <span class="pop__body">Printer jams on every second page</span>
+              <span class="pop__time"><svg class="icon icon--12" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg><time datetime="2026-09-08T13:40">Tue 8 Sep 2026, 1:40 pm</time></span>
+            </span>
+          </a></li>
+          <li><a class="pop__item" href="device.html">
+            <span class="disc disc--brand"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg></span>
+            <span>
+              <span class="pop__title">IT-0142 is due back soon</span>
+              <span class="pop__body">Dilani Fernando has it until Mon 21 Sep 2026.</span>
+            </span>
+          </a></li>
+        </ul>
+        <div class="pop__foot"><a href="requests.html">See all requests<svg class="icon icon--14" aria-hidden="true" focusable="false"><use href="#i-arrow-right"></use></svg></a></div>
+      </div>
+    </details>
+    <button class="icon-button topbar__settings" type="button" data-settings-open hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg><span class="offscreen">Layout settings</span></button>
+    <details class="pop" data-pop>
+      <summary class="whoami"><span class="initials" aria-hidden="true">NP</span><span class="whoami__text"><span class="whoami__name">Nimali Perera</span><span class="whoami__role">ICT Technician</span></span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-down"></use></svg></summary>
+      <div class="pop__panel pop__panel--menu">
+        <div class="pop__head pop__head--user" aria-hidden="true"><span class="initials">NP</span><span class="whoami__text"><span class="whoami__name">Nimali Perera</span><span class="whoami__role">ICT Technician</span></span></div>
+        <ul class="pop__list">
+          <li><a class="pop__link" href="ui-kit.html"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-grid"></use></svg>Design kit</a></li>
+          <li><button class="pop__link" type="button" data-settings-open hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders"></use></svg>Layout settings</button></li>
+          <li class="pop__rule"><a class="pop__link" href="login.html"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-log-out"></use></svg>Sign out</a></li>
+        </ul>
+      </div>
+    </details>
+  </div>
+</header>
+<main id="main" tabindex="-1" data-drawer-inert>
+    <div class="titlebar">
+      <h1 class="page-heading">Design kit</h1>
+      <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="dashboard.html">Home</a></li><li><svg class="icon icon--14 crumbs__sep" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg><span aria-current="page">Design kit</span></li></ol></nav>
+    </div>
+    <section class="box" aria-labelledby="k-buttons">
+      <div class="box__head"><h2 class="box__title" id="k-buttons">Buttons</h2></div>
+      <div class="box__body kit-stack">
+        <div class="datagrid-wrap">
+          <table class="datagrid kit-table">
+            <caption class="offscreen">Button variants</caption>
+            <thead><tr><th scope="col">Variant</th><th scope="col">Specimen</th></tr></thead>
+            <tbody>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Variant</span><span>Primary</span></td><td><span class="datagrid__label" aria-hidden="true">Specimen</span><span><button class="button button--primary" type="button">Send the request</button></span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Variant</span><span>Secondary</span></td><td><span class="datagrid__label" aria-hidden="true">Specimen</span><span><a class="button button--secondary" href="dashboard.html">Cancel</a></span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Variant</span><span>Quiet</span></td><td><span class="datagrid__label" aria-hidden="true">Specimen</span><span><a class="button button--quiet" href="requests.html">See all requests</a></span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Variant</span><span>Danger</span></td><td><span class="datagrid__label" aria-hidden="true">Specimen</span><span><a class="button button--danger" href="requests.html">Clear the filters</a></span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Variant</span><span>Icon only</span></td><td><span class="datagrid__label" aria-hidden="true">Specimen</span><span><button class="button button--secondary button--icon" type="button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg><span class="offscreen">Close</span></button></span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Variant</span><span>Disabled</span></td><td><span class="datagrid__label" aria-hidden="true">Specimen</span><span><button class="button button--primary" type="button" disabled>Send the request</button></span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Variant</span><span>Busy</span></td><td><span class="datagrid__label" aria-hidden="true">Specimen</span><span><button class="button button--primary" type="button" aria-busy="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-loader"></use></svg>Sending…</button></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-links">
+      <div class="box__head"><h2 class="box__title" id="k-links">Links</h2></div>
+      <div class="box__body kit-stack">
+        <p><a class="tap-link" href="device.html">IT-0142 — Dell Latitude 3540 laptop</a></p>
+        <div class="box__foot"><a href="requests.html">See all requests<svg class="icon icon--14" aria-hidden="true" focusable="false"><use href="#i-arrow-right"></use></svg></a></div>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-fields">
+      <div class="box__head"><h2 class="box__title" id="k-fields">Form fields</h2></div>
+      <div class="box__body kit-stack">
+        <div class="kit-grid">
+          <div>
+            <h3>Text input with help</h3>
+            <div class="field">
+              <label class="field__label" for="k-what">What is wrong?</label>
+              <p class="field__help" id="k-what-help">One short line, for example "Projector will not turn on".</p>
+              <input class="input" id="k-what" name="k-what" type="text" aria-describedby="k-what-help">
+            </div>
+          </div>
+          <div>
+            <h3>With an error</h3>
+            <div class="field">
+              <label class="field__label" for="k-what2">What is wrong?</label>
+              <p class="field__help" id="k-what2-help">One short line, for example "Projector will not turn on".</p>
+              <input class="input" id="k-what2" name="k-what2" type="text" aria-invalid="true" aria-describedby="k-what2-help k-what2-error">
+              <p class="field__error" id="k-what2-error"><svg class="icon icon--14" aria-hidden="true" focusable="false"><use href="#i-alert-circle"></use></svg><span>Type a short description of the problem, for example "Projector will not turn on".</span></p>
+            </div>
+          </div>
+          <div>
+            <h3>Textarea</h3>
+            <div class="field">
+              <label class="field__label" for="k-more">Tell us more</label>
+              <p class="field__help" id="k-more-help">What happens, when it started, and what you already tried.</p>
+              <textarea class="input" id="k-more" name="k-more" rows="4" aria-describedby="k-more-help"></textarea>
+            </div>
+          </div>
+          <div>
+            <h3>Select</h3>
+            <div class="field">
+              <label class="field__label" for="k-where">Where is it?</label>
+              <p class="field__help" id="k-where-help">The room where we will find it.</p>
+              <select class="input" id="k-where" name="k-where" aria-describedby="k-where-help">
+                <option value="" selected>Choose a room</option>
+                <option>ICT Room</option><option>ICT Store</option><option>Science Block Lab 2</option><option>Grade 6B Classroom</option>
+                <option>Library</option><option>Admin Office</option><option>Sports Room</option><option>Main Hall</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <h3>Search field</h3>
+            <div class="field">
+              <label class="field__label" for="k-q">Search requests</label>
+              <div class="searchbox"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg><input class="input" id="k-q" name="k-q" type="search" placeholder="Reference, words, or a person's name, e.g. projector or REQ-2048"></div>
+            </div>
+          </div>
+          <div>
+            <h3>File input</h3>
+            <div class="field">
+              <label class="field__label" for="k-photo">Add a photo</label>
+              <p class="field__help" id="k-photo-help">Optional. A photo of the screen or the error helps us a lot.</p>
+              <input class="input" id="k-photo" name="k-photo" type="file" accept="image/*" aria-describedby="k-photo-help">
+            </div>
+          </div>
+          <div>
+            <h3>Read-only</h3>
+            <div class="field">
+              <label class="field__label" for="k-name">Your name</label>
+              <p class="field__help" id="k-name-help">We will reply to you.</p>
+              <input class="input" id="k-name" name="k-name" type="text" value="Nimali Perera (nimali.p)" readonly aria-describedby="k-name-help">
+            </div>
+          </div>
+          <div>
+            <h3>Checkboxes</h3>
+            <fieldset class="options">
+              <legend>Status</legend>
+              <label class="check"><input type="checkbox" name="k-status-new" value="New" checked>New</label><br>
+              <label class="check"><input type="checkbox" name="k-status-progress" value="In progress">In progress</label>
+            </fieldset>
+          </div>
+        </div>
+        <h3>Radios</h3>
+        <fieldset class="options" aria-describedby="k-urgency-help">
+          <legend>How urgent is it?</legend>
+          <p class="field__help" id="k-urgency-help">Pick the one that fits. We look at urgent ones first.</p>
+          <div class="options__list">
+            <label class="choice choice--tall"><input type="radio" name="k-urgency" value="Can wait"><span class="choice__words">Can wait<span class="choice__help">It can wait until next week.</span></span></label>
+            <label class="choice choice--tall"><input type="radio" name="k-urgency" value="Normal" checked><span class="choice__words">Normal<span class="choice__help">I need it in the next day or two.</span></span></label>
+            <label class="choice choice--tall"><input type="radio" name="k-urgency" value="Urgent"><span class="choice__words">Urgent<span class="choice__help">A class or the office is stopped right now.</span></span></label>
+          </div>
+        </fieldset>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-tags">
+      <div class="box__head"><h2 class="box__title" id="k-tags">Status tags</h2></div>
+      <div class="box__body kit-stack">
+        <h3>Requests</h3>
+        <p class="tags"><span class="tag tag--note"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus-circle"></use></svg>New</span><span class="tag tag--brand"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-loader"></use></svg>In progress</span><span class="tag tag--warn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg>Waiting on someone</span><span class="tag tag--ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>Fixed</span><span class="tag tag--plain"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-archive"></use></svg>Closed</span></p>
+        <h3>Devices</h3>
+        <p class="tags"><span class="tag tag--plain"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>In store</span><span class="tag tag--brand"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-user-check"></use></svg>Issued</span><span class="tag tag--warn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tool"></use></svg>In repair</span><span class="tag tag--bad"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x-octagon"></use></svg>Out of service</span></p>
+        <h3>Condition</h3>
+        <p class="tags"><span class="tag tag--ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>Good</span><span class="tag tag--warn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert-circle"></use></svg>Needs repair</span><span class="tag tag--bad"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x-octagon"></use></svg>Out of service</span></p>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-urgency">
+      <div class="box__head"><h2 class="box__title" id="k-urgency">Urgency</h2></div>
+      <div class="box__body kit-stack">
+        <p class="tags"><span class="tag tag--plain"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-coffee"></use></svg>Can wait</span><span class="tag tag--plain"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-minus-circle"></use></svg>Normal</span><span class="tag tag--bad"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>Urgent</span></p>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-row">
+      <div class="box__head"><h2 class="box__title" id="k-row">List row</h2></div>
+      <div class="box__body kit-stack">
+        <ul class="worklist">
+          <li><a class="worklist__row" href="requests.html">
+            <span><span class="worklist__ref">REQ-2048</span> Projector in Lab 2 shows a blue screen</span>
+            <span class="tags"><span class="tag tag--bad"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>Urgent</span><span class="tag tag--brand"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-loader"></use></svg>In progress</span></span>
+            <span class="worklist__who">Who is on it: Nimali Perera</span>
+          </a></li>
+        </ul>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-box">
+      <div class="box__head"><h2 class="box__title" id="k-box">Box</h2></div>
+      <div class="box__body kit-stack">
+        <div class="box">
+          <div class="box__head"><h3>Devices</h3></div>
+          <div class="box__body stat-lines">
+            <p><span class="stat__num">128</span> <span class="stat__words">devices in the register</span></p>
+            <p><span class="stat__num">34</span> <span class="stat__words">out on loan</span></p>
+          </div>
+          <div class="box__foot"><a href="device.html">IT-0142 — Dell Latitude 3540 laptop<svg class="icon icon--14" aria-hidden="true" focusable="false"><use href="#i-arrow-right"></use></svg></a></div>
+        </div>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-stat">
+      <div class="box__head"><h2 class="box__title" id="k-stat">Stat tile</h2></div>
+      <div class="box__body kit-stack">
+        <div class="cards cards--four">
+      <div class="box">
+        <div class="box__body stat">
+          <p><span class="stat__num">6</span> <span class="stat__words">requests open</span></p>
+          <span class="disc disc--48 disc--brand stat__icon"><svg class="icon icon--24" aria-hidden="true" focusable="false"><use href="#i-inbox"></use></svg></span>
+          <p class="stat__sub"><span class="tag tag--bad"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>2 are urgent</span></p>
+        </div>
+      </div>
+      <div class="box">
+        <div class="box__body stat">
+          <p><span class="stat__num">2</span> <span class="stat__words">devices in repair</span></p>
+          <span class="disc disc--48 disc--brand stat__icon"><svg class="icon icon--24" aria-hidden="true" focusable="false"><use href="#i-tool"></use></svg></span>
+        </div>
+      </div>
+        </div>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-history">
+      <div class="box__head"><h2 class="box__title" id="k-history">History</h2></div>
+      <div class="box__body kit-stack">
+        <ol class="history">
+          <li><time class="history__time" datetime="2026-09-10T11:20">Thu 10 Sep 2026, 11:20 am</time><span class="history__who">Dilani Fernando</span><span>Raised REQ-2047 — will not connect to the staff Wi-Fi</span></li>
+          <li><time class="history__time" datetime="2026-08-25T07:50">Tue 25 Aug 2026, 7:50 am</time><span class="history__who">Nimali Perera</span><span>Given to Dilani Fernando for Grade 6B. Due back Mon 21 Sep 2026</span></li>
+        </ol>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-notices">
+      <div class="box__head"><h2 class="box__title" id="k-notices">Notices</h2></div>
+      <div class="box__body kit-stack">
+        <div class="notice notice--note"><svg class="icon icon--20" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg><div><p class="notice__title">IT-0142 is due back soon</p><p>Dilani Fernando has it until Mon 21 Sep 2026.</p></div></div>
+        <div class="notice notice--ok"><svg class="icon icon--20" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg><div><p class="notice__title">Request sent. We gave it the number REQ-2049.</p></div></div>
+        <div class="notice notice--warn"><svg class="icon icon--20" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg><div><p class="notice__title">REQ-2046 is waiting on someone</p><p>Printer jams on every second page</p></div></div>
+        <div class="notice notice--bad"><svg class="icon icon--20" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg><div><p class="notice__title">We couldn't sign you in</p><p>That username or password didn't match. Try again, or ask the office to reset it.</p></div></div>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-toast">
+      <div class="box__head"><h2 class="box__title" id="k-toast">Toast</h2></div>
+      <div class="box__body kit-stack">
+        <div class="flash flash--static" data-flash>
+          <svg class="icon icon--20" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>
+          <p class="flash__text">Request sent. We gave it the number REQ-2049.</p>
+          <button class="button button--quiet" type="button" data-flash-undo hidden>Undo</button>
+          <button class="button button--quiet button--icon" type="button" data-flash-close><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg><span class="offscreen">Close</span></button>
+        </div>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-dialog">
+      <div class="box__head"><h2 class="box__title" id="k-dialog">Dialog</h2></div>
+      <div class="box__body kit-stack">
+        <p>Your choices are saved in this browser only.</p>
+        <p><button class="button button--secondary" type="button" data-settings-open hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders"></use></svg>Layout settings</button></p>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-empty">
+      <div class="box__head"><h2 class="box__title" id="k-empty">Empty state</h2></div>
+      <div class="box__body kit-stack">
+        <div class="empty">
+          <span class="disc disc--64"><svg class="icon icon--28" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg></span>
+          <h3>No requests match what you chose</h3>
+          <p>Try clearing the filters, or search for a different word.</p>
+          <a class="button button--secondary" href="requests.html">Clear the filters</a>
+        </div>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-pager">
+      <div class="box__head"><h2 class="box__title" id="k-pager">Pager</h2></div>
+      <div class="box__body kit-stack">
+        <nav class="pager" aria-label="Pager">
+          <ul>
+            <li><a href="ui-kit.html"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg><span class="offscreen">Previous</span></a></li>
+            <li><a href="ui-kit.html" aria-current="page">1</a></li>
+            <li><a href="ui-kit.html">2</a></li>
+            <li><a href="ui-kit.html">3</a></li>
+            <li><a href="ui-kit.html"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg><span class="offscreen">Next</span></a></li>
+          </ul>
+        </nav>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-crumbs">
+      <div class="box__head"><h2 class="box__title" id="k-crumbs">Breadcrumb</h2></div>
+      <div class="box__body kit-stack">
+        <div class="crumbs"><ol><li><a href="dashboard.html">Home</a></li><li><svg class="icon icon--14 crumbs__sep" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg><a href="device.html">Devices</a></li><li><svg class="icon icon--14 crumbs__sep" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg><span>IT-0142</span></li></ol></div>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-avatar">
+      <div class="box__head"><h2 class="box__title" id="k-avatar">Avatar</h2></div>
+      <div class="box__body kit-stack">
+        <p class="kit-row"><span class="initials" aria-hidden="true">NP</span><span><span class="whoami__name">Nimali Perera</span><br><span class="whoami__role">ICT Technician</span></span></p>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-icons">
+      <div class="box__head"><h2 class="box__title" id="k-icons">Icons</h2></div>
+      <div class="box__body kit-stack">
+        <h3>Sizes: 12, 14, 16, 18, 20, 24px</h3>
+        <p class="kit-row"><svg class="icon icon--12" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg><svg class="icon icon--14" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg><svg class="icon icon--18" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg><svg class="icon icon--20" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg><svg class="icon icon--24" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg></p>
+        <h3>Every icon, 16px</h3>
+        <ul class="kit-icons">
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-menu"></use></svg><span>menu</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg><span>x</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg><span>search</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg><span>moon</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg><span>sun</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg><span>bell</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg><span>settings</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders"></use></svg><span>sliders</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-down"></use></svg><span>chevron-down</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg><span>chevron-right</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg><span>chevron-left</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-home"></use></svg><span>home</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-inbox"></use></svg><span>inbox</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-list"></use></svg><span>list</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus-circle"></use></svg><span>plus-circle</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg><span>monitor</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-grid"></use></svg><span>grid</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-log-out"></use></svg><span>log-out</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-user-plus"></use></svg><span>user-plus</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-user-check"></use></svg><span>user-check</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg><span>clock</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg><span>alert-triangle</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert-circle"></use></svg><span>alert-circle</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg><span>alert-octagon</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x-octagon"></use></svg><span>x-octagon</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg><span>check-circle</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-archive"></use></svg><span>archive</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg><span>package</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-tool"></use></svg><span>tool</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-minus-circle"></use></svg><span>minus-circle</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-coffee"></use></svg><span>coffee</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-loader"></use></svg><span>loader</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg><span>info</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-right"></use></svg><span>arrow-right</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-upload"></use></svg><span>upload</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-calendar"></use></svg><span>calendar</span></li>
+          <li><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash-2"></use></svg><span>trash-2</span></li>
+        </ul>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-type">
+      <div class="box__head"><h2 class="box__title" id="k-type">Type scale</h2></div>
+      <div class="box__body kit-stack">
+        <div class="datagrid-wrap">
+          <table class="datagrid kit-table">
+            <caption class="offscreen">Type scale</caption>
+            <thead><tr><th scope="col">Role</th><th scope="col">Size</th><th scope="col">Sample</th></tr></thead>
+            <tbody>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Body copy, table cell, form field, breadcrumb, footer</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>14px / 400</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--14 kit-w-400">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Table head</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>14px / 600</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--14 kit-w-600">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Form label, settings legend and option</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>14px / 500</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--14 kit-w-500">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Help text, notification body and time</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>13px / 400</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--13 kit-w-400">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Error text</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>12.25px / 400</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--12-25 kit-w-400">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Sidebar item</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>14.4px / 500</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--14-4 kit-w-500">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Sidebar child</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>13.6px / 500</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--13-6 kit-w-500">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Sidebar group title</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>12px / 500</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--12 kit-w-500">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Page title (h1)</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>18px / 500</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--18 kit-w-500">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Sign-in title, settings panel title</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>17.5px / 500</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--17-5 kit-w-500">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Card title (h2)</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>15.4px / 500</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--15-4 kit-w-500">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Sub-heading (h3)</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>14px / 600</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--14 kit-w-600">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Stat number (20.4px below 992px)</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>21px / 500</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--21 kit-w-500">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Status tag</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>10.5px / 600</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--10-5 kit-w-600">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Count on the bell</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>10.5px / 600</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--10-5 kit-w-600">Projector in Lab 2</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Role</span><span>Sign-in motto</span></td><td><span class="datagrid__label" aria-hidden="true">Size</span><span>21px / 300</span></td><td><span class="datagrid__label" aria-hidden="true">Sample</span><span class="kit-sample--21 kit-w-300">Projector in Lab 2</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-colours">
+      <div class="box__head"><h2 class="box__title" id="k-colours">Colours</h2></div>
+      <div class="box__body kit-stack">
+        <h3>Light mode</h3>
+        <div class="datagrid-wrap">
+          <table class="datagrid kit-table">
+            <caption class="offscreen">Light mode colour pairs</caption>
+            <thead><tr><th scope="col">Text or mark</th><th scope="col">On</th><th scope="col">Ratio</th></tr></thead>
+            <tbody>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-text</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-page</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>12.44:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-text</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>12.44:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-text</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface-2</code> #F8F9FA</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>11.80:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-text</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-field</code> #F8F9FA</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>11.80:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-text</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-sheet</code> #FCFAFD</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>11.98:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-text</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary-soft</code> #F1EAF3</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>10.54:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-heading</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>12.44:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-heading</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface-2</code> #F8F9FA</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>11.80:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-heading</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-sheet</code> #FCFAFD</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>11.98:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-heading</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary-soft</code> #F1EAF3</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>10.54:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-muted</code> #636779</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-page</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.60:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-muted</code> #636779</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.60:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-muted</code> #636779</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface-2</code> #F8F9FA</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.31:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-muted</code> #636779</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-field</code> #F8F9FA</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.31:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-muted</code> #636779</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-sheet</code> #FCFAFD</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.39:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-muted</code> #636779</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary-soft</code> #F1EAF3</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>4.75:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-primary-text</code> #722A82</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>8.86:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-primary-text</code> #722A82</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface-2</code> #F8F9FA</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>8.40:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-primary-text</code> #722A82</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-sheet</code> #FCFAFD</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>8.54:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-primary-text</code> #722A82</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary-soft</code> #F1EAF3</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>7.51:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-on-primary</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary</code> #722A82</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>8.86:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-on-primary</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary-hover</code> #5C1F6A</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>11.29:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-on-primary</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-bad-solid</code> #B42318</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.57:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-count-text</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-count-bg</code> #B42318</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.57:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-bad-text</code> #B42318</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.57:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-ok-text</code> #17744F</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-ok-soft</code> #D9F2E8</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>4.88:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-warn-text</code> #8A5A00</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-warn-soft</code> #FFF4E0</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.43:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-bad-text</code> #B42318</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-bad-soft</code> #FFE3E2</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.42:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-note-text</code> #1E5FA8</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-note-soft</code> #DFEFFC</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.49:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-plain-text</code> #545A6D</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-plain-soft</code> #EEEFF3</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.97:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-brand-text</code> #722A82</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-brand-soft</code> #E6D9E9</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.52:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-chart-label</code> #636779</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.60:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-control</code> #868A9B (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>3.43:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-control</code> #868A9B (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-field</code> #F8F9FA</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>3.25:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-control</code> #868A9B (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-sheet</code> #FCFAFD</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>3.30:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-focus</code> #722A82 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-page</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>8.86:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-focus</code> #722A82 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>8.86:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-focus</code> #722A82 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-sheet</code> #FCFAFD</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>8.54:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-primary-text</code> #722A82 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary-soft</code> #F1EAF3</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>7.51:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-bad-text</code> #B42318 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-field</code> #F8F9FA</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.23:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-bad-text</code> #B42318 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.57:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-ok-text</code> #17744F (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.75:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-chart-bar</code> #722A82 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>8.86:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-chart-zero</code> #868A9B (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>3.43:1</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Dark mode</h3>
+        <div class="datagrid-wrap">
+          <table class="datagrid kit-table">
+            <caption class="offscreen">Dark mode colour pairs</caption>
+            <thead><tr><th scope="col">Text or mark</th><th scope="col">On</th><th scope="col">Ratio</th></tr></thead>
+            <tbody>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-text</code> #ADB5BD</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-page</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.99:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-text</code> #ADB5BD</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #2C302E</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.44:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-text</code> #ADB5BD</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface-2</code> #363A38</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.56:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-text</code> #ADB5BD</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-field</code> #363A38</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.56:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-text</code> #ADB5BD</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-sheet</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.99:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-text</code> #ADB5BD</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary-soft</code> #3E2F43</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.98:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-heading</code> #CED4DA</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #2C302E</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>8.95:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-heading</code> #CED4DA</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface-2</code> #363A38</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>7.72:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-heading</code> #CED4DA</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-sheet</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>8.32:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-heading</code> #CED4DA</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary-soft</code> #3E2F43</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>8.30:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-muted</code> #9CA3AD</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-page</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>4.89:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-muted</code> #9CA3AD</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #2C302E</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.26:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-muted</code> #9CA3AD</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface-2</code> #363A38</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>4.53:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-muted</code> #9CA3AD</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-field</code> #363A38</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>4.53:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-muted</code> #9CA3AD</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-sheet</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>4.89:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-muted</code> #9CA3AD</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary-soft</code> #3E2F43</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>4.87:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-primary-text</code> #CFA3DA</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #2C302E</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.31:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-primary-text</code> #CFA3DA</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface-2</code> #363A38</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.44:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-primary-text</code> #CFA3DA</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-sheet</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.86:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-primary-text</code> #CFA3DA</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary-soft</code> #3E2F43</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.85:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-on-primary</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary</code> #722A82</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>8.86:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-on-primary</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary-hover</code> #8A3D9C</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.50:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-on-primary</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-bad-solid</code> #B42318</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.57:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-count-text</code> #FFFFFF</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-count-bg</code> #B42318</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.57:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-bad-text</code> #F59A94</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #2C302E</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.32:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-ok-text</code> #6FD3A6</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-ok-soft</code> #22382F</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.89:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-warn-text</code> #F2C46D</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-warn-soft</code> #3D3322</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>7.60:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-bad-text</code> #F59A94</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-bad-soft</code> #432A2A</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.19:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-note-text</code> #8CBDF2</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-note-soft</code> #22334A</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.50:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-plain-text</code> #CED4DA</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-plain-soft</code> #3A3E3C</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>7.26:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-brand-text</code> #CFA3DA</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-brand-soft</code> #3E2F43</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.85:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-chart-label</code> #9CA3AD</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #2C302E</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.26:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-control</code> #808782 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #2C302E</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>3.63:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-control</code> #808782 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-field</code> #363A38</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>3.13:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-control</code> #808782 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-sheet</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>3.38:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-focus</code> #CFA3DA (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-page</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.86:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-focus</code> #CFA3DA (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #2C302E</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.31:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-focus</code> #CFA3DA (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-sheet</code> #313533</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.86:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-primary-text</code> #CFA3DA (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-primary-soft</code> #3E2F43</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.85:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-bad-text</code> #F59A94 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-field</code> #363A38</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>5.45:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-bad-text</code> #F59A94 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #2C302E</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.32:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-ok-text</code> #6FD3A6 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #2C302E</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>7.35:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-chart-bar</code> #CFA3DA (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #2C302E</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>6.31:1</span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Text or mark</span><span><code>--c-chart-zero</code> #808782 (mark)</span></td><td><span class="datagrid__label" aria-hidden="true">On</span><span><code>--c-surface</code> #2C302E</span></td><td><span class="datagrid__label" aria-hidden="true">Ratio</span><span>3.63:1</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Sidebar colours</h3>
+        <div class="datagrid-wrap">
+          <table class="datagrid kit-table">
+            <caption class="offscreen">Sidebar colours</caption>
+            <thead><tr><th scope="col">Pair</th><th scope="col">Light tone, light mode</th><th scope="col">Light tone, dark mode</th><th scope="col">Dark tone</th><th scope="col">Purple tone</th></tr></thead>
+            <tbody>
+              <tr><th scope="row"><code>--nav-brand</code> on <code>--nav-bg</code></th><td><span class="datagrid__label" aria-hidden="true">Light tone, light mode</span><span>#313533 on #FCFAFD: 11.98:1</span></td><td><span class="datagrid__label" aria-hidden="true">Light tone, dark mode</span><span>#E9ECEF on #2C302E: 11.28:1</span></td><td><span class="datagrid__label" aria-hidden="true">Dark tone</span><span>#E9ECEF on #2C302E: 11.28:1</span></td><td><span class="datagrid__label" aria-hidden="true">Purple tone</span><span>#FFFFFF on #722A82: 8.86:1</span></td></tr>
+              <tr><th scope="row"><code>--nav-group</code> on <code>--nav-bg</code></th><td><span class="datagrid__label" aria-hidden="true">Light tone, light mode</span><span>#545A6D on #FCFAFD: 6.61:1</span></td><td><span class="datagrid__label" aria-hidden="true">Light tone, dark mode</span><span>#9CA3AD on #2C302E: 5.26:1</span></td><td><span class="datagrid__label" aria-hidden="true">Dark tone</span><span>#9CA3AD on #2C302E: 5.26:1</span></td><td><span class="datagrid__label" aria-hidden="true">Purple tone</span><span>#D5BFDA on #722A82: 5.18:1</span></td></tr>
+              <tr><th scope="row"><code>--nav-text</code> on <code>--nav-bg</code></th><td><span class="datagrid__label" aria-hidden="true">Light tone, light mode</span><span>#545A6D on #FCFAFD: 6.61:1</span></td><td><span class="datagrid__label" aria-hidden="true">Light tone, dark mode</span><span>#E9ECEF on #2C302E: 11.28:1</span></td><td><span class="datagrid__label" aria-hidden="true">Dark tone</span><span>#99A4B1 on #2C302E: 5.28:1</span></td><td><span class="datagrid__label" aria-hidden="true">Purple tone</span><span>#D5BFDA on #722A82: 5.18:1</span></td></tr>
+              <tr><th scope="row"><code>--nav-child</code> on <code>--nav-bg</code></th><td><span class="datagrid__label" aria-hidden="true">Light tone, light mode</span><span>#545A6D on #FCFAFD: 6.61:1</span></td><td><span class="datagrid__label" aria-hidden="true">Light tone, dark mode</span><span>#ADB5BD on #2C302E: 6.44:1</span></td><td><span class="datagrid__label" aria-hidden="true">Dark tone</span><span>#99A4B1 on #2C302E: 5.28:1</span></td><td><span class="datagrid__label" aria-hidden="true">Purple tone</span><span>#D5BFDA on #722A82: 5.18:1</span></td></tr>
+              <tr><th scope="row"><code>--nav-hover-text</code> on <code>--nav-bg</code></th><td><span class="datagrid__label" aria-hidden="true">Light tone, light mode</span><span>#722A82 on #FCFAFD: 8.54:1</span></td><td><span class="datagrid__label" aria-hidden="true">Light tone, dark mode</span><span>#FFFFFF on #2C302E: 13.38:1</span></td><td><span class="datagrid__label" aria-hidden="true">Dark tone</span><span>#FFFFFF on #2C302E: 13.38:1</span></td><td><span class="datagrid__label" aria-hidden="true">Purple tone</span><span>#FFFFFF on #722A82: 8.86:1</span></td></tr>
+              <tr><th scope="row"><code>--nav-active-text</code> on <code>--nav-active-bg</code></th><td><span class="datagrid__label" aria-hidden="true">Light tone, light mode</span><span>#722A82 on #FCFAFD: 8.54:1</span></td><td><span class="datagrid__label" aria-hidden="true">Light tone, dark mode</span><span>#CFA3DA on #3E2F43: 5.85:1</span></td><td><span class="datagrid__label" aria-hidden="true">Dark tone</span><span>#CFA3DA on #3E2F43: 5.85:1</span></td><td><span class="datagrid__label" aria-hidden="true">Purple tone</span><span>#FFFFFF on #5C1F6A: 11.29:1</span></td></tr>
+              <tr><th scope="row"><code>--nav-active-bar</code> on <code>--nav-active-bg</code> (mark)</th><td><span class="datagrid__label" aria-hidden="true">Light tone, light mode</span><span>#722A82 on #FCFAFD: 8.54:1</span></td><td><span class="datagrid__label" aria-hidden="true">Light tone, dark mode</span><span>#CFA3DA on #3E2F43: 5.85:1</span></td><td><span class="datagrid__label" aria-hidden="true">Dark tone</span><span>#CFA3DA on #3E2F43: 5.85:1</span></td><td><span class="datagrid__label" aria-hidden="true">Purple tone</span><span>#FFFFFF on #5C1F6A: 11.29:1</span></td></tr>
+              <tr><th scope="row"><code>--nav-focus</code> on <code>--nav-bg</code> (mark)</th><td><span class="datagrid__label" aria-hidden="true">Light tone, light mode</span><span>#722A82 on #FCFAFD: 8.54:1</span></td><td><span class="datagrid__label" aria-hidden="true">Light tone, dark mode</span><span>#CFA3DA on #2C302E: 6.31:1</span></td><td><span class="datagrid__label" aria-hidden="true">Dark tone</span><span>#CFA3DA on #2C302E: 6.31:1</span></td><td><span class="datagrid__label" aria-hidden="true">Purple tone</span><span>#FFFFFF on #722A82: 8.86:1</span></td></tr>
+              <tr><th scope="row"><code>--nav-focus</code> on <code>--nav-card-bg</code> (mark)</th><td><span class="datagrid__label" aria-hidden="true">Light tone, light mode</span><span>#722A82 on #F1EAF3: 7.51:1</span></td><td><span class="datagrid__label" aria-hidden="true">Light tone, dark mode</span><span>#CFA3DA on #313533: 5.86:1</span></td><td><span class="datagrid__label" aria-hidden="true">Dark tone</span><span>#CFA3DA on #313533: 5.86:1</span></td><td><span class="datagrid__label" aria-hidden="true">Purple tone</span><span>#FFFFFF on #5C1F6A: 11.29:1</span></td></tr>
+              <tr><th scope="row"><code>--nav-card-title</code> on <code>--nav-card-bg</code></th><td><span class="datagrid__label" aria-hidden="true">Light tone, light mode</span><span>#722A82 on #F1EAF3: 7.51:1</span></td><td><span class="datagrid__label" aria-hidden="true">Light tone, dark mode</span><span>#CFA3DA on #313533: 5.86:1</span></td><td><span class="datagrid__label" aria-hidden="true">Dark tone</span><span>#CFA3DA on #313533: 5.86:1</span></td><td><span class="datagrid__label" aria-hidden="true">Purple tone</span><span>#FFFFFF on #5C1F6A: 11.29:1</span></td></tr>
+              <tr><th scope="row"><code>--nav-card-text</code> on <code>--nav-card-bg</code></th><td><span class="datagrid__label" aria-hidden="true">Light tone, light mode</span><span>#313533 on #F1EAF3: 10.54:1</span></td><td><span class="datagrid__label" aria-hidden="true">Light tone, dark mode</span><span>#ADB5BD on #313533: 5.99:1</span></td><td><span class="datagrid__label" aria-hidden="true">Dark tone</span><span>#ADB5BD on #313533: 5.99:1</span></td><td><span class="datagrid__label" aria-hidden="true">Purple tone</span><span>#F1E6F4 on #5C1F6A: 9.34:1</span></td></tr>
+              <tr><th scope="row"><code>--nav-card-btn-text</code> on <code>--nav-card-btn-bg</code></th><td><span class="datagrid__label" aria-hidden="true">Light tone, light mode</span><span>#FFFFFF on #722A82: 8.86:1</span></td><td><span class="datagrid__label" aria-hidden="true">Light tone, dark mode</span><span>#FFFFFF on #722A82: 8.86:1</span></td><td><span class="datagrid__label" aria-hidden="true">Dark tone</span><span>#FFFFFF on #722A82: 8.86:1</span></td><td><span class="datagrid__label" aria-hidden="true">Purple tone</span><span>#722A82 on #FFFFFF: 8.86:1</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-space">
+      <div class="box__head"><h2 class="box__title" id="k-space">Spacing</h2></div>
+      <div class="box__body kit-stack">
+        <div class="datagrid-wrap">
+          <table class="datagrid kit-table">
+            <caption class="offscreen">Spacing scale</caption>
+            <thead><tr><th scope="col">Token</th><th scope="col">Value</th><th scope="col">Bar</th></tr></thead>
+            <tbody>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Token</span><code>--space-1</code></td><td><span class="datagrid__label" aria-hidden="true">Value</span><span>4px</span></td><td><span class="datagrid__label" aria-hidden="true">Bar</span><span class="kit-space kit-space--1"></span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Token</span><code>--space-2</code></td><td><span class="datagrid__label" aria-hidden="true">Value</span><span>8px</span></td><td><span class="datagrid__label" aria-hidden="true">Bar</span><span class="kit-space kit-space--2"></span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Token</span><code>--space-3</code></td><td><span class="datagrid__label" aria-hidden="true">Value</span><span>12px</span></td><td><span class="datagrid__label" aria-hidden="true">Bar</span><span class="kit-space kit-space--3"></span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Token</span><code>--space-4</code></td><td><span class="datagrid__label" aria-hidden="true">Value</span><span>16px</span></td><td><span class="datagrid__label" aria-hidden="true">Bar</span><span class="kit-space kit-space--4"></span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Token</span><code>--space-5</code></td><td><span class="datagrid__label" aria-hidden="true">Value</span><span>20px</span></td><td><span class="datagrid__label" aria-hidden="true">Bar</span><span class="kit-space kit-space--5"></span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Token</span><code>--space-6</code></td><td><span class="datagrid__label" aria-hidden="true">Value</span><span>24px</span></td><td><span class="datagrid__label" aria-hidden="true">Bar</span><span class="kit-space kit-space--6"></span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Token</span><code>--space-7</code></td><td><span class="datagrid__label" aria-hidden="true">Value</span><span>30px</span></td><td><span class="datagrid__label" aria-hidden="true">Bar</span><span class="kit-space kit-space--7"></span></td></tr>
+              <tr><td><span class="datagrid__label" aria-hidden="true">Token</span><code>--space-8</code></td><td><span class="datagrid__label" aria-hidden="true">Value</span><span>48px</span></td><td><span class="datagrid__label" aria-hidden="true">Bar</span><span class="kit-space kit-space--8"></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    <section class="box" aria-labelledby="k-focus">
+      <div class="box__head"><h2 class="box__title" id="k-focus">Focus</h2></div>
+      <div class="box__body kit-stack">
+        <div class="kit-grid">
+          <div class="kit-surface kit-surface--page"><span class="kit-ring">Surface</span></div>
+          <div class="kit-surface kit-surface--primary"><span class="kit-ring">Primary</span></div>
+          <div class="kit-surface kit-tone kit-tone-light"><span class="kit-ring">Light sidebar</span></div>
+          <div class="kit-surface kit-tone kit-tone-dark"><span class="kit-ring">Dark sidebar</span></div>
+          <div class="kit-surface kit-tone kit-tone-purple"><span class="kit-ring">Purple sidebar</span></div>
+        </div>
+      </div>
+    </section>
+</main>
+<footer class="page-foot" data-drawer-inert>
+  <p>2026 © Polymath College</p>
+  <p>Technology Management Desk</p>
+</footer>
+</div>
+<dialog class="sheet" data-settings aria-labelledby="sheet-title">
+  <div class="sheet__head">
+    <h2 id="sheet-title">Layout settings</h2>
+    <button class="button button--quiet" type="button" data-settings-close><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>Close</button>
+  </div>
+  <div class="sheet__body">
+    <p class="sheet__note">Your choices are saved in this browser only.</p>
+    <fieldset>
+      <legend>Colour mode</legend>
+      <div class="sheet__options sheet__options--pair">
+        <label class="choice"><input type="radio" name="theme" value="light" data-setting>Light</label>
+        <label class="choice"><input type="radio" name="theme" value="dark" data-setting>Dark</label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Page width</legend>
+      <div class="sheet__options sheet__options--pair">
+        <label class="choice"><input type="radio" name="width" value="full" data-setting>Full width</label>
+        <label class="choice"><input type="radio" name="width" value="boxed" data-setting>Boxed</label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Sidebar size</legend>
+      <div class="sheet__options">
+        <label class="choice"><input type="radio" name="nav-size" value="standard" data-setting>Standard</label>
+        <label class="choice"><input type="radio" name="nav-size" value="compact" data-setting>Compact</label>
+        <label class="choice"><input type="radio" name="nav-size" value="icons" data-setting>Icons only</label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Sidebar colour</legend>
+      <div class="sheet__options">
+        <label class="choice"><input type="radio" name="nav-tone" value="light" data-setting><span class="choice__swatch choice__swatch--light" aria-hidden="true"></span>Light</label>
+        <label class="choice"><input type="radio" name="nav-tone" value="dark" data-setting><span class="choice__swatch choice__swatch--dark" aria-hidden="true"></span>Dark</label>
+        <label class="choice"><input type="radio" name="nav-tone" value="purple" data-setting><span class="choice__swatch choice__swatch--purple" aria-hidden="true"></span>Purple</label>
+      </div>
+    </fieldset>
+  </div>
+  <div class="sheet__foot">
+    <button class="button button--secondary" type="button" data-settings-reset>Reset to default</button>
+  </div>
+</dialog>
+<div class="flash" role="status" data-flash data-demo="toast" hidden>
+  <svg class="icon icon--20" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>
+  <p class="flash__text">Request sent. We gave it the number REQ-2049.</p>
+  <button class="button button--quiet" type="button" data-flash-undo hidden>Undo</button>
+  <button class="button button--quiet button--icon" type="button" data-flash-close><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg><span class="offscreen">Close</span></button>
+</div>
+</body>
+</html>

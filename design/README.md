@@ -12,6 +12,10 @@ the real application:
   stylesheet (`static/css/style.css`) in a later piece of work. That has not
   happened yet.
 
+None of these five was picked. Instead the client asked for a specific
+look, and `f-desk/` is the result — see **f — a look-alike of the client's
+admin layout** below.
+
 Every direction shows the same six pages, filled with the same made-up
 school data (see **Same content everywhere** below), so the only thing that
 changes between them is the design.
@@ -100,6 +104,52 @@ at a shared or well-worn screen.
 without losing your place: the list of requests and the open request sit
 side by side on a desktop screen, with a dark search bar above them. On a
 phone the two become a list, then a record, with a link back to the list.
+
+## f — a look-alike of the client's admin layout
+
+None of the five directions above (`a`–`e`) was selected. Instead, the
+client asked the Technology Management Desk to look and behave like a
+specific admin layout of theirs: the same typeface, the same shell
+(collapsible sidebar with grouped menu sections, a top bar with search, a
+notifications dropdown and a user menu, a page-title and breadcrumb row, a
+card grid, a footer), light and dark mode, and a layout settings panel.
+[`design/f-desk/`](f-desk/) is a **from-scratch look-alike**, built to match
+that shape: no HTML, CSS, JavaScript, images or icons were copied from it,
+only observed and measured. It uses IBM Plex Sans, the same font family the
+client's template uses, and the Polymath College crest purple `#722A82` as
+the primary colour, in place of that template's own colour, because this is
+Polymath's product.
+
+It shows the same six pages and the same sample school content described
+below, re-dressed in that shell.
+
+**How to open it.** Same as the five directions above — open any page
+straight from disk, for example
+[`design/f-desk/dashboard.html`](f-desk/dashboard.html). Firefox isolates
+`localStorage` per file on `file://`, so to try the layout settings there,
+serve the folder instead (`py -3.13 -m http.server` run from
+`design/f-desk/`) rather than opening it directly.
+
+**Its layout settings panel.** The gear button in the top bar, or
+`Layout settings` in the user menu, opens a panel with four choices —
+colour mode, page width, sidebar size and sidebar colour — saved in that
+browser only. The exact values, defaults and how they're stored are in
+[`f-desk/README.md`](f-desk/README.md), under its **Layout settings** heading.
+
+**Directions `a`–`e` are kept, not selected.** They stay in `design/`
+unchanged, as a record of the comparison that led the client to ask for
+this look-alike instead of any of the five.
+
+**Not yet ported.** `f-desk/` is a static prototype so the client can put it
+side by side with their own reference and approve the look-alike before
+anything is ported into the Django app (`templates/`, `static/`). That
+porting is separate, later work, and it does not start until the client's
+approval is recorded.
+
+What was and wasn't copied, and every third-party piece used and why, is
+recorded in full in `f-desk/README.md`'s own **Reference and licence**
+section, and the full design spec is
+[`docs/design/directions/f.md`](../docs/design/directions/f.md).
 
 ## Same content everywhere
 

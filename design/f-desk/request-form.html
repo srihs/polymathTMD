@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en-LK" data-width="full" data-nav-size="standard" data-nav-tone="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Raise a request · Polymath TMD</title>
+<link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
+<script src="theme-init.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&amp;display=swap">
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" focusable="false">
+<symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></symbol>
+<symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></symbol>
+<symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></symbol>
+<symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></symbol>
+<symbol id="i-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></symbol>
+<symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></symbol>
+<symbol id="i-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></symbol>
+<symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></symbol>
+<symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></symbol>
+<symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></symbol>
+<symbol id="i-plus-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></symbol>
+<symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></symbol>
+<symbol id="i-log-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></symbol>
+<symbol id="i-user-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></symbol>
+<symbol id="i-user-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></symbol>
+<symbol id="i-alert-triangle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></symbol>
+<symbol id="i-alert-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></symbol>
+<symbol id="i-alert-octagon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></symbol>
+<symbol id="i-x-octagon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></symbol>
+<symbol id="i-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></symbol>
+<symbol id="i-package" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></symbol>
+<symbol id="i-tool" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></symbol>
+<symbol id="i-minus-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></symbol>
+<symbol id="i-coffee" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"></path><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path><line x1="6" y1="1" x2="6" y2="4"></line><line x1="10" y1="1" x2="10" y2="4"></line><line x1="14" y1="1" x2="14" y2="4"></line></symbol>
+<symbol id="i-loader" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></symbol>
+<symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></symbol>
+<symbol id="i-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></symbol>
+<symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></symbol>
+<symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></symbol>
+<symbol id="i-trash-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></symbol>
+</svg>
+<div class="shell">
+<aside class="sidenav" id="nav" data-nav>
+ <div class="sidenav__inner">
+  <div class="sidenav__brand">
+    <img class="sidenav__crest" src="assets/crest-chip.png" alt="" width="32" height="32">
+    <span class="sidenav__wordmark">Technology Management Desk</span>
+  </div>
+  <a class="sidenav__close" href="#main" data-nav-close><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>Close the menu</a>
+  <nav class="sidenav__menu" aria-label="Main">
+    <p class="sidenav__group-title" id="nav-g1">Menu</p>
+    <ul class="sidenav__list" aria-labelledby="nav-g1">
+      <li><a class="sidenav__link" href="dashboard.html"><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-home"></use></svg><span class="sidenav__label">Home</span></a></li>
+    </ul>
+    <p class="sidenav__group-title" id="nav-g2">Help desk</p>
+    <ul class="sidenav__list" aria-labelledby="nav-g2">
+      <li>
+        <details class="sidenav__parent" open>
+          <summary class="sidenav__link"><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-inbox"></use></svg><span class="sidenav__label">Requests</span><svg class="icon sidenav__chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg></summary>
+          <ul class="sidenav__children">
+            <li><a class="sidenav__link" href="requests.html"><span class="sidenav__label">All requests</span></a></li>
+            <li><a class="sidenav__link" href="request-form.html" aria-current="page"><span class="sidenav__label">Raise a request</span></a></li>
+          </ul>
+        </details>
+      </li>
+    </ul>
+    <p class="sidenav__group-title" id="nav-g3">Equipment</p>
+    <ul class="sidenav__list" aria-labelledby="nav-g3">
+      <li><a class="sidenav__link" href="device.html"><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg><span class="sidenav__label">Devices</span></a></li>
+    </ul>
+    <p class="sidenav__group-title" id="nav-g4">Prototype</p>
+    <ul class="sidenav__list" aria-labelledby="nav-g4">
+      <li><a class="sidenav__link" href="ui-kit.html"><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-grid"></use></svg><span class="sidenav__label">Design kit</span></a></li>
+    </ul>
+  </nav>
+  <section class="helpcard" aria-labelledby="help-title">
+    <p class="helpcard__title" id="help-title">Something not working?</p>
+    <p class="helpcard__text">Tell us and we'll sort it out.</p>
+    <a class="button" href="request-form.html">Raise a request</a>
+  </section>
+ </div>
+</aside>
+<div class="scrim" data-scrim hidden></div>
+<header class="topbar" data-drawer-inert>
+  <div class="topbar__start">
+    <a class="topbar__brand" href="dashboard.html"><img src="assets/crest-chip.png" alt="" width="32" height="32"><span class="offscreen">Home</span></a>
+    <button class="icon-button" type="button" data-nav-toggle aria-controls="nav" aria-expanded="true" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-menu"></use></svg><span class="offscreen" data-nav-toggle-label>Hide the menu</span></button>
+    <a class="icon-button icon-button--word" href="#nav" data-nav-link><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-menu"></use></svg>Menu</a>
+    <details class="pop topfind" data-pop>
+      <summary class="icon-button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg><span class="offscreen">Search requests</span></summary>
+      <div class="topfind__panel">
+        <form class="topsearch" role="search" method="get" action="requests.html">
+          <label class="offscreen" for="top-q">Search requests</label>
+          <input class="topsearch__input" id="top-q" name="q" type="search" placeholder="Reference or words, e.g. REQ-2048">
+          <button class="topsearch__button" type="submit"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg><span class="offscreen">Search</span></button>
+        </form>
+      </div>
+    </details>
+  </div>
+  <div class="topbar__end">
+    <button class="icon-button" type="button" data-theme-toggle hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg><span class="offscreen" data-theme-label>Switch to dark mode</span></button>
+    <details class="pop" data-pop>
+      <summary class="icon-button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg><span class="offscreen">Notifications, 3 new</span><span class="count" aria-hidden="true">3</span></summary>
+      <div class="pop__panel">
+        <p class="pop__head" id="alerts-title">Notifications</p>
+        <ul class="pop__list" aria-labelledby="alerts-title">
+          <li><a class="pop__item pop__item--new" href="requests.html">
+            <span class="disc disc--bad"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg></span>
+            <span>
+              <span class="pop__title">REQ-2048 is urgent <span class="tag tag--brand">New</span></span>
+              <span class="pop__body">Projector in Lab 2 shows a blue screen</span>
+              <span class="pop__time"><svg class="icon icon--12" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg><time datetime="2026-09-11T08:15">Fri 11 Sep 2026, 8:15 am</time></span>
+            </span>
+          </a></li>
+          <li><a class="pop__item pop__item--new" href="requests.html">
+            <span class="disc disc--note"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-user-plus"></use></svg></span>
+            <span>
+              <span class="pop__title">REQ-2047 needs someone <span class="tag tag--brand">New</span></span>
+              <span class="pop__body">Laptop will not connect to the staff Wi-Fi. Nobody yet.</span>
+              <span class="pop__time"><svg class="icon icon--12" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg><time datetime="2026-09-10T11:20">Thu 10 Sep 2026, 11:20 am</time></span>
+            </span>
+          </a></li>
+          <li><a class="pop__item pop__item--new" href="requests.html">
+            <span class="disc disc--warn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg></span>
+            <span>
+              <span class="pop__title">REQ-2046 is waiting on someone <span class="tag tag--brand">New</span></span>
+              <span class="pop__body">Printer jams on every second page</span>
+              <span class="pop__time"><svg class="icon icon--12" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg><time datetime="2026-09-08T13:40">Tue 8 Sep 2026, 1:40 pm</time></span>
+            </span>
+          </a></li>
+          <li><a class="pop__item" href="device.html">
+            <span class="disc disc--brand"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg></span>
+            <span>
+              <span class="pop__title">IT-0142 is due back soon</span>
+              <span class="pop__body">Dilani Fernando has it until Mon 21 Sep 2026.</span>
+            </span>
+          </a></li>
+        </ul>
+        <div class="pop__foot"><a href="requests.html">See all requests<svg class="icon icon--14" aria-hidden="true" focusable="false"><use href="#i-arrow-right"></use></svg></a></div>
+      </div>
+    </details>
+    <button class="icon-button topbar__settings" type="button" data-settings-open hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg><span class="offscreen">Layout settings</span></button>
+    <details class="pop" data-pop>
+      <summary class="whoami"><span class="initials" aria-hidden="true">NP</span><span class="whoami__text"><span class="whoami__name">Nimali Perera</span><span class="whoami__role">ICT Technician</span></span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-down"></use></svg></summary>
+      <div class="pop__panel pop__panel--menu">
+        <div class="pop__head pop__head--user" aria-hidden="true"><span class="initials">NP</span><span class="whoami__text"><span class="whoami__name">Nimali Perera</span><span class="whoami__role">ICT Technician</span></span></div>
+        <ul class="pop__list">
+          <li><a class="pop__link" href="ui-kit.html"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-grid"></use></svg>Design kit</a></li>
+          <li><button class="pop__link" type="button" data-settings-open hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders"></use></svg>Layout settings</button></li>
+          <li class="pop__rule"><a class="pop__link" href="login.html"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-log-out"></use></svg>Sign out</a></li>
+        </ul>
+      </div>
+    </details>
+  </div>
+</header>
+<main id="main" tabindex="-1" data-drawer-inert>
+    <div class="titlebar">
+      <h1 class="page-heading">Raise a request</h1>
+      <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="dashboard.html">Home</a></li><li><svg class="icon icon--14 crumbs__sep" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg><a href="requests.html">Requests</a></li><li><svg class="icon icon--14 crumbs__sep" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg><span aria-current="page">Raise a request</span></li></ol></nav>
+    </div>
+    <div class="cards cards--two-one">
+      <div class="box">
+        <div class="box__body">
+          <div class="notice notice--bad" role="alert" tabindex="-1" data-demo="errors" data-demo-focus="errors" hidden>
+            <svg class="icon icon--20" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg>
+            <div>
+              <p class="notice__title">We couldn't send this yet — 2 things need your attention</p>
+              <ul>
+                <li><a class="tap-link" href="#what" data-error-link>What is wrong?</a></li>
+                <li><a class="tap-link" href="#where" data-error-link>Where is it?</a></li>
+              </ul>
+            </div>
+          </div>
+          <form method="get" action="dashboard.html">
+            <input type="hidden" name="demo" value="toast">
+            <div class="field">
+              <label class="field__label" for="about">What is it about?</label>
+              <p class="field__help" id="about-help">Pick the device, or choose "Not about a particular device".</p>
+              <select class="input" id="about" name="about" aria-describedby="about-help" data-demo-fill="errors" data-demo-value="IT-0087">
+                <option value="" selected>Choose a device</option>
+                <option value="IT-0142">IT-0142 — Dell Latitude 3540 laptop</option>
+                <option value="IT-0087">IT-0087 — Epson EB-X51 projector</option>
+                <option value="IT-0203">IT-0203 — Lenovo Tab M10 tablet</option>
+                <option value="IT-0056">IT-0056 — HP LaserJet M404 printer</option>
+                <option value="IT-0119">IT-0119 — 65-inch interactive panel</option>
+                <option value="IT-0175">IT-0175 — Dell OptiPlex 3000 desktop</option>
+                <option value="IT-0034">IT-0034 — Epson EB-S41 projector</option>
+                <option value="IT-0211">IT-0211 — Elmo visualiser</option>
+                <option value="none">Not about a particular device</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="field__label" for="what">What is wrong?</label>
+              <p class="field__help" id="what-help">One short line, for example "Projector will not turn on".</p>
+              <input class="input" id="what" name="what" type="text" required aria-describedby="what-help" data-demo-invalid="errors" data-demo-describedby="what-error">
+              <p class="field__error" id="what-error" data-demo="errors" hidden><svg class="icon icon--14" aria-hidden="true" focusable="false"><use href="#i-alert-circle"></use></svg><span>Type a short description of the problem, for example "Projector will not turn on".</span></p>
+            </div>
+            <div class="field">
+              <label class="field__label" for="more">Tell us more</label>
+              <p class="field__help" id="more-help">What happens, when it started, and what you already tried.</p>
+              <textarea class="input" id="more" name="more" rows="4" aria-describedby="more-help" data-demo-fill="errors" data-demo-value="The projector switches on, then the screen goes blue after about a minute. It happened in period 2 and period 4 on Tuesday. The lamp hours show 3,180."></textarea>
+            </div>
+            <div class="field">
+              <label class="field__label" for="where">Where is it?</label>
+              <p class="field__help" id="where-help">The room where we will find it.</p>
+              <select class="input" id="where" name="where" required aria-describedby="where-help" data-demo-invalid="errors" data-demo-describedby="where-error">
+                <option value="" selected>Choose a room</option>
+                <option>ICT Room</option>
+                <option>ICT Store</option>
+                <option>Science Block Lab 2</option>
+                <option>Grade 6B Classroom</option>
+                <option>Library</option>
+                <option>Admin Office</option>
+                <option>Sports Room</option>
+                <option>Main Hall</option>
+              </select>
+              <p class="field__error" id="where-error" data-demo="errors" hidden><svg class="icon icon--14" aria-hidden="true" focusable="false"><use href="#i-alert-circle"></use></svg><span>Choose the room where we will find it.</span></p>
+            </div>
+            <fieldset class="options" aria-describedby="urgency-help">
+              <legend>How urgent is it?</legend>
+              <p class="field__help" id="urgency-help">Pick the one that fits. We look at urgent ones first.</p>
+              <div class="options__list">
+            <label class="choice choice--tall"><input type="radio" name="urgency" value="Can wait" aria-describedby="urgency-0-help"><span class="choice__words">Can wait<span class="choice__help" id="urgency-0-help">It can wait until next week.</span></span></label>
+            <label class="choice choice--tall"><input type="radio" name="urgency" value="Normal" checked aria-describedby="urgency-1-help"><span class="choice__words">Normal<span class="choice__help" id="urgency-1-help">I need it in the next day or two.</span></span></label>
+            <label class="choice choice--tall"><input type="radio" name="urgency" value="Urgent" data-demo-check="errors" aria-describedby="urgency-2-help"><span class="choice__words">Urgent<span class="choice__help" id="urgency-2-help">A class or the office is stopped right now.</span></span></label>
+              </div>
+            </fieldset>
+            <div class="field">
+              <label class="field__label" for="photo">Add a photo</label>
+              <p class="field__help" id="photo-help">Optional. A photo of the screen or the error helps us a lot.</p>
+              <input class="input" id="photo" name="photo" type="file" accept="image/*" aria-describedby="photo-help">
+            </div>
+            <div class="field">
+              <label class="field__label" for="name">Your name</label>
+              <p class="field__help" id="name-help">We will reply to you.</p>
+              <input class="input" id="name" name="name" type="text" value="Nimali Perera (nimali.p)" readonly aria-describedby="name-help">
+            </div>
+            <div class="form-actions">
+              <button class="button button--primary" type="submit">Send the request</button>
+              <a class="button button--secondary" href="dashboard.html">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+</main>
+<footer class="page-foot" data-drawer-inert>
+  <p>2026 © Polymath College</p>
+  <p>Technology Management Desk</p>
+</footer>
+</div>
+<dialog class="sheet" data-settings aria-labelledby="sheet-title">
+  <div class="sheet__head">
+    <h2 id="sheet-title">Layout settings</h2>
+    <button class="button button--quiet" type="button" data-settings-close><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>Close</button>
+  </div>
+  <div class="sheet__body">
+    <p class="sheet__note">Your choices are saved in this browser only.</p>
+    <fieldset>
+      <legend>Colour mode</legend>
+      <div class="sheet__options sheet__options--pair">
+        <label class="choice"><input type="radio" name="theme" value="light" data-setting>Light</label>
+        <label class="choice"><input type="radio" name="theme" value="dark" data-setting>Dark</label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Page width</legend>
+      <div class="sheet__options sheet__options--pair">
+        <label class="choice"><input type="radio" name="width" value="full" data-setting>Full width</label>
+        <label class="choice"><input type="radio" name="width" value="boxed" data-setting>Boxed</label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Sidebar size</legend>
+      <div class="sheet__options">
+        <label class="choice"><input type="radio" name="nav-size" value="standard" data-setting>Standard</label>
+        <label class="choice"><input type="radio" name="nav-size" value="compact" data-setting>Compact</label>
+        <label class="choice"><input type="radio" name="nav-size" value="icons" data-setting>Icons only</label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Sidebar colour</legend>
+      <div class="sheet__options">
+        <label class="choice"><input type="radio" name="nav-tone" value="light" data-setting><span class="choice__swatch choice__swatch--light" aria-hidden="true"></span>Light</label>
+        <label class="choice"><input type="radio" name="nav-tone" value="dark" data-setting><span class="choice__swatch choice__swatch--dark" aria-hidden="true"></span>Dark</label>
+        <label class="choice"><input type="radio" name="nav-tone" value="purple" data-setting><span class="choice__swatch choice__swatch--purple" aria-hidden="true"></span>Purple</label>
+      </div>
+    </fieldset>
+  </div>
+  <div class="sheet__foot">
+    <button class="button button--secondary" type="button" data-settings-reset>Reset to default</button>
+  </div>
+</dialog>
+<div class="flash" role="status" data-flash data-demo="toast" hidden>
+  <svg class="icon icon--20" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>
+  <p class="flash__text">Request sent. We gave it the number REQ-2049.</p>
+  <button class="button button--quiet" type="button" data-flash-undo hidden>Undo</button>
+  <button class="button button--quiet button--icon" type="button" data-flash-close><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg><span class="offscreen">Close</span></button>
+</div>
+</body>
+</html>

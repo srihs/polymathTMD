@@ -2,6 +2,46 @@
 
 Newest first. One entry per task. Each entry lists user-visible changes, then technical notes.
 
+## 2026-09-24 — 003: Look-alike of the client's reference layout
+
+- The client asked for the Technology Management Desk to look and work like a specific admin
+  template of theirs: the same typeface, the same sidebar-and-top-bar shell, light and dark mode,
+  and a layout settings panel. `design/f-desk/` is a new static prototype built to that shape, in
+  the Polymath crest purple, so the client can compare it side by side with their own reference
+  template before anything is ported into the app.
+- It shows the same six screens and sample school content as directions `a`–`e` (sign in, home,
+  requests list, device record, raise-a-request form, design kit), re-dressed with a collapsible
+  grouped sidebar, a top bar (search, notifications, user menu), a page-title and breadcrumb row,
+  cards, a footer, and a settings panel for colour mode, page width, sidebar size and sidebar
+  colour.
+- It is built from scratch: nothing was copied from the client's reference template, only observed
+  and measured. What's different from that template is recorded in full in the task brief's "What
+  the client will notice" list (`docs/tasks/003-reference-lookalike-prototype.md` → Review →
+  Round 2); in short, it is sparser (no sparklines, promo cards or illustrations), everything is a
+  little taller for easier tapping, and the settings panel offers four choices instead of seven.
+- Directions `a`–`e` were not selected; they stay in `design/` unchanged, as a record.
+- Technical notes:
+  - Folder: `design/f-desk/` (`login.html`, `dashboard.html`, `requests.html`, `device.html`,
+    `request-form.html`, `ui-kit.html`, `style.css`, `theme-init.js`, `app.js`, `README.md`,
+    `assets/`, `screenshots/`). Design spec: `docs/design/directions/f.md`.
+  - No CSS/JS framework or component library (decision D2): plain CSS grid, flexbox and custom
+    properties; `<details>`/`<summary>` for the sidebar's expandable group and the dropdowns; a
+    `<dialog>` for the settings panel; `:target` plus `inert` for the phone drawer (D14); native
+    scrolling instead of a third-party scrollbar; one inline SVG chart instead of a charting
+    library.
+  - Text sizes match the client's reference template, including 10.5px status tags — the owner's
+    deliberate choice over a larger-text floor (D9). WCAG AA contrast (4.5:1 text, 3:1 non-text)
+    holds in both light and dark mode and on all three sidebar tones.
+  - Porting into `templates/` and `static/` is a follow-up brief (004) and does not start until the
+    client has approved this prototype against their reference template (D13).
+  - Verified PASS (44/44 fidelity rows against the reference template, after one fix cycle and
+    re-verification) and reviewed APPROVE (round 2); see
+    `docs/tasks/003-reference-lookalike-prototype.md`.
+  - Follow-ups recorded for brief 004: switch sizes from `px` to `rem`; rename value-named tokens
+    (for example `--space-52px`) to role-named ones; add `{# … #}` purpose-and-context header
+    comments to every template; fix the settings panel's "Icons only" option not staying synced
+    after a menu-button collapse; check content reflow at 320px as well as 400px.
+
 ## 2026-09-24 — 002: Five design directions
 
 - Five clickable prototype directions — Ledger, Parchment, Broadsheet, Signpost and Workbench — for the owner to browse and compare, in `design/`. Each has its own sign-in, home, requests list, device record, request form and design-kit page, at both desktop and phone sizes.

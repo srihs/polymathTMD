@@ -419,10 +419,10 @@
   --nav-scroll: var(--tone-light-scroll);
 }
 
-/* 1d. Dark mode. The same mapping is needed twice: once for a saved choice
-   and once for "follow the system" (no saved choice), because a rule body
-   cannot be shared across a media query. Only var() names are repeated;
-   no colour value is. */
+/* 1d. Dark mode. It applies only when data-theme="dark" is on <html>
+   (chosen in the settings panel or with the colour-mode button). The page
+   opens in light mode whatever the device's colour setting, with or
+   without JavaScript. */
 :root[data-theme="dark"] {
   color-scheme: dark;
   --c-page: var(--dk-page);
@@ -482,68 +482,7 @@
   --nav-scroll: var(--tone-dim-scroll);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --c-page: var(--dk-page);
-    --c-surface: var(--dk-surface);
-    --c-surface-2: var(--dk-surface-2);
-    --c-field: var(--dk-field);
-    --c-sheet: var(--dk-sheet);
-    --c-border: var(--dk-border);
-    --c-control: var(--dk-control);
-    --c-text: var(--dk-text);
-    --c-heading: var(--dk-heading);
-    --c-muted: var(--dk-muted);
-    --c-primary: var(--dk-primary);
-    --c-primary-hover: var(--dk-primary-hover);
-    --c-primary-text: var(--dk-primary-text);
-    --c-primary-soft: var(--dk-primary-soft);
-    --c-focus: var(--dk-focus);
-    --c-ok-text: var(--dk-ok-text);
-    --c-ok-soft: var(--dk-ok-soft);
-    --c-ok-line: var(--alpha-green-line-dk);
-    --c-warn-text: var(--dk-warn-text);
-    --c-warn-soft: var(--dk-warn-soft);
-    --c-warn-line: var(--alpha-amber-line-dk);
-    --c-bad-text: var(--dk-bad-text);
-    --c-bad-soft: var(--dk-bad-soft);
-    --c-bad-line: var(--alpha-red-line-dk);
-    --c-note-text: var(--dk-note-text);
-    --c-note-soft: var(--dk-note-soft);
-    --c-note-line: var(--alpha-blue-line-dk);
-    --c-plain-text: var(--dk-plain-text);
-    --c-plain-soft: var(--dk-plain-soft);
-    --c-brand-text: var(--dk-brand-text);
-    --c-brand-soft: var(--dk-brand-soft);
-    --c-boxed-outside: var(--dk-boxed-outside);
-    --c-chart-bar: var(--dk-chart-bar);
-    --c-chart-zero: var(--dk-chart-zero);
-    --c-chart-grid: var(--dk-chart-grid);
-    --c-chart-label: var(--dk-chart-label);
-    --c-shadow-pop: var(--shadow-pop-dk);
-    --c-shadow-sheet: var(--shadow-sheet-dk);
-    --nav-bg: var(--tone-dim-bg);
-    --nav-border: var(--tone-dim-border);
-    --nav-brand: var(--tone-dim-brand);
-    --nav-group: var(--tone-dim-group);
-    --nav-text: var(--tone-dim-text);
-    --nav-child: var(--tone-dim-child);
-    --nav-hover-text: var(--tone-dim-hover);
-    --nav-active-text: var(--tone-dim-active);
-    --nav-active-bg: var(--tone-dim-active-bg);
-    --nav-active-bar: var(--tone-dim-bar);
-    --nav-focus: var(--tone-dim-focus);
-    --nav-card-bg: var(--tone-dim-card-bg);
-    --nav-card-title: var(--tone-dim-card-title);
-    --nav-card-text: var(--tone-dim-card-text);
-    --nav-card-btn-bg: var(--tone-dim-btn-bg);
-    --nav-card-btn-text: var(--tone-dim-btn-text);
-    --nav-scroll: var(--tone-dim-scroll);
-  }
-}
-
-/* 1e. Sidebar colour. These come after the dark blocks so a chosen tone
+/* 1e. Sidebar colour. These come after the dark block so a chosen tone
    wins in either colour mode (same specificity, later in the file). */
 :root[data-nav-tone="dark"] {
   --nav-bg: var(--tone-dark-bg);

@@ -31,23 +31,25 @@
   function isRendered(el) { return !!(el && el.getClientRects().length); }
 
   var phoneQuery = window.matchMedia('(max-width: 991.98px)');
-  var darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
   /* ------------------------------------------------------------------
      2. Layout settings. The four values live on <html> (theme-init.js set
-     them before first paint). "theme" is only stored once the person has
-     chosen one, so that until then the page keeps following the system.
+     them before first paint). The page opens in light mode; dark mode is
+     only ever a saved choice.
      The sidebar size stored is always the one chosen in the settings
      panel: the menu button (block 5) collapses the sidebar for this page
      only, so it can always return to the chosen size, even after a reload.
      The allowed values below must match the list in theme-init.js.
      ------------------------------------------------------------------ */
   var STORE_KEY = 'tmd-layout';
+  /* "fallback" is the first-visit look the client approved (light mode,
+     full width, standard sidebar, purple sidebar), and what Reset returns
+     to. theme-init.js sets the same defaults before first paint. */
   var SETTINGS = {
-    theme: { attr: 'data-theme', values: ['light', 'dark'], fallback: null },
+    theme: { attr: 'data-theme', values: ['light', 'dark'], fallback: 'light' },
     width: { attr: 'data-width', values: ['full', 'boxed'], fallback: 'full' },
     navSize: { attr: 'data-nav-size', values: ['standard', 'compact', 'icons'], fallback: 'standard' },
-    navTone: { attr: 'data-nav-tone', values: ['light', 'dark', 'purple'], fallback: 'light' }
+    navTone: { attr: 'data-nav-tone', values: ['light', 'dark', 'purple'], fallback: 'purple' }
   };
   /* The radio names in the settings panel, mapped to the keys above. */
   var RADIO_KEYS = { theme: 'theme', width: 'width', 'nav-size': 'navSize', 'nav-tone': 'navTone' };
@@ -56,7 +58,7 @@
   var chosenNavSize = root.getAttribute('data-nav-size') || 'standard';
 
   function currentTheme() {
-    return root.getAttribute('data-theme') || (darkQuery.matches ? 'dark' : 'light');
+    return root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
   }
 
   function save() {
@@ -79,11 +81,10 @@
 
   function resetSettings() {
     try { window.localStorage.removeItem(STORE_KEY); } catch (err) { /* storage blocked */ }
-    root.removeAttribute('data-theme');
-    root.setAttribute('data-width', 'full');
-    root.setAttribute('data-nav-size', 'standard');
-    root.setAttribute('data-nav-tone', 'light');
-    chosenNavSize = 'standard';
+    Object.keys(SETTINGS).forEach(function (key) {
+      root.setAttribute(SETTINGS[key].attr, SETTINGS[key].fallback);
+    });
+    chosenNavSize = SETTINGS.navSize.fallback;
     syncAll();
   }
 
@@ -113,11 +114,6 @@
     button.addEventListener('click', function () {
       setSetting('theme', currentTheme() === 'dark' ? 'light' : 'dark');
     });
-  });
-
-  /* Follow a system change while no choice is saved. */
-  darkQuery.addEventListener('change', function () {
-    if (!root.hasAttribute('data-theme')) { syncAll(); }
   });
 
   /* ------------------------------------------------------------------

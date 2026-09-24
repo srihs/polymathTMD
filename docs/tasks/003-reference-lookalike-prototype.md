@@ -158,10 +158,13 @@ None open. D1–D8 were taken on the owner's behalf and are cheap to overturn be
 **Owner's answers (settled; formerly questions Q1–Q5)**
 
 - **D9 — Text size matches the reference (was Q1).** The owner chose **fidelity over the larger-text preference**. Body text is 13–14px, as measured on the reference, and the whole type scale follows the reference's measured sizes. The planner's default had been a 15px floor for body, tables and fields plus 16px for phone fields. It was weighed against CLAUDE.md's guidance for non-technical school staff (plain, readable screens) and overridden by the owner. What stays mandatory: WCAG AA contrast in both modes and on every sidebar tone, which at these sizes means 4.5:1 for all body text, and 44px touch targets. Affects criteria 26 and 30.
-- **D10 — First-visit colour mode follows the device (was Q2).** The default stands: `prefers-color-scheme`, which works without JS, and a saved choice overrides it (D6, criteria 19 and 23).
+- **D10 — First-visit colour mode follows the device (was Q2).** The default stands: `prefers-color-scheme`, which works without JS, and a saved choice overrides it (D6, criteria 19 and 23). **Reversed after close by the owner ("make it a light version"). See Changes after close.**
 - **D11 — Directions a–e are kept as a record (was Q3).** They were committed as a record and stay in `design/` unchanged. `design/README.md` marks them **not selected** (step 5).
 - **D12 — Sidebar group names stand (was Q4):** `Menu`, `Help desk`, `Equipment`, `Prototype` (D7, criterion 10).
 - **D13 — The client signs off (was Q5).** The owner shows the finished prototype to **the client**, and the client approves the look-alike against the reference. Brief 004 (porting) does not start until that approval is recorded. Closing this brief does not count as that approval.
+  - **Client approval — 2026-09-24. D13 is satisfied.** The owner showed the client `design/f-desk/` and passed on the approval, verbatim: *"so white background, side bar purple full width is approved. see the screenshot"*. The screenshot showed `dashboard.html` in light mode, with the purple sidebar tone at the standard 250px width.
+    - **Approved configuration:** `data-theme="light"`, `data-nav-tone="purple"`, `data-nav-size="standard"` (250px), `data-width="full"`.
+    - **Brief 004 is now unblocked.** It ports this look-alike into `templates/` and `static/`, starting from the approved configuration. It must also amend and re-verify the criteria listed under **Changes after close (not yet verified)** at the end of this brief.
 
 **Planner rulings on the design step**
 
@@ -922,3 +925,37 @@ grep -rliaE 'minia|themesbrand|themeforest|metismenu|mm-active|mm-show|simplebar
 0 matches. (An earlier draft of `design/README.md` linked to
 `f-desk/README.md#layout-settings`, whose anchor fragment contains `layout-setting`; reworded to a
 plain heading reference instead of an anchor link.)
+
+## Changes after close (not yet verified)
+<!-- owner: tmd-planner — recorded after Status: Done. These changes were made at the owner's request without re-verification. Status stays Done. -->
+
+After the client's approval (D13), two changes were made to `design/f-desk/` at the owner's request. The owner said *"dont commit or test"*, so **neither has been verified, reviewed or committed**. The Verification and Review sections above describe the prototype **before** these changes.
+
+1. **Always opens light.** Owner, verbatim: *"make it a light version"*.
+   - With no saved choice, the prototype now always opens in light mode. It no longer follows the device's `prefers-color-scheme`.
+   - This **reverses D10 and D6**.
+   - Dark mode stays selectable (the top-bar button and the settings panel), and a saved dark choice is still kept.
+2. **The approved configuration is the default.** Light mode, `Purple` sidebar tone, `Standard` sidebar size (250px) and `Full width` are now what a first visit shows and what `Reset to default` restores. Before, the defaults were a `Light` sidebar tone and a mode following the system.
+
+**Criteria these changes invalidate as written.** Brief 004 must amend each one and re-verify:
+
+| Criterion | What no longer holds |
+|---|---|
+| 19 | "With no saved choice, the mode follows `prefers-color-scheme` through CSS alone". A first visit is now light whatever the device setting. |
+| 23 | The `Reset to default` defaults: now `data-nav-tone="purple"` and light mode, not `data-nav-tone="light"` and "mode following the system". |
+| 25 | "With JS disabled … the colour mode follows the system". Without JS, the page is now light. |
+
+**Criteria to re-check.** They may still pass, but they were verified against the old defaults:
+
+| Criterion | Why |
+|---|---|
+| 24 | The no-flash check only seeded saved dark settings. It must now also confirm that a first visit with empty storage has the purple tone and light mode on `<html>` at `DOMContentLoaded`, and that `theme-init.js` still does nothing beyond setting the four attributes. |
+| 27 | The `--light` and state screenshots were captured with the old default (light sidebar tone). They no longer show what a first visit looks like. `desktop-dashboard--nav-purple.png` now duplicates the default. Recapture them, and decide whether a `--nav-light` capture replaces `--nav-purple`. |
+| 29 | "`#722A82` is … the active-nav indicator in light mode". On the purple sidebar tone, the default active indicator is not `#722A82`. Confirm which colour carries it, and re-check its contrast (criterion 20). |
+
+**Other text in this brief that describes the old behaviour** (left as a record, not rewritten):
+- D6 and D10;
+- the Settings contract's pointer to criterion 23's defaults;
+- the `prefers-color-scheme` item in Placement and reuse → "Platform instead of code";
+- the Implementation notes' storage-format line ("a first visit keeps following the system");
+- the Docs section's statement that client approval is still pending, which is now superseded by the Client approval note under D13.

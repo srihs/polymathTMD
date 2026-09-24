@@ -33,16 +33,20 @@ The four settings live on `<html>`:
 
 | Attribute | Values | Default |
 |---|---|---|
-| `data-theme` | `light`, `dark` | absent, so the page follows the device (`prefers-color-scheme`), also with JavaScript off |
-| `data-width` | `full`, `boxed` (1300px, centred) | `full` |
-| `data-nav-size` | `standard` (250px), `compact` (160px), `icons` (70px) | `standard` |
-| `data-nav-tone` | `light`, `dark`, `purple` | `light` |
+| `data-theme` | `light`, `dark` | **`light`**: the page opens in light mode, whatever the device's colour setting and also with JavaScript off. Dark mode is available in the settings panel. |
+| `data-width` | `full`, `boxed` (1300px, centred) | **`full`** |
+| `data-nav-size` | `standard` (250px), `compact` (160px), `icons` (70px) | **`standard`** |
+| `data-nav-tone` | `light`, `dark`, `purple` | **`purple`** |
 
 They are saved in `localStorage` under the single key `tmd-layout`, as a JSON object with the keys
 `theme`, `width`, `navSize` and `navTone`, for example
-`{"theme":"dark","width":"boxed","navSize":"compact","navTone":"purple"}`. `theme` is only saved
-once someone picks a colour mode, so until then the page keeps following the device. `Reset to
-default` removes the key.
+`{"theme":"dark","width":"boxed","navSize":"compact","navTone":"purple"}`. The page opens in light
+mode; dark mode is available in the settings panel and from the colour-mode button, and a saved
+choice of dark is kept. `Reset to default` removes the key and returns to exactly the default look.
+
+**The defaults are the client-approved look**: light mode, full width, the standard 250px sidebar
+and the purple sidebar. A first visit (nothing saved) opens like this, with and without
+JavaScript, and every other option stays selectable in the settings panel.
 
 Change them with the gear button in the top bar, or `Layout settings` in the user menu. CSS reads
 the attributes only to switch token blocks (section 1) and apply the size variants (section 6).
@@ -302,8 +306,8 @@ or in a bright classroom.
 
 `Raise a request` is always one click away: in the sidebar's `Requests` group, on the help card, on
 the dashboard and on the device page. The form keeps everything typed when something is missing and
-says exactly what to fix. Colour mode follows the device until someone changes it, so a teacher
-whose laptop is in dark mode is not dazzled.
+says exactly what to fix. The page opens in light mode; dark mode is available in the settings
+panel for anyone who prefers it, and that choice is remembered.
 
 ## Navigation model
 
@@ -328,7 +332,7 @@ so nothing is a dead button when scripts are off.
 | Control | Without JavaScript |
 |---|---|
 | Menu button (collapse on desktop, drawer on phone) | Hidden. Desktop shows the full sidebar. Phone shows a `Menu` link to `#nav` that opens the sidebar with `:target`; `Close the menu` links back to `#main`. |
-| Colour-mode button (top bar and sign-in page) | Hidden. The colour mode follows the device through `prefers-color-scheme`. |
+| Colour-mode button (top bar and sign-in page) | Hidden. The page stays in light mode. |
 | `Layout settings` buttons (top-bar gear, user-menu item, the design kit's Dialog box) | Hidden. The page uses the defaults. |
 | The toast's `Undo` | Hidden. |
 

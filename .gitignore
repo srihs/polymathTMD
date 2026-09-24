@@ -19,3 +19,16 @@ Thumbs.db
 
 # Claude Code (personal)
 .claude/settings.local.json
+
+# Local working data (never commit)
+# Office documents dropped at the repo root, and anything under data/private/,
+# are the IT department's working data: they hold credentials (e.g. Zoom host
+# keys) and staff personal data. Real data is imported into the app, never
+# committed. Rules are root-anchored so fixtures inside apps/ stay trackable.
+/Dashboard 2A.xlsx
+/*.xlsx
+/*.xlsm
+/*.xls
+/*.ods
+/*.csv
+/data/private/

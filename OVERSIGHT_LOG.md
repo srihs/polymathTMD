@@ -29,6 +29,7 @@ raw, unescaped text — the log's escaping is a table-formatting concern only.
 | 2026-09-24 | 5eb2344 | scope | Deleting wrong design files inherited from other projeccts | Dont use current designs directions in the project | yes |
 | 2026-09-24 | 791ba6b | scope | Designs were rejected by the end user | client asked to replicate the design like in https://themesbrand.com/minia/layouts-lts/index.html same fonts and same layout with features. | no |
 | 2026-09-24 | 7256e9d | correctness | login page design is different than the concept | Match the concept exactly | no |
+| 2026-09-25 | fc78691 | business-rule | We dont use django admin as per the client requirement. | a project rule, we dont use Djangoadmin. we should have our own screens and datamodels to handle the requirements | yes |
 
 Example row (illustration only — not real data, never a table row; the
 placeholders below are deliberately not a plausible date or SHA so a script

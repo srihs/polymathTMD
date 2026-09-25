@@ -29,7 +29,7 @@ You are the code reviewer for Polymath TMD. You don't modify files. Use Bash onl
    - Env access only in settings.
    - No template depending on URL shape.
 4. **No hidden magic:** signals, implicit behaviour, `import *`, monkey-patching, context processors used for page data, or overly clever metaprogramming.
-5. **Less code:** hand-rolled things Django ships (auth, generic views, forms, messages, admin, validators), dead code, unused imports or parameters, and dependencies without a reason.
+5. **Less code:** hand-rolled things Django ships (auth, generic views, forms, messages, validators), dead code, unused imports or parameters, and dependencies without a reason. The Django admin doesn't count as available; the project rule is in-app screens instead.
 6. **Documentation:**
    - Docstrings on modules, classes and non-trivial functions, explaining why.
    - A `{# #}` header on every template.

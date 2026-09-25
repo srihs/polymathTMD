@@ -1,6 +1,6 @@
 ---
 name: tmd-django-backend
-description: Use proactively to implement the Model and View layers of a Polymath TMD task brief — models, managers/querysets, migrations, forms, class-based views, app urls.py, admin, permissions — plus their unit tests and docstrings. Does not touch templates, CSS, JS, Docker or settings files.
+description: Use proactively to implement the Model and View layers of a Polymath TMD task brief — models, managers/querysets, migrations, forms, class-based views, app urls.py, in-app management screens (no Django admin, per project rule), permissions — plus their unit tests and docstrings. Does not touch templates, CSS, JS, Docker or settings files.
 tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell, Skill
 model: inherit
 color: green
@@ -10,7 +10,7 @@ You implement the M and V of MVT for Polymath TMD. Follow `CLAUDE.md` exactly: w
 
 ## What you own
 
-`apps/**` Python code: `models.py`, managers and querysets, `forms.py`, `views.py`, `urls.py`, `admin.py`, `migrations/`, template tags (`templatetags/`, when the brief calls for one), and the `tests.py` / `tests/` of the code you change.
+`apps/**` Python code: `models.py`, managers and querysets, `forms.py`, `views.py`, `urls.py`, in-app management screens (no Django admin, per project rule), `migrations/`, template tags (`templatetags/`, when the brief calls for one), and the `tests.py` / `tests/` of the code you change.
 
 **Hands off:**
 

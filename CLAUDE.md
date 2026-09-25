@@ -11,6 +11,7 @@ Polymath TMD (Technology Management Desk) is a Django 5.2 LTS app for Polymath C
 - **Every task goes through subagents.** The main session orchestrates: it delegates, passes results between agents and reports to the user. It does not write app code, templates or config itself, even for a one-line fix. See "Agent workflow" below.
 - **A task isn't done until it's verified.** `tmd-test-verifier` runs the checks under "Verify a change" and reports the actual output. A FAIL sends the task back to the owning agent; it's never marked done.
 - **Code is documented.** Every module, class and non-trivial function gets a docstring that explains *why*, not what. Every template starts with a `{# … #}` comment naming its purpose and the context variables it expects. Update `README.md` when commands, env vars or setup change.
+- **No Django admin.** The app doesn't use `django.contrib.admin`. Every requirement gets its own in-app screens, built in the f-desk shell with views, forms and templates like any other page, and its own data models. Staff never have to open `/admin/`.
 - **MVT and the Django design philosophies** apply, as follows:
   - **Model:** business rules and data invariants live on models, managers and querysets (`clean()`, custom QuerySet methods), not in views or templates.
   - **View:** thin. Parse the request, call the model layer, choose a template, return a response. Prefer generic class-based views plus `ModelForm` when they fit. Views never build HTML strings.
@@ -30,7 +31,7 @@ Polymath TMD (Technology Management Desk) is a Django 5.2 LTS app for Polymath C
     - No new context processors for page-specific data.
     - No `import *` outside settings modules.
     - No monkey-patching.
-  - **Less code:** use what Django ships (auth, admin, generic views, forms, messages) before writing your own. Every new dependency needs a reason in the task notes.
+  - **Less code:** use what Django ships (auth, generic views, forms, messages — not the admin; see above) before writing your own. Every new dependency needs a reason in the task notes.
 
 ## Agent workflow
 

@@ -1,0 +1,19 @@
+{# Body of the "confirm your email" message to the requester (brief 005, D.8). Plain text: autoescape is off so the class name reads as typed. Context: link_request (LinkRequest), occurrences (list of Occurrence), confirm_url (str, absolute), link_hours (int). Never receives a host key. #}{% autoescape off %}Hello {{ link_request.requester_name }},
+
+You asked the Polymath College IT desk for a Zoom link. Please confirm it was you by opening this link:
+
+{{ confirm_url }}
+
+The link works for {{ link_hours }} hours. Check the details on the page, then choose "Confirm my request". IT won't see your request until you do.
+
+Your request
+Class: {{ link_request.class_name }}
+When: {{ link_request.schedule_summary }}
+Recording: {% include "zoom/partials/recording_answer.txt" with wants_recording=link_request.wants_recording only %}
+Classes ({{ occurrences|length }}):
+{% for occurrence in occurrences %}- {{ occurrence }}
+{% endfor %}
+If you didn't ask for this, ignore this email. Nothing will be booked.
+
+Polymath College IT desk
+{% endautoescape %}

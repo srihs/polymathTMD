@@ -1,4 +1,4 @@
-{# The document and the page chrome, defined only here. <html> carries the approved defaults (light, full width, standard, purple sidebar) so pages are right with JS off; theme-init.js (blocking, before the CSS) swaps in a saved choice before first paint. The body block's default content is the shell (sidebar, top bar, title row, messages, content, footer, settings panel); sign-in overrides body to drop it. Context: tmd_site_name (str; prefixed because Django auth views put the request host in the unprefixed key), user (User), request (only resolver_match.view_name / .namespace, passed into the sidebar and the first breadcrumb), messages (message storage), csrf_token. Blocks: title (every page must fill it), head, body, heading (the h1 text), breadcrumb (extra li items after Home, each with its own separator; empty on Home), content, scripts. Partials: icons, sidebar, topbar, messages, footer, settings_dialog. #}{% load static %}<!DOCTYPE html>
+{# The document and the page chrome, defined only here. <html> carries the approved defaults (light, full width, standard, purple sidebar) so pages are right with JS off; theme-init.js (blocking, before the CSS) swaps in a saved choice before first paint. The body block's default content is the shell (sidebar, top bar, title row, messages, content, footer, settings panel); sign-in and public_base.html (the public frame) override body to drop it. Context: tmd_site_name (str; prefixed because Django auth views put the request host in the unprefixed key), user (User), perms (PermWrapper, passed into the sidebar), request (only resolver_match.view_name / .namespace, passed into the sidebar and the first breadcrumb), messages (message storage), csrf_token. Blocks: title (every page must fill it), head, body, heading (the h1 text), breadcrumb (extra li items after Home, each from partials/crumb.html with its own separator; empty on Home), content, scripts. Partials: icons, sidebar, topbar, messages, footer, settings_dialog. #}{% load static %}<!DOCTYPE html>
 <html lang="en-LK" data-theme="light" data-width="full" data-nav-size="standard" data-nav-tone="purple">
 <head>
 <meta charset="utf-8">
@@ -18,7 +18,7 @@
 {% include "partials/icons.html" only %}
 {% block body %}
 <div class="shell">
-{% include "partials/sidebar.html" with current=request.resolver_match.view_name current_ns=request.resolver_match.namespace user=user only %}
+{% include "partials/sidebar.html" with current=request.resolver_match.view_name current_ns=request.resolver_match.namespace user=user perms=perms only %}
 <div class="scrim" data-scrim hidden></div>
 {% include "partials/topbar.html" with user=user csrf_token=csrf_token only %}
 <main id="main" tabindex="-1" data-drawer-inert>

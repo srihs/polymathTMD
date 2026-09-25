@@ -1,0 +1,20 @@
+{# Body of the "new request" message to every IT desk reviewer (brief 005, D.8). Plain text. Context: link_request (LinkRequest), occurrences (list of Occurrence), detail_url (str, absolute). Never receives a host key. #}{% autoescape off %}A new Zoom link request is waiting for IT.
+
+Reference: {{ link_request.reference }}
+Class: {{ link_request.class_name }}
+When: {{ link_request.schedule_summary }}
+Recording: {% if link_request.wants_recording %}yes{% else %}no{% endif %}
+First class: {{ occurrences.0 }}
+Classes ({{ occurrences|length }}):
+{% for occurrence in occurrences %}- {{ occurrence }}
+{% endfor %}
+Requested by: {{ link_request.requester_name }}
+Email: {{ link_request.requester_email }}
+Phone: {{ link_request.requester_phone_display }}
+Notes: {{ link_request.notes|default:"none" }}
+
+Check which accounts are free, then approve or reject it:
+{{ detail_url }}
+
+You get these emails because you're in the IT desk group on the Technology Management Desk.
+{% endautoescape %}

@@ -13,11 +13,20 @@ SITE_NAME = env("SITE_NAME", default="Polymath TMD")
 
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env.bool("DEBUG", default=False)
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])  # prod.py refuses to start if empty
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+
+# HTTPS policy flag, applied only by prod.py (redirect + secure cookies). TLS ends at a proxy
+# that sends X-Forwarded-Proto. Set it to False only for a local run of the prod image.
+USE_HTTPS = env.bool("USE_HTTPS", default=True)
+# HSTS is only ever sent on HTTPS responses, so reading it here doesn't affect plain-HTTP dev.
+SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=60 * 60 * 24 * 30)
 
 # --------------------------------------------------------------------------- Apps
+# django.contrib.admin is deliberately absent (task 010, D10): users and roles are managed on
+# the in-app Staff and access screens, and an installed admin would be a back door around their
+# guards. contrib.auth stays; those screens are built on its users, groups and permissions.
 DJANGO_APPS = [
-    "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -29,6 +38,7 @@ DJANGO_APPS = [
 LOCAL_APPS = [
     "apps.accounts",
     "apps.core",
+    "apps.zoom",
 ]
 INSTALLED_APPS = DJANGO_APPS + LOCAL_APPS
 
@@ -118,6 +128,39 @@ STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
 }
+
+# --------------------------------------------------------------------------- Email
+# Read here (not in prod.py) so every environment can pick its backend and sender.
+# dev.py and test.py override EMAIL_BACKEND with constants (console / locmem).
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = env("EMAIL_HOST", default="localhost")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+# Secret: never log or render it.
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="tmd@localhost")
+
+# --------------------------------------------------------------------------- Zoom link requests
+# Which meeting provider makes the links (brief 005, D4): "manual" (IT pastes the link it
+# made in Zoom) or "fake" (dev/tests only; links on the .invalid TLD). The zoom app's
+# system checks reject any other value, and reject "fake" under check --deploy.
+ZOOM_PROVIDER = env("ZOOM_PROVIDER", default="manual")
+# How long the "confirm your email" link works, and the hourly abuse limits. The limits are
+# counted in the database, so they hold across Gunicorn workers without a shared cache (D8).
+ZOOM_CONFIRM_LINK_HOURS = 24
+ZOOM_REQUEST_LIMIT_PER_EMAIL_PER_HOUR = 5
+ZOOM_REQUEST_LIMIT_PER_IP_PER_HOUR = 20
+# Number of reverse proxies in front of the app that append to X-Forwarded-For. 0 means trust
+# only REMOTE_ADDR. Behind the TLS proxy set it to 1, or every visitor shares the proxy's IP
+# and the per-IP limit blocks everyone (D8). Never set it higher than the real proxy count:
+# clients could then spoof their IP.
+TRUSTED_PROXY_COUNT = env.int("TRUSTED_PROXY_COUNT", default=0)
+# Fernet keys that encrypt Zoom host keys at rest (D17), comma-separated. The first key
+# encrypts; every key decrypts, which is how rotation works. Kept apart from SECRET_KEY so
+# rotating SECRET_KEY never makes stored host keys unreadable. Secret: never log or render.
+# No default: the zoom app's check zoom.E003 reports it when empty or invalid.
+HOST_KEY_ENCRYPTION_KEYS = env.list("HOST_KEY_ENCRYPTION_KEYS", default=[])
 
 # --------------------------------------------------------------------------- Logging
 LOGGING = {

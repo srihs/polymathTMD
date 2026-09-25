@@ -1,0 +1,1 @@
+{# Subject of the "not approved" message to the requester (brief 005, D.8). Context: link_request (LinkRequest). #}Your Zoom link request {{ link_request.reference }} was not approved

@@ -1,0 +1,1 @@
+{# Subject of the "confirm your email" message to the requester (brief 005, D.8); plain text, no context used. #}Confirm your Zoom link request

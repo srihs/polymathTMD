@@ -1,0 +1,14 @@
+{# Error summary for one form (brief 005, criterion 7, D21; shared by every app since brief 010, criterion 29): a bad notice with role="alert" and tabindex="-1" that app.js focuses on load (data-error-summary). The title is the lead plus "1 thing needs your attention." or "{n} things need your attention."; then non-field errors (no link) and one link per invalid field, in form order, to its input (a radio or checkbox group links to its first input). Renders nothing when the form has no errors. with: form (Form), lead (str, e.g. "We couldn't send this yet."). #}
+{% if form.errors %}{% with count=form.errors|length %}
+<div class="notice notice--bad" role="alert" tabindex="-1" data-error-summary>
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg>
+  <div class="notice__body">
+    <p class="notice__title">{{ lead }} {% if count == 1 %}1 thing needs{% else %}{{ count }} things need{% endif %} your attention.</p>
+    <ul>
+      {% for error in form.non_field_errors %}<li>{{ error }}</li>
+      {% endfor %}{% for field in form %}{% if field.errors %}<li><a class="tap-link" href="#{% if field.id_for_label %}{{ field.id_for_label }}{% else %}{{ field.auto_id }}_0{% endif %}">{{ field.errors.0 }}</a></li>
+      {% endif %}{% endfor %}
+    </ul>
+  </div>
+</div>
+{% endwith %}{% endif %}

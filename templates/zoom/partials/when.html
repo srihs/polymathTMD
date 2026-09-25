@@ -1,0 +1,1 @@
+{# One moment in Colombo time, e.g. "Mon 28 Sep 2026, 9:40 am": the date in a <time> element, then the time (formats from the zoom_format filters, the one source). with: at (aware datetime). #}{% load zoom_format %}<time datetime="{{ at|date:'c' }}">{{ at|class_date }}</time>, {{ at|class_time }}

@@ -1,0 +1,66 @@
+{# The Zoom timetable, one month as a wall calendar (brief 009, Design D.1), in the shell; only for zoom.review_linkrequest. Read-only. One box: the head holds the month h2 and the month links (plain links carrying ?month and ?account); the body holds the account filter and the summary or empty line (D.3, first match wins); then the calendar table, flush in the box. The table has seven weekday columns, Monday first, and explicit ARIA roles, because below 768px CSS turns it into a list of the days that have classes (D5), with no second markup tree; aria-colcount on the table and aria-colindex on every th and td (empty cells too) keep each day under its own weekday once that CSS hides the out-of-month and empty cells (review round 1, SF1). Each in-month day is an h3 date link to its day view, then at most DAY_BOX_LIMIT entries, then "+N more"; days outside the month are empty cells. Never shows a host key, requester details or join details. Context: month (Month: value, label), previous_month / next_month (Month: value, label), is_current_month (bool), weeks (list of 7-item lists of DayBox dict or None; DayBox: date, label ("Tue 1 Sep"), is_today, entries (list of Occurrence), more (int)), weekdays (list of str, Monday first), filter_accounts (list of HostAccount: pk, label; holds selected_account when set), selected_account (HostAccount or None), show_waiting (bool; unused here, the summary keys off selected_account), booked_count (int), waiting_count (int), has_accounts (bool), can_add_account (bool). Partials: partials/crumb, zoom/partials/timetable_filter, zoom/partials/timetable_entry. #}{% extends "base.html" %}
+
+{% block title %}Zoom timetable, {{ month.label }}{% endblock %}
+
+{% block heading %}Zoom timetable{% endblock %}
+
+{% block breadcrumb %}{% include "partials/crumb.html" with url="" text="Zoom timetable" current=True only %}{% endblock %}
+
+{% block content %}
+{% url 'zoom:timetable' as month_page_url %}
+<section class="box box--cal" aria-labelledby="month-title">
+  <div class="box__head">
+    <h2 class="box__title" id="month-title">{{ month.label }}</h2>
+    <nav class="cal-nav" aria-label="Choose a month">
+      <ul class="cal-nav__list" role="list">
+        <li><a class="button button--secondary" href="{{ month_page_url }}?month={{ previous_month.value }}{% if selected_account %}&amp;account={{ selected_account.pk }}{% endif %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg>Previous month<span class="visually-hidden">, {{ previous_month.label }}</span></a></li>
+        {% if not is_current_month %}<li class="cal-nav__wide"><a class="button button--quiet" href="{{ month_page_url }}{% if selected_account %}?account={{ selected_account.pk }}{% endif %}">This month</a></li>{% endif %}
+        <li><a class="button button--secondary" href="{{ month_page_url }}?month={{ next_month.value }}{% if selected_account %}&amp;account={{ selected_account.pk }}{% endif %}">Next month<span class="visually-hidden">, {{ next_month.label }}</span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg></a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="box__body cal-top">
+    {% if filter_accounts or selected_account %}{% include "zoom/partials/timetable_filter.html" with action=month_page_url month_value=month.value filter_accounts=filter_accounts selected_account=selected_account only %}{% endif %}
+    {% if not has_accounts %}
+    <p class="result-line">No Zoom accounts are set up yet.{% if not can_add_account %} Ask the person who manages Zoom accounts to add one.{% endif %}</p>
+    {% if can_add_account %}<a class="button button--secondary" href="{% url 'zoom:account_add' %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg>Add a Zoom account</a>{% endif %}
+    {% elif selected_account and not booked_count %}
+    <p class="result-line">No classes booked on {{ selected_account.label }} in {{ month.label }}.</p>
+    <a class="button button--quiet" href="{{ month_page_url }}?month={{ month.value }}">Show all accounts</a>
+    {% elif not booked_count and not waiting_count %}
+    <p class="result-line">No classes booked in {{ month.label }}.</p>
+    {% elif selected_account %}
+    <p class="result-line">{{ booked_count }} booked class{{ booked_count|pluralize:"es" }} on {{ selected_account.label }} in {{ month.label }}.</p>
+    {% elif not waiting_count %}
+    <p class="result-line">{{ booked_count }} booked class{{ booked_count|pluralize:"es" }} in {{ month.label }}.</p>
+    {% else %}
+    <p class="result-line">{{ booked_count }} booked class{{ booked_count|pluralize:"es" }} and {{ waiting_count }} waiting for IT in {{ month.label }}.</p>
+    {% endif %}
+  </div>
+  <table class="cal" role="table" aria-colcount="7">
+    <caption class="visually-hidden">Zoom classes in {{ month.label }}, by week, Monday to Sunday.</caption>
+    <thead role="rowgroup">
+      <tr role="row">{% for name in weekdays %}<th scope="col" role="columnheader" aria-colindex="{{ forloop.counter }}"><span aria-hidden="true">{{ name|slice:":3" }}</span><span class="visually-hidden">{{ name }}</span></th>{% endfor %}</tr>
+    </thead>
+    <tbody role="rowgroup">
+      {% for week in weeks %}
+      <tr role="row">
+        {% for box in week %}{% if box %}{% url 'zoom:timetable_day' box.date.year box.date.month box.date.day as day_page_url %}
+        <td role="cell" aria-colindex="{{ forloop.counter }}" class="cal__day{% if not box.entries %} cal__day--empty{% endif %}{% if box.is_today %} cal__day--today{% endif %}"{% if box.is_today %} aria-current="date"{% endif %}>
+          <div class="cal__head">
+            <h3 class="cal__date"><a class="cal__date-link" href="{{ day_page_url }}{% if selected_account %}?account={{ selected_account.pk }}{% endif %}"><time datetime="{{ box.date|date:'Y-m-d' }}"><span class="cal__date-extra">{{ box.date|date:"D" }} </span><span class="cal__num">{{ box.date|date:"j" }}</span><span class="cal__date-extra"> {{ box.date|date:"M" }}</span></time></a></h3>
+            {% if box.is_today %}<span class="tag tag--brand">Today</span>{% endif %}
+          </div>
+          {% if box.entries %}<ul class="cal__entries" role="list">
+            {% for entry in box.entries %}<li>{% include "zoom/partials/timetable_entry.html" with entry=entry full=False only %}</li>
+            {% endfor %}
+          </ul>{% endif %}
+          {% if box.more %}<a class="cal__more" href="{{ day_page_url }}{% if selected_account %}?account={{ selected_account.pk }}{% endif %}"><span aria-hidden="true">+{{ box.more }} more</span><span class="visually-hidden">{{ box.more }} more class{{ box.more|pluralize:"es" }} on {{ box.label }}</span></a>{% endif %}
+        </td>{% else %}
+        <td role="cell" aria-colindex="{{ forloop.counter }}" class="cal__day cal__day--out"></td>{% endif %}{% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

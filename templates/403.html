@@ -1,0 +1,21 @@
+{# The one refusal page for every section (brief 010, criterion 28, D11), rendered by Django's default handler403 for any PermissionDenied; the status stays 403 and no URL or view is involved. A signed-in user gets the shell, so the sidebar (which lists only what they may open) shows where they can go instead, plus one Go to Home button. A signed-out visitor, reachable only from a future view without the login mixin, gets the public frame with a Sign in link that returns here. Never renders the exception text: it could name a permission codename. Context: user (User or AnonymousUser; picks the frame), request (path, for the sign-in link's next; resolver_match via base.html), perms, messages, tmd_site_name (all from the context processors), exception (str, deliberately unused). Partials: partials/crumb (shell only). #}{% extends user.is_authenticated|yesno:"base.html,public_base.html" %}
+
+{% block title %}You can't open this page{% endblock %}
+
+{% block heading %}You can't open this page{% endblock %}
+
+{% block breadcrumb %}{% include "partials/crumb.html" with url="" text="You can't open this page" current=True only %}{% endblock %}
+
+{% block content %}
+{% if user.is_authenticated %}
+<div class="box">
+  <div class="box__body">
+    <p class="box__lead">Your roles don't include this page. Ask someone who manages Staff and access to give you the role you need.</p>
+    <a class="button button--primary" href="{% url 'core:home' %}">Go to Home</a>
+  </div>
+</div>
+{% else %}
+<p class="public__lead">Sign in to see this page.</p>
+<a class="button button--primary" href="{% url 'accounts:login' %}?next={{ request.path|urlencode }}">Sign in</a>
+{% endif %}
+{% endblock %}

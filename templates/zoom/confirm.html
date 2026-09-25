@@ -1,0 +1,58 @@
+{# Public confirm page reached from the emailed link (brief 005, D.3), in the public frame. One page, four states. ready: the details to check, every class, and a POST form "Confirm my request" (a GET never confirms). already: the reference, nothing to do. expired and invalid: a warning and a link to send the request again. No reply-time promise (D23). Context: state (str: "ready", "already", "expired", "invalid"), link_request (LinkRequest or None; set for ready and already: reference, class_name, wants_recording, requester_name, requester_email, requester_phone_display, schedule_summary), occurrences (list of Occurrence, empty unless ready), occurrence_count (int), token (str, for the form action). Partials: zoom/partials/confirm_heading, zoom/partials/recording_answer.txt, zoom/partials/schedule, zoom/partials/occurrence_list. #}{% extends "public_base.html" %}
+
+{% block title %}{% include "zoom/partials/confirm_heading.html" with state=state only %}{% endblock %}
+
+{% block heading %}{% include "zoom/partials/confirm_heading.html" with state=state only %}{% endblock %}
+
+{% block content %}
+{% if state == "ready" %}
+<p class="public__lead">Check the details. If they're right, confirm and we'll send your request to the IT desk.</p>
+<dl class="facts">
+  <dt>Class</dt>
+  <dd>{{ link_request.class_name }}</dd>
+  <dt>When</dt>
+  <dd>{% include "zoom/partials/schedule.html" with summary=link_request.schedule_summary only %}</dd>
+  <dt>Recording</dt>
+  <dd>{% include "zoom/partials/recording_answer.txt" with wants_recording=link_request.wants_recording only %}</dd>
+  <dt>Your name</dt>
+  <dd>{{ link_request.requester_name }}</dd>
+  <dt>Email</dt>
+  <dd>{{ link_request.requester_email }}</dd>
+  <dt>Phone</dt>
+  <dd>{{ link_request.requester_phone_display }}</dd>
+</dl>
+<h2>The classes ({{ occurrence_count }})</h2>
+{% include "zoom/partials/occurrence_list.html" with occurrences=occurrences only %}
+<form method="post" action="{% url 'zoom:confirm' token %}">
+  {% csrf_token %}
+  <div class="form-actions">
+    <button class="button button--primary" type="submit">Confirm my request</button>
+  </div>
+  <p class="field__help">Something wrong? Don't confirm. <a href="{% url 'zoom:request' %}">Send a new request with the right details instead.</a></p>
+</form>
+{% elif state == "already" %}
+<div class="notice notice--ok">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>
+  <div class="notice__body">
+    <p class="notice__title">You've already confirmed this request.</p>
+    <p>Your reference is {{ link_request.reference }}. IT will email <span class="break-anywhere">{{ link_request.requester_email }}</span> when they've decided.</p>
+  </div>
+</div>
+{% elif state == "expired" %}
+<div class="notice notice--warn">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+  <p>This link has expired. Please send your request again.</p>
+</div>
+<div class="form-actions">
+  <a class="button button--primary" href="{% url 'zoom:request' %}">Send your request again</a>
+</div>
+{% else %}
+<div class="notice notice--warn">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+  <p>This link doesn't work. Check you copied all of it from the email, or send your request again.</p>
+</div>
+<div class="form-actions">
+  <a class="button button--secondary" href="{% url 'zoom:request' %}">Send a new request</a>
+</div>
+{% endif %}
+{% endblock %}

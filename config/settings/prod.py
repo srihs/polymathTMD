@@ -1,33 +1,43 @@
-"""Production settings. Everything sensitive comes from the environment."""
+"""Production settings.
+
+Everything sensitive comes from the environment, but it is read in base.py (the only
+place ``env(...)`` is called); this module only turns those values into production policy.
+"""
+
+from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F403
-from .base import env
+from .base import ALLOWED_HOSTS, USE_HTTPS, ZOOM_PROVIDER
 
 DEBUG = False
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
-CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+
+# base.py defaults ALLOWED_HOSTS to an empty list. In production that would answer every
+# request with 400 while /healthz/ (which skips host validation) still reports healthy, so
+# fail at start-up instead.
+if not ALLOWED_HOSTS:
+    raise ImproperlyConfigured("Set ALLOWED_HOSTS for production.")
+
+# The fake provider emails links on the .invalid TLD that can't reach a meeting. The zoom.E001
+# deploy check reports it, but nothing runs check --deploy at start-up, so refuse to start.
+if ZOOM_PROVIDER == "fake":
+    raise ImproperlyConfigured(
+        "The fake Zoom provider can't run in production. Set ZOOM_PROVIDER=manual."
+    )
 
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
 
-# HTTPS & cookies. Set USE_HTTPS=False only for a local container without TLS.
-USE_HTTPS = env.bool("USE_HTTPS", default=True)
+# HTTPS & cookies, all driven by the one USE_HTTPS flag (read in base.py).
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = USE_HTTPS
 SESSION_COOKIE_SECURE = USE_HTTPS
 CSRF_COOKIE_SECURE = USE_HTTPS
-SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=60 * 60 * 24 * 30)
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
 X_FRAME_OPTIONS = "DENY"
 
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = env("EMAIL_HOST", default="localhost")
-EMAIL_PORT = env.int("EMAIL_PORT", default=587)
-EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
-EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
-EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="tmd@localhost")
+# Email settings (EMAIL_*, DEFAULT_FROM_EMAIL) are read in base.py; the default backend there
+# is SMTP, which is what production uses.

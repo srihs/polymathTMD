@@ -1,0 +1,5 @@
+{# Numbered list of a request's classes, one line each: "Mon 5 Oct 2026, 8:30 am to 11:30 am" in Colombo time (partials/class_span.html). More than 6 classes add occurrences--cols (two columns on wide screens; presentation only). with: occurrences (list of Occurrence: starts_at, ends_at, aware datetimes). Partials: zoom/partials/class_span. #}
+<ol class="occurrences{% if occurrences|length > 6 %} occurrences--cols{% endif %}">
+  {% for occurrence in occurrences %}<li>{% include "zoom/partials/class_span.html" with start=occurrence.starts_at end=occurrence.ends_at only %}</li>
+  {% endfor %}
+</ol>

@@ -2,7 +2,8 @@
 
 Brief 004 ported the f-desk shell into base.html and the new partials under
 templates/partials/. Three tests that pinned the old markup are rewritten
-here (sign-out button, the two admin-link tests) to match text content with
+here (sign-out button, the two admin-link tests, which brief 010 turned into
+Staff and access tests) to match text content with
 tags stripped, because those controls now carry an icon. The header-comment
 test is widened from three hard-coded paths to every template under
 templates/ (criterion 21). The rest of this module adds the shell/CSS/
@@ -15,6 +16,7 @@ import pytest
 from django.conf import settings
 from django.contrib import messages as django_messages
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.contrib.messages.storage.fallback import FallbackStorage
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.contrib.staticfiles import finders
@@ -146,18 +148,21 @@ def test_no_template_reads_the_colliding_site_name_variable():
     assert not offenders, offenders
 
 
-# --- Admin link only for staff (brief 001 issue 3; brief 004 moves it to the sidebar) -----
+# --- Staff and access link (brief 001 issue 3 as an Admin link; brief 004 moved it to the
+# sidebar; brief 010 criterion 21 replaces the Django admin with Staff and access, gated by
+# perms.accounts.view_user, never by is_staff) -------------------------------------------
 
 
-def _admin_links(content):
-    """Every <a href="{admin}"> on the page whose text, tags stripped, is exactly "Admin".
+def _staff_links(content):
+    """Every <a href="{staff}"> on the page whose text, tags stripped, is "Staff and access".
 
-    The link now sits beside an icon inside a <span>, so matching on raw text
-    between the tags (as before) would miss it; this strips inner markup first.
+    The link sits beside an icon inside a <span>, so this strips inner markup first.
     """
-    admin_url = re.escape(reverse("admin:index"))
-    inners = re.findall(rf'<a[^>]*href="{admin_url}"[^>]*>(.*?)</a>', content, re.S)
-    return [inner for inner in inners if re.sub(r"<[^>]+>", "", inner).strip() == "Admin"]
+    staff_url = re.escape(reverse("accounts:staff"))
+    inners = re.findall(rf'<a[^>]*href="{staff_url}"[^>]*>(.*?)</a>', content, re.S)
+    return [
+        inner for inner in inners if re.sub(r"<[^>]+>", "", inner).strip() == "Staff and access"
+    ]
 
 
 def _has_logout_form(content):
@@ -165,31 +170,47 @@ def _has_logout_form(content):
     return re.search(rf'<form[^>]*method="post"[^>]*action="{logout_url}"', content)
 
 
+def _staff_manager(client):
+    user = _signed_in(client)
+    user.groups.add(Group.objects.get(name="Staff managers"))
+    return user
+
+
 @pytest.mark.django_db
-def test_home_hides_admin_link_from_non_staff(client):
-    _signed_in(client, is_staff=False)
+def test_home_hides_staff_and_access_from_an_is_staff_user_without_permissions(client):
+    _signed_in(client, is_staff=True)
     response = client.get(reverse("core:home"))
     assert response.status_code == 200
     content = response.content.decode()
-    assert _admin_links(content) == []
+    assert _staff_links(content) == []
     assert "Administration" not in content
     assert _has_logout_form(content)
 
 
 @pytest.mark.django_db
-def test_home_shows_admin_link_to_staff(client):
-    _signed_in(client, is_staff=True)
+def test_home_shows_staff_and_access_to_a_staff_manager(client):
+    _staff_manager(client)
     content = client.get(reverse("core:home")).content.decode()
-    assert len(_admin_links(content)) == 1
+    assert len(_staff_links(content)) == 1
     assert _has_logout_form(content)
 
 
 @pytest.mark.django_db
-def test_home_shows_admin_link_to_superuser(client):
+def test_home_shows_staff_and_access_to_a_superuser(client):
     user = get_user_model().objects.create_superuser(username="head", password="x")
     client.force_login(user)
     content = client.get(reverse("core:home")).content.decode()
-    assert len(_admin_links(content)) == 1
+    assert len(_staff_links(content)) == 1
+
+
+def test_no_template_links_the_admin_or_reads_is_staff():
+    """Criterion 3: the Django admin is gone and is_staff no longer means anything (D5)."""
+    offenders = [
+        str(template.relative_to(TEMPLATES_DIR))
+        for template in _templates()
+        if re.search(r"admin:index|\bis_staff\b", template.read_text(encoding="utf-8"))
+    ]
+    assert not offenders, offenders
 
 
 # --- Template header comments (brief 001 criterion 15; brief 004 widens to every template) --
@@ -296,20 +317,56 @@ def test_sidebar_home_link_has_aria_current_only_on_home(client):
 
 @pytest.mark.django_db
 def test_sidebar_links_resolve_to_named_urls_only(client):
-    _signed_in(client, is_staff=True)
+    _staff_manager(client)
     content = client.get(reverse("core:home")).content.decode()
     nav = re.search(r'<nav class="sidenav__menu".*?</nav>', content, re.S).group(0)
     hrefs = re.findall(r'<a class="sidenav__link"[^>]*href="([^"]*)"', nav)
-    assert hrefs == [reverse("core:home"), reverse("admin:index")]
+    assert hrefs == [reverse("core:home"), reverse("accounts:staff")]
     assert "#" not in "".join(hrefs), "no dead '#' links belong in the nav"
 
 
 @pytest.mark.django_db
-def test_sidebar_shows_administration_group_only_for_staff(client):
-    _signed_in(client, is_staff=False)
+def test_sidebar_shows_administration_group_only_with_view_user(client):
+    _signed_in(client, is_staff=True)
     content = client.get(reverse("core:home")).content.decode()
     assert "Administration" not in content
-    assert reverse("admin:index") not in content
+    assert reverse("accounts:staff") not in content
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("url_name", ["staff", "staff_add", "staff_edit", "staff_password"])
+def test_staff_and_access_is_current_on_every_staff_page_and_last(client, url_name):
+    """Criterion 3: aria-current on the four staff pages; Administration stays last."""
+    user = get_user_model().objects.create_superuser(username="head", password="x")
+    # Someone else: your own pk on staff_password redirects to password_change (010, crit. 34).
+    other = get_user_model().objects.create_user(username="teacher", password="x")
+    client.force_login(user)
+    args = [other.pk] if url_name in ("staff_edit", "staff_password") else []
+    content = client.get(reverse(f"accounts:{url_name}", args=args)).content.decode()
+    nav = re.search(r'<nav class="sidenav__menu".*?</nav>', content, re.S).group(0)
+    staff_url = re.escape(reverse("accounts:staff"))
+    assert re.search(rf'<a class="sidenav__link" href="{staff_url}"[^>]*aria-current="page"', nav)
+    assert nav.count('aria-current="page"') == 1
+    assert 'id="nav-admin"' in nav
+    assert nav.index("Zoom links") < nav.index("Administration")
+    groups = re.findall(r'<p class="sidenav__group-title" id="([^"]+)"', nav)
+    assert groups[-1] == "nav-admin", groups
+
+
+@pytest.mark.django_db
+def test_change_your_password_sits_between_layout_settings_and_sign_out(client):
+    """Criterion 4: in every signed-in user's menu, a plain link, so it works without JS."""
+    _signed_in(client)
+    content = client.get(reverse("core:home")).content.decode()
+    menus = re.findall(r"<details[^>]*data-pop[^>]*>.*?</details>", content, re.S)
+    menu = next(m for m in menus if "Sign out" in m)
+    link = re.search(
+        rf'<a[^>]*href="{re.escape(reverse("accounts:password_change"))}"[^>]*>(.*?)</a>',
+        menu,
+        re.S,
+    )
+    assert link and re.sub(r"<[^>]+>", "", link.group(1)).strip() == "Change your password"
+    assert menu.index("Layout settings") < link.start() < menu.index("Sign out")
 
 
 # --- The shell: user menu / sign-out (brief 004 criterion 9) -------------------------

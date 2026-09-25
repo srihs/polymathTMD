@@ -1,0 +1,1 @@
+{# The answer to "Recording?" in pages and emails, the one source of the phrase (plain text, no markup, so the .txt emails can include it too). with: wants_recording (bool). #}{% if wants_recording %}Yes, record it to the Zoom cloud{% else %}No{% endif %}

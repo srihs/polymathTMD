@@ -16,6 +16,7 @@
     6. Dropdowns (<details data-pop>)
     7. Flash messages (close)
     8. Sign-in: the empty-field check
+    9. Zoom link requests: weekly fields, error-summary focus
 */
 (function () {
   'use strict';
@@ -355,6 +356,35 @@
       });
       empty[0].focus();
     });
+  }
+
+  /* ------------------------------------------------------------------
+     9. Zoom link requests (brief 005, D.9).
+     a. Weekly fields: while the checked [data-repeat] radio is "once", the
+        [data-weekly-fields] group is hidden and its inputs disabled, so
+        they are not sent (the server ignores them for "once" anyway).
+        Typed values stay in the page and come back with "Every week".
+        Without JS the group simply always shows.
+     b. Error summary: after a failed submit, focus the first
+        [data-error-summary] (tabindex="-1"), so it is read out and in view.
+     ------------------------------------------------------------------ */
+  var repeatRadios = qsa('[data-repeat]');
+  var weeklyFields = qs('[data-weekly-fields]');
+  if (repeatRadios.length && weeklyFields) {
+    var weeklyInputs = qsa('input, select, textarea', weeklyFields);
+    var syncWeekly = function () {
+      var once = repeatRadios.some(function (radio) { return radio.checked && radio.value === 'once'; });
+      weeklyFields.hidden = once;
+      weeklyInputs.forEach(function (input) { input.disabled = once; });
+    };
+    repeatRadios.forEach(function (radio) { radio.addEventListener('change', syncWeekly); });
+    syncWeekly();
+  }
+
+  var errorSummary = qs('[data-error-summary]');
+  if (errorSummary) {
+    errorSummary.focus({ preventScroll: true });
+    errorSummary.scrollIntoView({ block: 'start' });
   }
 
   syncAll();

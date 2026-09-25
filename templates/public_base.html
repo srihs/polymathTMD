@@ -1,0 +1,18 @@
+{# The public frame (brief 005, D1; docs/design/public-frame.md): pages anyone can open without signing in, for anonymous and signed-in visitors alike. Extends base.html (document, skip link, icon sprite) and overrides its body, so there is no sidebar, top bar, user menu or settings panel: just the crest brand line (not a link), the colour-mode button (JS only), one main column with one h1, the flash messages and the shared footer. Context: messages (message storage), tmd_site_name (str, via base.html's title). Blocks: title (inherited; equals the h1 text), heading (the h1 text), heading_class (extra classes for the h1, e.g. " public__title--centre"), above_heading (e.g. a centred .public__disc), content (pages usually start with p.public__lead). Partials: colour_mode_button, messages, footer. #}{% extends "base.html" %}
+{% load static %}
+
+{% block body %}
+<div class="public">
+  <header class="public__head">
+    <p class="public__brand"><img src="{% static 'img/crest-chip.png' %}" alt="" width="28" height="28">Technology Management Desk</p>
+    <div class="public__mode">{% include "partials/colour_mode_button.html" only %}</div>
+  </header>
+  <main class="public__main" id="main" tabindex="-1">
+    {% block above_heading %}{% endblock %}
+    <h1 class="public__title{% block heading_class %}{% endblock %}">{% block heading %}{% endblock %}</h1>
+    {% include "partials/messages.html" with messages=messages only %}
+    {% block content %}{% endblock %}
+  </main>
+  {% include "partials/footer.html" only %}
+</div>
+{% endblock %}

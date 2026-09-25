@@ -1,0 +1,51 @@
+{# Staff and access: everyone with a username for the desk (brief 010, criterion 5, D.2), in the shell; only for accounts.view_user. One box: the head with "People" and, for add_user, the Add a person button; then the lead, the result line, the table (a card per row below 768px, explicit table roles, as in the Zoom request queue) and the pager. People who can sign in come first, then by last name; the order comes from the view. A name is a link only when the viewer may change that person. Nobody is ever deleted, so there is no delete action. Context: people (page of User: pk, __str__, username, email, is_active, is_superuser, last_login (aware datetime or None), groups.all (prefetched; name), can_manage (bool, set by the view)), page_obj / paginator / is_paginated (Django's), can_add (bool, accounts.add_user), user (User, the viewer; for the "You" marker, G4). Flashes from add and change come through base.html's messages. Partials: partials/crumb, accounts/partials/when. #}{% extends "base.html" %}
+
+{% block title %}Staff and access{% endblock %}
+
+{% block heading %}Staff and access{% endblock %}
+
+{% block breadcrumb %}{% include "partials/crumb.html" with url="" text="Staff and access" current=True only %}{% endblock %}
+
+{% block content %}
+{% url 'accounts:staff' as staff_url %}
+<section class="box" aria-labelledby="people-title">
+  <div class="box__head">
+    <h2 class="box__title" id="people-title">People</h2>
+    {% if can_add %}<a class="button button--primary" href="{% url 'accounts:staff_add' %}">Add a person</a>{% endif %}
+  </div>
+  <div class="box__body">
+    <p class="box__lead">Select a name to change someone's details, roles or password. People who leave are switched off, not deleted. If a name isn't a link, you can't change that person. Ask someone with full access.</p>
+    {% with n=paginator.count %}<p class="result-line">{{ n }} {{ n|pluralize:"person,people" }}.{% if is_paginated %} Showing {{ page_obj.start_index }} to {{ page_obj.end_index }}.{% endif %}</p>{% endwith %}
+    <div class="datagrid-wrap">
+      <table class="datagrid" role="table">
+        <caption class="visually-hidden">Everyone with a username for the desk. People who can sign in come first, then by last name.</caption>
+        <thead role="rowgroup">
+          <tr role="row"><th scope="col" role="columnheader">Name</th><th scope="col" role="columnheader">Username</th><th scope="col" role="columnheader">Email</th><th scope="col" role="columnheader">Roles</th><th scope="col" role="columnheader">Sign-in</th><th scope="col" role="columnheader">Last signed in</th></tr>
+        </thead>
+        <tbody role="rowgroup">
+          {% for person in people %}
+          <tr role="row">
+            <th scope="row" role="rowheader"><span class="datagrid__label" aria-hidden="true">Name</span><span class="datagrid__stack">{% if person.can_manage %}<a class="tap-link datagrid__strong break-anywhere" href="{% url 'accounts:staff_edit' person.pk %}">{{ person }}</a>{% else %}<span class="datagrid__strong break-anywhere">{{ person }}</span>{% endif %}{% if person.pk == user.pk %}<span class="text-muted">You</span>{% endif %}</span></th>
+            <td role="cell"><span class="datagrid__label" aria-hidden="true">Username</span><span class="break-anywhere">{{ person.username }}</span></td>
+            <td role="cell"><span class="datagrid__label" aria-hidden="true">Email</span>{% if person.email %}<span class="break-anywhere">{{ person.email }}</span>{% else %}<span class="text-muted">None</span>{% endif %}</td>
+            <td role="cell"><span class="datagrid__label" aria-hidden="true">Roles</span><span class="datagrid__stack">{% if person.is_superuser %}<span class="tag tag--brand"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-shield"></use></svg>Full access</span>{% endif %}{% for group in person.groups.all %}<span>{{ group.name }}</span>{% empty %}{% if not person.is_superuser %}<span class="text-muted">No roles</span>{% endif %}{% endfor %}</span></td>
+            <td role="cell"><span class="datagrid__label" aria-hidden="true">Sign-in</span><span>{% if person.is_active %}<span class="tag tag--ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>Can sign in</span>{% else %}<span class="tag tag--plain"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-slash"></use></svg>Switched off</span>{% endif %}</span></td>
+            <td role="cell"><span class="datagrid__label" aria-hidden="true">Last signed in</span>{% if person.last_login %}<span>{% include "accounts/partials/when.html" with at=person.last_login only %}</span>{% else %}<span class="text-muted">Never</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if is_paginated %}
+    <nav class="pager" aria-label="Pages">
+      <ul>
+        {% if page_obj.has_previous %}<li><a href="{{ staff_url }}?page={{ page_obj.previous_page_number }}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg><span class="visually-hidden">Previous page</span></a></li>{% endif %}
+        <li><span class="pager__text">Page {{ page_obj.number }} of {{ paginator.num_pages }}</span></li>
+        {% if page_obj.has_next %}<li><a href="{{ staff_url }}?page={{ page_obj.next_page_number }}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg><span class="visually-hidden">Next page</span></a></li>{% endif %}
+      </ul>
+    </nav>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

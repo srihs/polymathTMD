@@ -1,0 +1,12 @@
+{# Body of the "not approved" message to the requester (brief 005, D.8). Plain text. Context: link_request (LinkRequest with rejection_reason), request_url (str, absolute, zoom:request). Never receives a host key. #}{% autoescape off %}Hello {{ link_request.requester_name }},
+
+The IT desk couldn't approve your Zoom link request {{ link_request.reference }} for {{ link_request.class_name }}.
+
+Their reason:
+{{ link_request.rejection_reason }}
+
+If you can fix this, send a new request here:
+{{ request_url }}
+
+Polymath College IT desk
+{% endautoescape %}

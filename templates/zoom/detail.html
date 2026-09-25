@@ -1,0 +1,199 @@
+{# One Zoom link request for IT (brief 005, D.5), in the shell; only for zoom.review_linkrequest. Also re-rendered by approve and reject when they fail. One column of boxes in reading order: the failed-approve notice, the decided line, Request (facts, earlier requests), Classes, Which accounts are free, Also waiting at overlapping times, then Approve and send the link (or the no-free / started warning) and Reject this request. Never shows a host key: only the "Host key saved" / "No host key saved" words beside each account. Context: link_request (LinkRequest: reference, class_name, notes, wants_recording, schedule_summary, requester_name, requester_email, requester_phone, requester_phone_display, status, get_status_display, created_at, verified_at, decided_by, decided_at, rejection_reason, host_account (label, email), join_url, meeting_id, passcode), occurrences (list of Occurrence), occurrence_count (int), can_decide (bool), has_started (bool), availability (list of dict: account, is_free, has_host_key, busy_count, clashes (list of dict: occurrence, other)), free_count (int), overlapping_waiting (list of LinkRequest with first_overlap), earlier_requests (list of LinkRequest), approve_form (ApproveForm or None; each host_account radio carries its account as choice.data.value.instance), reject_form (RejectForm or None), needs_manual_details (bool), approve_error (str or None), can_add_account (bool, zoom.add_hostaccount; with no paid accounts, it links to zoom:account_add, brief 008), timetable_url (str or None; set only for an approved request, the month page at its first class filtered to its account, brief 009; shown as See it on the timetable under Booked on). The two no-approve-form notices live only here; the view signals which with has_started. Partials: partials/crumb, zoom/partials/status_tag, zoom/partials/recording_tag, zoom/partials/recording_answer.txt, zoom/partials/schedule, zoom/partials/when, zoom/partials/class_span, zoom/partials/occurrence_list, partials/error_summary, partials/choice_group_head, partials/field. Filters: zoom_format (class_time). #}{% extends "base.html" %}
+{% load zoom_format %}
+
+{% block title %}{{ link_request.reference }}: {{ link_request.class_name }}{% endblock %}
+
+{% block heading %}<span class="break-anywhere">{{ link_request.reference }}: {{ link_request.class_name }}</span>{% endblock %}
+
+{% block breadcrumb %}{% url 'zoom:queue' as queue_url %}{% include "partials/crumb.html" with url=queue_url text="Zoom link requests" current=False only %}{% include "partials/crumb.html" with url="" text=link_request.reference current=True only %}{% endblock %}
+
+{% block content %}
+{% if approve_error %}
+<div class="notice notice--bad" role="alert" tabindex="-1" data-error-summary>
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg>
+  <div class="notice__body">
+    <p class="notice__title">Nothing was booked</p>
+    <p>{{ approve_error }}</p>
+  </div>
+</div>
+{% endif %}
+
+{% if link_request.status == "approved" %}
+<div class="notice notice--ok">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>
+  <p>This request was approved by {{ link_request.decided_by }} on {% include "zoom/partials/when.html" with at=link_request.decided_at only %}.</p>
+</div>
+{% elif link_request.status == "rejected" %}
+<div class="notice notice--note">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg>
+  <p>This request was not approved by {{ link_request.decided_by }} on {% include "zoom/partials/when.html" with at=link_request.decided_at only %}.</p>
+</div>
+{% endif %}
+
+<section class="box" aria-labelledby="request-title">
+  <div class="box__head"><h2 class="box__title" id="request-title">Request</h2></div>
+  <div class="box__body">
+    <div class="facts-cols">
+      <dl class="facts">
+        <dt>Status</dt>
+        <dd><span class="tags">{% include "zoom/partials/status_tag.html" with status=link_request.status label=link_request.get_status_display only %}{% if link_request.wants_recording %}{% include "zoom/partials/recording_tag.html" only %}{% endif %}</span></dd>
+        <dt>Class</dt>
+        <dd>{{ link_request.class_name }}</dd>
+        <dt>When</dt>
+        <dd>{% include "zoom/partials/schedule.html" with summary=link_request.schedule_summary only %}</dd>
+        <dt>Recording</dt>
+        <dd>{% include "zoom/partials/recording_answer.txt" with wants_recording=link_request.wants_recording only %}</dd>
+        <dt>Notes</dt>
+        <dd>{% if link_request.notes %}{{ link_request.notes|linebreaksbr }}{% else %}<span class="text-muted">None</span>{% endif %}</dd>
+        {% if link_request.status == "approved" %}
+        <dt>Booked on</dt>
+        <dd>{{ link_request.host_account.label }} <span class="text-muted">{{ link_request.host_account.email }}</span>{% if timetable_url %}<br><a class="tap-link" href="{{ timetable_url }}">See it on the timetable</a>{% endif %}</dd>
+        <dt>Zoom link</dt>
+        <dd><a class="tap-link" href="{{ link_request.join_url }}">{{ link_request.join_url }}</a></dd>
+        <dt>Meeting ID</dt>
+        <dd>{{ link_request.meeting_id }}</dd>
+        <dt>Passcode</dt>
+        <dd>{% if link_request.passcode %}{{ link_request.passcode }}{% else %}<span class="text-muted">None</span>{% endif %}</dd>
+        {% elif link_request.status == "rejected" %}
+        <dt>Reason</dt>
+        <dd>{{ link_request.rejection_reason|linebreaksbr }}</dd>
+        {% endif %}
+      </dl>
+      <dl class="facts">
+        <dt>Name</dt>
+        <dd>{{ link_request.requester_name }}</dd>
+        <dt>Email</dt>
+        <dd><a class="tap-link" href="mailto:{{ link_request.requester_email }}">{{ link_request.requester_email }}</a></dd>
+        <dt>Phone</dt>
+        <dd><a class="tap-link" href="tel:{{ link_request.requester_phone }}">{{ link_request.requester_phone_display }}</a></dd>
+        <dt>Sent</dt>
+        <dd>{% include "zoom/partials/when.html" with at=link_request.created_at only %}</dd>
+        <dt>Confirmed</dt>
+        <dd>{% if link_request.verified_at %}{% include "zoom/partials/when.html" with at=link_request.verified_at only %}{% else %}<span class="text-muted">Not yet</span>{% endif %}</dd>
+      </dl>
+    </div>
+    {% if earlier_requests %}
+    <div class="box__section">
+      <h3 class="box__subtitle">Earlier requests from this person</h3>
+      <ul class="worklist">
+        {% for earlier in earlier_requests %}<li><div class="worklist__row"><a class="worklist__ref tap-link" href="{% url 'zoom:detail' earlier.pk %}">{{ earlier.reference }}</a><span class="break-anywhere">{{ earlier.class_name }}</span>{% include "zoom/partials/status_tag.html" with status=earlier.status label=earlier.get_status_display only %}</div></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="box" aria-labelledby="classes-title">
+  <div class="box__head"><h2 class="box__title" id="classes-title">Classes ({{ occurrence_count }})</h2></div>
+  <div class="box__body">
+    {% include "zoom/partials/occurrence_list.html" with occurrences=occurrences only %}
+  </div>
+</section>
+
+{% if can_decide %}
+<section class="box" aria-labelledby="avail-title">
+  <div class="box__head"><h2 class="box__title" id="avail-title">Which accounts are free</h2></div>
+  <div class="box__body">
+    {% if availability %}{% with total=availability|length %}
+    <p class="box__lead">{{ free_count }} of {{ total }} paid account{{ total|pluralize }} {% if free_count == 1 %}is{% else %}are{% endif %} free for every class. Checked against approved bookings when this page loaded.</p>
+    {% endwith %}
+    <ul class="avail">
+      {% for entry in availability %}
+      <li class="avail__item">
+        <div class="avail__who">
+          <p class="avail__name">{{ entry.account.label }}</p>
+          <p class="avail__email">{{ entry.account.email }}</p>
+        </div>
+        {% if entry.is_free %}<span class="tag tag--ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>Free for all {{ occurrence_count }} class{{ occurrence_count|pluralize:"es" }}</span>
+        {% else %}<span class="tag tag--warn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>Busy for {{ entry.busy_count }} of {{ occurrence_count }} class{{ occurrence_count|pluralize:"es" }}</span>
+        <ul class="avail__clashes">
+          {% for clash in entry.clashes %}<li>{% include "zoom/partials/class_span.html" with start=clash.occurrence.starts_at end=clash.occurrence.ends_at only %} clashes with <a class="tap-link" href="{% url 'zoom:detail' clash.other.link_request.pk %}">{{ clash.other.link_request.reference }}</a> <span class="break-anywhere">{{ clash.other.link_request.class_name }}</span>, {{ clash.other.starts_at|class_time }} to {{ clash.other.ends_at|class_time }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="box__lead">No paid Zoom accounts are set up yet. {% if can_add_account %}<a class="tap-link" href="{% url 'zoom:account_add' %}">Add a Zoom account</a>{% else %}Ask someone in the IT desk to add them.{% endif %}</p>
+    {% endif %}
+  </div>
+</section>
+
+{% if overlapping_waiting %}
+<section class="box" aria-labelledby="overlap-title">
+  <div class="box__head"><h2 class="box__title" id="overlap-title">Also waiting at overlapping times</h2></div>
+  <div class="box__body">
+    <p class="box__lead">These don't block each other, but only one of them can have each account. Decide the one with the soonest class first.</p>
+    <ul class="worklist">
+      {% for other in overlapping_waiting %}<li><div class="worklist__row"><a class="worklist__ref tap-link" href="{% url 'zoom:detail' other.pk %}">{{ other.reference }}</a><span class="break-anywhere">{{ other.class_name }}</span><span class="text-muted">First overlap {% include "zoom/partials/when.html" with at=other.first_overlap only %}</span></div></li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% endif %}
+
+{% if approve_form %}
+<section class="box" aria-labelledby="approve-title">
+  <div class="box__head"><h2 class="box__title" id="approve-title">Approve and send the link</h2></div>
+  <div class="box__body">
+    <div class="box__form">
+      {% include "partials/error_summary.html" with form=approve_form lead="We couldn't approve this yet." only %}
+      {% if needs_manual_details %}
+      <div class="notice notice--note">
+        <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg>
+        <div class="notice__body">
+          <p class="notice__title">Create the meeting in Zoom first</p>
+          <p>Sign in to Zoom as the account you choose below and create the meeting for every class. Then paste its link, meeting ID and passcode here.</p>
+          {% if link_request.wants_recording %}<p class="notice__strong">Turn on cloud recording for this meeting. The requester asked for it.</p>{% endif %}
+        </div>
+      </div>
+      {% endif %}
+      <form method="post" action="{% url 'zoom:approve' link_request.pk %}" novalidate>
+        {% csrf_token %}
+        {% with field=approve_form.host_account %}<fieldset class="options" aria-describedby="{% if field.errors %}{{ field.html_name }}-error {% endif %}{{ field.html_name }}-help">
+          {% include "partials/choice_group_head.html" with field=field only %}
+          <div class="options__list options__list--stack">
+            {% for choice in field %}{% with account=choice.data.value.instance %}<label class="choice choice--tall" for="{{ choice.id_for_label }}"><input type="radio" id="{{ choice.id_for_label }}" name="{{ field.html_name }}" value="{{ choice.data.value }}"{% if choice.data.selected %} checked{% endif %}{% if field.errors %} aria-invalid="true"{% endif %}><span class="choice__words"><span>{{ account.label }}</span><span class="choice__help">{{ account.email }}</span><span class="tags">{% if account.has_host_key %}<span class="tag tag--plain"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-key"></use></svg>Host key saved</span>{% else %}<span class="tag tag--warn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>No host key saved</span>{% endif %}</span>{% if not account.has_host_key %}<span class="choice__help">The email will ask the requester to get the host key from the IT desk.</span>{% endif %}</span></label>{% endwith %}
+            {% endfor %}
+          </div>
+        </fieldset>{% endwith %}
+        {% if needs_manual_details %}
+        {% include "partials/field.html" with field=approve_form.join_url only %}
+        {% include "partials/field.html" with field=approve_form.meeting_id narrow=True only %}
+        {% include "partials/field.html" with field=approve_form.passcode narrow=True only %}
+        {% endif %}
+        <div class="form-actions">
+          <button class="button button--primary" type="submit">Approve and email the link</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+{% else %}
+<div class="notice notice--warn">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+  <p>{% if has_started %}The first class has already started. Reject this request and ask for a new one.{% else %}No paid Zoom account is free for every class in this request. Reject it with a reason, or ask the requester to change the times.{% endif %}</p>
+</div>
+{% endif %}
+
+{% if reject_form %}
+<section class="box" aria-labelledby="reject-title">
+  <div class="box__head"><h2 class="box__title" id="reject-title">Reject this request</h2></div>
+  <div class="box__body">
+    <div class="box__form">
+      {% include "partials/error_summary.html" with form=reject_form lead="We couldn't send the reason yet." only %}
+      <form method="post" action="{% url 'zoom:reject' link_request.pk %}" novalidate>
+        {% csrf_token %}
+        {% include "partials/field.html" with field=reject_form.reason only %}
+        <div class="form-actions">
+          <button class="button button--secondary" type="submit">Reject and email the reason</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

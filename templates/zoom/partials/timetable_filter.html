@@ -1,0 +1,16 @@
+{# The timetable's account filter (brief 009, D.2): a GET form, shared by the month page and the day view. It is a filter, not a search, so it has no role="search", and it never submits on change (WCAG 3.2.2). The view guarantees filter_accounts holds selected_account when one is set (D9, OQ2), so this only marks the matching option. The caller leaves the form out when there is nothing to choose. with: action (str, the page's URL without a query), month_value (str "YYYY-MM" for the month page's hidden input, or "" on the day view), filter_accounts (list of HostAccount: pk, label), selected_account (HostAccount or None). #}
+<div class="box__form">
+  <form class="finder__search" method="get" action="{{ action }}">
+    {% if month_value %}<input type="hidden" name="month" value="{{ month_value }}">{% endif %}
+    <div class="field">
+      <label class="field__label" for="account">Show</label>
+      <p class="field__help" id="account-help">Pick one account to see only its classes. Classes waiting for IT are hidden then, because they don't have an account yet.</p>
+      <select class="input" id="account" name="account" aria-describedby="account-help">
+        <option value="">All accounts</option>
+        {% for account in filter_accounts %}<option value="{{ account.pk }}"{% if selected_account and account.pk == selected_account.pk %} selected{% endif %}>{{ account.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="button button--primary" type="submit">Show</button>
+  </form>
+</div>

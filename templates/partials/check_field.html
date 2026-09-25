@@ -1,0 +1,6 @@
+{# One checkbox in the f-desk .check pattern (brief 005 criterion 7; shared since brief 008, and by every app since brief 010): the whole label is the 44px target with the input first, help p#<name>-help under the words, then the error line. With an error the input gets aria-invalid="true" and aria-describedby="<name>-error <name>-help"; otherwise aria-describedby="<name>-help". The label and help words come from the form. Used by the request form (wants_recording), the Zoom account form (is_paid, is_active, remove_host_key) and the staff form (is_superuser, is_active). with: field (BoundField of a BooleanField). Partials: partials/field_error. #}
+{% with name=field.html_name %}<div class="field">
+  <label class="check" for="{{ field.id_for_label }}"><input type="checkbox" id="{{ field.id_for_label }}" name="{{ name }}"{% if field.value %} checked{% endif %}{% if field.errors %} aria-invalid="true" aria-describedby="{{ name }}-error {{ name }}-help"{% else %} aria-describedby="{{ name }}-help"{% endif %}>{{ field.label }}</label>
+  <p class="field__help check__help" id="{{ name }}-help">{{ field.help_text }}</p>
+  {% include "partials/field_error.html" with field=field only %}
+</div>{% endwith %}

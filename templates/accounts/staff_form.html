@@ -1,0 +1,87 @@
+{# Add a person, or change one (brief 010, criteria 7 and 12, D.3), in the shell; add needs accounts.add_user, change needs accounts.change_user and a person the viewer may manage. One template: is_add chooses the title, h1, breadcrumb, error-summary lead and button. One box holding the form: the error summary first (focused by app.js after a failed save), then three sections: About them (first and last name side by side, username, work email), What they can do (the Roles checkboxes, each listing its permission names, then Full access to everything only when the form has it, i.e. for superusers), and either Starting password (add) or Sign-in (change: Can sign in, then the Last signed in and Added on facts). On change a second box, Password, links to Set a new password, or for your own record to Change your password, because setting your own through the staff screen would sign you out. Guard errors (criterion 13) arrive as ordinary field errors on is_active or is_superuser. Password inputs never carry a value (partials/field). Context: form (StaffCreateForm or StaffChangeForm: first_name, last_name, username, email, groups, is_superuser only for superusers, password1 / password2 on add only, is_active on change only; labels, help and widget attributes come from the form), roles (list of dict in form order: choice (BoundWidget of form.groups: id_for_label, choice_label, data.value, data.selected), permissions (list of str, sorted), can_give (bool; False renders a locked div.choice row, disabled, with the criterion 32 reason tied by aria-describedby, D.13)), roles_read_only (bool; a non-superuser's own record: every role box disabled, the criterion 33 note div#groups-note above them and first in the group's aria-describedby, no per-role reasons, D.13; the template writes disabled itself because the rows are hand-written, not choice.tag), person (User or None; on change: pk, __str__, date_joined, last_login), is_add (bool), user (User, the viewer; person.pk == user.pk picks the Password box's self copy, G4). Partials: partials/crumb, partials/error_summary, partials/field, partials/check_field, partials/choice_group_head, accounts/partials/role_words, accounts/partials/when. #}{% extends "base.html" %}
+
+{% block title %}{% if is_add %}Add a person{% else %}Change {{ person }}{% endif %}{% endblock %}
+
+{% block heading %}{% if is_add %}Add a person{% else %}Change <span class="break-anywhere">{{ person }}</span>{% endif %}{% endblock %}
+
+{% block breadcrumb %}{% url 'accounts:staff' as staff_url %}{% include "partials/crumb.html" with url=staff_url text="Staff and access" current=False only %}{% if is_add %}{% include "partials/crumb.html" with url="" text="Add a person" current=True only %}{% else %}{% include "partials/crumb.html" with url="" text=person current=True only %}{% endif %}{% endblock %}
+
+{% block content %}
+<div class="box">
+  <div class="box__body">
+    <div class="box__form">
+      {% if is_add %}{% include "partials/error_summary.html" with form=form lead="We couldn't save this person yet." only %}{% else %}{% include "partials/error_summary.html" with form=form lead="We couldn't save the changes yet." only %}{% endif %}
+      <form method="post" action="{% if is_add %}{% url 'accounts:staff_add' %}{% else %}{% url 'accounts:staff_edit' person.pk %}{% endif %}" novalidate>
+        {% csrf_token %}
+
+        <fieldset class="formsection">
+          <legend class="formsection__title">About them</legend>
+          <div class="field-pair">
+            {% include "partials/field.html" with field=form.first_name only %}
+            {% include "partials/field.html" with field=form.last_name only %}
+          </div>
+          {% include "partials/field.html" with field=form.username only %}
+          {% include "partials/field.html" with field=form.email only %}
+        </fieldset>
+
+        <fieldset class="formsection">
+          <legend class="formsection__title">What they can do</legend>
+          {% with field=form.groups %}<fieldset class="options" aria-describedby="{% if field.errors %}{{ field.html_name }}-error {% endif %}{% if roles_read_only %}{{ field.html_name }}-note {% endif %}{{ field.html_name }}-help">
+            {% include "partials/choice_group_head.html" with field=field only %}
+            {% if roles_read_only %}
+            <div class="notice notice--note" id="{{ field.html_name }}-note">
+              <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>
+              <div class="notice__body"><p>You can't change your own roles. Ask someone else with Staff and access, or someone with full access, to change them.</p></div>
+            </div>
+            {% endif %}
+            <div class="options__list options__list--stack">
+              {% for role in roles %}{% with choice=role.choice %}{% if not role.can_give and not roles_read_only %}<div class="choice choice--tall"><input type="checkbox" id="{{ choice.id_for_label }}" name="{{ field.html_name }}" value="{{ choice.data.value }}"{% if choice.data.selected %} checked{% endif %} disabled aria-describedby="{{ choice.id_for_label }}-reason"{% if field.errors %} aria-invalid="true"{% endif %}><span class="choice__words"><label class="choice__words" for="{{ choice.id_for_label }}">{% include "accounts/partials/role_words.html" with name=choice.choice_label permissions=role.permissions only %}</label><span class="choice__reason" id="{{ choice.id_for_label }}-reason"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg><span>You can't give or remove this role, because you don't have all its rights yourself.</span></span></span></div>{% else %}<label class="choice choice--tall" for="{{ choice.id_for_label }}"><input type="checkbox" id="{{ choice.id_for_label }}" name="{{ field.html_name }}" value="{{ choice.data.value }}"{% if choice.data.selected %} checked{% endif %}{% if roles_read_only %} disabled{% endif %}{% if field.errors %} aria-invalid="true"{% endif %}><span class="choice__words">{% include "accounts/partials/role_words.html" with name=choice.choice_label permissions=role.permissions only %}</span></label>{% endif %}{% endwith %}
+              {% endfor %}
+            </div>
+          </fieldset>{% endwith %}
+          {% if form.is_superuser %}{% include "partials/check_field.html" with field=form.is_superuser only %}{% endif %}
+        </fieldset>
+
+        {% if is_add %}
+        <fieldset class="formsection">
+          <legend class="formsection__title">Starting password</legend>
+          {% include "partials/field.html" with field=form.password1 only %}
+          {% include "partials/field.html" with field=form.password2 only %}
+        </fieldset>
+        {% else %}
+        <fieldset class="formsection">
+          <legend class="formsection__title">Sign-in</legend>
+          {% include "partials/check_field.html" with field=form.is_active only %}
+          <dl class="facts">
+            <dt>Last signed in</dt>
+            <dd>{% if person.last_login %}{% include "accounts/partials/when.html" with at=person.last_login only %}{% else %}Never{% endif %}</dd>
+            <dt>Added on</dt>
+            <dd><time datetime="{{ person.date_joined|date:'c' }}">{{ person.date_joined|date:"D j M Y" }}</time></dd>
+          </dl>
+        </fieldset>
+        {% endif %}
+
+        <div class="form-actions">
+          <button class="button button--primary" type="submit">{% if is_add %}Add the person{% else %}Save changes{% endif %}</button>
+          <a class="button button--quiet" href="{% url 'accounts:staff' %}">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% if not is_add %}
+<section class="box" aria-labelledby="password-title">
+  <div class="box__head"><h2 class="box__title" id="password-title">Password</h2></div>
+  <div class="box__body">
+    {% if person.pk == user.pk %}
+    <p class="box__lead">To change your own password, use Change your password. You'll stay signed in.</p>
+    <a class="button button--secondary" href="{% url 'accounts:password_change' %}">Change your password</a>
+    {% else %}
+    <p class="box__lead">We never show passwords. If they've forgotten theirs, set a new one and give it to them yourself.</p>
+    <a class="button button--secondary" href="{% url 'accounts:staff_password' person.pk %}">Set a new password</a>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

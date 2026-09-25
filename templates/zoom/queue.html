@@ -1,0 +1,93 @@
+{# IT's Zoom link request queue (brief 005, D.4), in the shell; only for zoom.review_linkrequest. The share line with the public form's address, then one box: status tabs (links carrying only ?status, so each count matches its list), the search form (GET, within the current tab), the result line, the table (a card per row below 768px, explicit table roles), the pager, or an empty state. Never shows a host key or whether one is saved. Context: link_requests (page of LinkRequest: pk, reference, class_name, wants_recording, requester_name, requester_email, requester_phone_display, status, get_status_display, first_start, occurrence_count), page_obj / paginator / is_paginated (Django's), tabs (list of dict: value, label, count, current), status (str, the current tab), q (str, "" if none), public_form_url (str, absolute). Partials: partials/crumb, zoom/partials/status_tag, zoom/partials/recording_tag. Filters: zoom_format (class_date, class_time). #}{% extends "base.html" %}
+{% load zoom_format %}
+
+{% block title %}Zoom link requests{% endblock %}
+
+{% block heading %}Zoom link requests{% endblock %}
+
+{% block breadcrumb %}{% include "partials/crumb.html" with url="" text="Zoom link requests" current=True only %}{% endblock %}
+
+{% block content %}
+{% url 'zoom:queue' as queue_url %}
+<div class="notice notice--note">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg>
+  <div class="notice__body">
+    <p class="notice__title">Share this link with staff who need a Zoom link:</p>
+    <p><a class="break-anywhere" href="{{ public_form_url }}">{{ public_form_url }}</a></p>
+  </div>
+</div>
+
+<div class="box">
+  <div class="box__head box__head--tabs">
+    <nav class="tabs" aria-label="Filter by status">
+      <ul class="tabs__list">
+        {% for tab in tabs %}<li><a class="tabs__link" href="{{ queue_url }}?status={{ tab.value }}"{% if tab.current %} aria-current="page"{% endif %}>{{ tab.label }} <span class="tabs__count">{{ tab.count }}<span class="visually-hidden"> request{{ tab.count|pluralize }}</span></span></a></li>
+        {% endfor %}
+      </ul>
+    </nav>
+  </div>
+  <div class="box__body">
+    <form class="finder__search" method="get" action="{{ queue_url }}" role="search">
+      <input type="hidden" name="status" value="{{ status }}">
+      <div class="field">
+        <label class="field__label" for="q">Find a request</label>
+        <p class="field__help" id="q-help">Type a reference like ZL-0042, a class, a name, an email or a phone number.</p>
+        <div class="searchbox">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <input class="input" type="search" id="q" name="q" value="{{ q }}" aria-describedby="q-help">
+        </div>
+      </div>
+      <button class="button button--primary" type="submit">Search</button>
+      {% if q %}<a class="button button--quiet" href="{{ queue_url }}?status={{ status }}">Clear the search</a>{% endif %}
+    </form>
+
+    {% if link_requests %}
+    {% with n=paginator.count %}<p class="result-line">{% if q %}{{ n }} request{{ n|pluralize }} match{{ n|pluralize:"es," }} "{{ q }}"{% elif status == "waiting" %}{{ n }} request{{ n|pluralize }} waiting for IT{% elif status == "approved" %}{{ n }} request{{ n|pluralize }} with a link sent{% elif status == "rejected" %}{{ n }} request{{ n|pluralize }} not approved{% else %}{{ n }} request{{ n|pluralize }} in total{% endif %}{% if is_paginated %}. Showing {{ page_obj.start_index }} to {{ page_obj.end_index }}{% endif %}.</p>{% endwith %}
+    <div class="datagrid-wrap">
+      <table class="datagrid" role="table">
+        <caption class="visually-hidden">{% if status == "waiting" %}Requests waiting for IT, soonest first class first{% elif status == "approved" %}Requests with a link sent, most recently decided first{% elif status == "rejected" %}Requests not approved, most recently decided first{% else %}All requests, newest first{% endif %}</caption>
+        <thead role="rowgroup">
+          <tr role="row"><th scope="col" role="columnheader">Reference</th><th scope="col" role="columnheader">Class</th><th scope="col" role="columnheader">Requested by</th><th scope="col" role="columnheader">First class</th><th scope="col" role="columnheader">Classes</th><th scope="col" role="columnheader">Status</th></tr>
+        </thead>
+        <tbody role="rowgroup">
+          {% for link_request in link_requests %}
+          <tr role="row">
+            <th scope="row" role="rowheader"><span class="datagrid__label" aria-hidden="true">Reference</span><a class="datagrid__ref tap-link" href="{% url 'zoom:detail' link_request.pk %}">{{ link_request.reference }}</a></th>
+            <td role="cell"><span class="datagrid__label" aria-hidden="true">Class</span><span class="datagrid__stack"><span class="break-anywhere">{{ link_request.class_name }}</span>{% if link_request.wants_recording %}{% include "zoom/partials/recording_tag.html" only %}{% endif %}</span></td>
+            <td role="cell"><span class="datagrid__label" aria-hidden="true">Requested by</span><span class="datagrid__stack"><span class="datagrid__strong break-anywhere">{{ link_request.requester_name }}</span><span class="text-muted break-anywhere">{{ link_request.requester_email }}</span><span class="text-muted break-anywhere">{{ link_request.requester_phone_display }}</span></span></td>
+            <td role="cell"><span class="datagrid__label" aria-hidden="true">First class</span><span class="datagrid__stack"><time datetime="{{ link_request.first_start|date:'c' }}">{{ link_request.first_start|class_date }}</time><span>{{ link_request.first_start|class_time }}</span></span></td>
+            <td role="cell"><span class="datagrid__label" aria-hidden="true">Classes</span><span>{{ link_request.occurrence_count }}</span></td>
+            <td role="cell"><span class="datagrid__label" aria-hidden="true">Status</span><span>{% include "zoom/partials/status_tag.html" with status=link_request.status label=link_request.get_status_display only %}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if is_paginated %}
+    <nav class="pager" aria-label="Pages">
+      <ul>
+        {% if page_obj.has_previous %}<li><a href="{{ queue_url }}?status={{ status }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}&amp;page={{ page_obj.previous_page_number }}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg><span class="visually-hidden">Previous page</span></a></li>{% endif %}
+        <li><span class="pager__text">Page {{ page_obj.number }} of {{ paginator.num_pages }}</span></li>
+        {% if page_obj.has_next %}<li><a href="{{ queue_url }}?status={{ status }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}&amp;page={{ page_obj.next_page_number }}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg><span class="visually-hidden">Next page</span></a></li>{% endif %}
+      </ul>
+    </nav>
+    {% endif %}
+
+    {% elif q %}
+    <div class="empty">
+      <span class="disc disc--64"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg></span>
+      <h2>No requests match "{{ q }}".</h2>
+      <p>Check the spelling{% if status != "all" %}, or <a href="{{ queue_url }}?status=all&amp;q={{ q|urlencode }}">search in All</a>{% endif %}.</p>
+      <a class="button button--secondary" href="{{ queue_url }}?status={{ status }}">Clear the search</a>
+    </div>
+    {% else %}
+    <div class="empty">
+      <span class="disc disc--64"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-inbox"></use></svg></span>
+      <h2>Nothing here yet.</h2>
+      <p>Requests show here once the person who sent them has confirmed their email address.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

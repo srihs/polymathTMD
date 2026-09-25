@@ -1,0 +1,2 @@
+{# One breadcrumb item after Home, with the chevron separator inside the li (f.md §5). Used in the breadcrumb block of shell pages. with: url (str, a reversed URL, or "" for the current page), text (str), current (bool; true renders a span with aria-current="page" instead of a link). #}
+<li><svg class="icon crumbs__sep" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>{% if current %}<span aria-current="page">{{ text }}</span>{% else %}<a href="{{ url }}">{{ text }}</a>{% endif %}</li>

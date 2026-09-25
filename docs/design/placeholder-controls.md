@@ -1,6 +1,6 @@
 # Placeholder controls (top-bar search and bell before their feature exists)
 
-Origin: brief 004, D12 and criteria 37–38. This applies to f-desk (`docs/design/directions/f.md`). Brief 005 replaces both controls with real ones and can then delete this file.
+Origin: brief 004, D12 and criteria 37–38. This applies to f-desk (`docs/design/directions/f.md`). Brief 005 (D10) kept both controls as placeholders: the Zoom link request queue got its own search, and IT is notified by email instead of a bell. A later "search and notifications" brief replaces them for real and can then delete this file.
 
 **Why:** the client approved a top bar with a search field and a bell. The app has nothing to search and nothing to notify about yet. The controls stay visible to match the approved look, but they must be honest: nothing submits, nothing is counted, and each one says why it does nothing.
 
@@ -31,7 +31,7 @@ There is no `<form>`, no `name` and no button.
 
 **States.** There is one state: unavailable. It is identical with JS on and off.
 
-**005 replaces it with** f-desk's `<form class="topsearch" role="search" method="get">`: solid border, the purple submit button at the end, a real label and a real placeholder.
+**A later brief replaces it with** f-desk's `<form class="topsearch" role="search" method="get">`: solid border, the purple submit button at the end, a real label and a real placeholder. Brief 005 (D10) left it as a placeholder on purpose: the Zoom queue has its own search (criterion 22), and a site-wide search still needs a design for mixed permissions across more than one section.
 
 ## Empty notifications (`partials/notifications.html`)
 
@@ -45,4 +45,4 @@ There is no `<form>`, no `name` and no button.
 | Links | none |
 | Keyboard | as every `data-pop`: `Escape` and outside click close it and return focus to the summary (JS). It opens with JS off |
 
-`.pop__note` stays useful after 005, as the empty state of a real list.
+`.pop__note` stays useful once a later brief adds real notifications, as the empty state of a real list. Brief 005 (D10) left the bell as a placeholder: IT is notified about Zoom requests by email instead, and a notifications model is its own later brief.

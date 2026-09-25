@@ -1,0 +1,3 @@
+{# The head of a radio or checkbox group inside its <fieldset class="options">: legend, help p#<name>-help and the error line (brief 005; shared by every app since brief 010, criterion 29). The page writes the fieldset tag itself, with aria-describedby="[<name>-error ]<name>-help". with: field (BoundField of a RadioSelect or CheckboxSelectMultiple). Partials: partials/field_error. #}<legend>{{ field.label }}</legend>
+<p class="field__help" id="{{ field.html_name }}-help">{{ field.help_text }}</p>
+{% include "partials/field_error.html" with field=field only %}

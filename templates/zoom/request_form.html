@@ -1,0 +1,70 @@
+{# Public "Request a Zoom link" form (brief 005, D.2), in the public frame. Three sections (The class, When, About you), the honeypot and the submit row. After a failed POST the error summary is the first thing after the h1, and each invalid field is marked and described (criterion 7). Without JS the weekly fields always show under "If it's every week"; app.js hides and disables them while "Just once" is chosen. Context: form (LinkRequestForm: class_name, wants_recording, notes, first_date, start_time, end_time, repeat, weekdays, last_date, requester_name, requester_email, requester_phone, website; non_field_errors holds the hourly-limit message), max_occurrences (int; in the last_date help, which the form supplies), today (date, the date inputs' min), latest_date (date, their max). JS hooks: data-repeat (each repeat radio), data-weekly-fields (the weekly group), data-error-summary (the summary). Partials: partials/error_summary, partials/field, partials/check_field, partials/field_error, partials/choice_group_head. #}{% extends "public_base.html" %}
+
+{% block title %}Request a Zoom link{% endblock %}
+
+{% block heading %}Request a Zoom link{% endblock %}
+
+{% block content %}
+{% include "partials/error_summary.html" with form=form lead="We couldn't send this yet." only %}
+<p class="public__lead">Ask the IT desk for a Zoom link for your class. First we'll email you a link to check your address. Then IT will email you the Zoom link.</p>
+
+{% with min_date=today|date:"Y-m-d" max_date=latest_date|date:"Y-m-d" %}
+<form method="post" action="{% url 'zoom:request' %}" novalidate>
+  {% csrf_token %}
+
+  <fieldset class="formsection">
+    <legend class="formsection__title">The class</legend>
+    {% include "partials/field.html" with field=form.class_name only %}
+    {% include "partials/check_field.html" with field=form.wants_recording only %}
+    {% include "partials/field.html" with field=form.notes only %}
+  </fieldset>
+
+  <fieldset class="formsection">
+    <legend class="formsection__title">When</legend>
+    {% include "partials/field.html" with field=form.first_date min=min_date max=max_date narrow=True only %}
+    <div class="field-pair">
+      {% include "partials/field.html" with field=form.start_time only %}
+      {% include "partials/field.html" with field=form.end_time only %}
+    </div>
+
+    {% with field=form.repeat %}<fieldset class="options" aria-describedby="{% if field.errors %}{{ field.html_name }}-error {% endif %}{{ field.html_name }}-help">
+      {% include "partials/choice_group_head.html" with field=field only %}
+      <div class="options__list options__list--two">
+        {% for choice in field %}<label class="choice choice--tall" for="{{ choice.id_for_label }}"><input type="radio" id="{{ choice.id_for_label }}" name="{{ field.html_name }}" value="{{ choice.data.value }}"{% if choice.data.selected %} checked{% endif %}{% if field.errors %} aria-invalid="true"{% endif %} data-repeat><span class="choice__words">{{ choice.choice_label }}<span class="choice__help">{% if choice.data.value == "once" %}One class, on the date above.{% else %}The same time on the days you tick, until a last date.{% endif %}</span></span></label>
+        {% endfor %}
+      </div>
+    </fieldset>{% endwith %}
+
+    <fieldset class="options options--group" data-weekly-fields>
+      <legend>If it's every week</legend>
+      {% with field=form.weekdays %}<fieldset class="options" aria-describedby="{% if field.errors %}{{ field.html_name }}-error {% endif %}{{ field.html_name }}-help">
+        {% include "partials/choice_group_head.html" with field=field only %}
+        <div class="options__list options__list--four">
+          {% for choice in field %}<label class="choice" for="{{ choice.id_for_label }}"><input type="checkbox" id="{{ choice.id_for_label }}" name="{{ field.html_name }}" value="{{ choice.data.value }}"{% if choice.data.selected %} checked{% endif %}{% if field.errors %} aria-invalid="true"{% endif %}>{{ choice.choice_label }}</label>
+          {% endfor %}
+        </div>
+      </fieldset>{% endwith %}
+      {% include "partials/field.html" with field=form.last_date min=min_date max=max_date narrow=True only %}
+    </fieldset>
+  </fieldset>
+
+  <fieldset class="formsection">
+    <legend class="formsection__title">About you</legend>
+    {% include "partials/field.html" with field=form.requester_name only %}
+    {% include "partials/field.html" with field=form.requester_email only %}
+    {% include "partials/field.html" with field=form.requester_phone narrow=True only %}
+  </fieldset>
+
+  {# The honeypot: hidden from everyone by the hidden attribute alone, and out of the tab order. People never fill it in, so a value means a bot (criterion 9). #}
+  <div hidden aria-hidden="true">
+    <label for="{{ form.website.id_for_label }}">{{ form.website.label }}</label>
+    <input type="text" id="{{ form.website.id_for_label }}" name="{{ form.website.html_name }}" tabindex="-1" autocomplete="off">
+  </div>
+
+  <div class="form-actions">
+    <button class="button button--primary" type="submit">Send my request</button>
+  </div>
+  <p class="field__help">Nothing is booked until IT approves it. We'll email you either way.</p>
+</form>
+{% endwith %}
+{% endblock %}

@@ -40,6 +40,7 @@
 
   --grey-25: #FCFAFD;
   --grey-50: #F8F9FA;
+  --grey-100: #EEEFF3;
   --grey-150: #ECEBF2;
   --grey-200: #E9E9EF;
   --grey-210: #E9ECEF;
@@ -53,6 +54,7 @@
   --grey-600: #636779;
   --grey-650: #545A6D;
   --grey-700: #4A504D;
+  --grey-750: #3A3E3C;
   --grey-800: #383D3B;
   --grey-820: #363A38;
   --grey-850: #313533;
@@ -60,6 +62,7 @@
   --grey-950: #262928;
 
   --crest-50: #F1EAF3;
+  --crest-100: #E6D9E9;
   --crest-200: #D5BFDA;
   --crest-300: #CFA3DA;
   --crest-400: #9A5AA8;
@@ -68,20 +71,32 @@
   --crest-700: #5C1F6A;
   --crest-900: #3E2F43;
 
+  --green-50: #D9F2E8;
   --green-300: #6FD3A6;
   --green-700: #17744F;
+  --green-900: #22382F;
+  --amber-50: #FFF4E0;
   --amber-300: #F2C46D;
   --amber-700: #8A5A00;
+  --amber-900: #3D3322;
   --red-50: #FFE3E2;
   --red-300: #F59A94;
   --red-700: #B42318;
   --red-900: #432A2A;
+  --blue-50: #DFEFFC;
   --blue-300: #8CBDF2;
   --blue-700: #1E5FA8;
+  --blue-900: #22334A;
 
   /* Translucent values: the line round a notice, the scrim, shadows. */
+  --alpha-green-line: rgba(23, 116, 79, 0.3);
+  --alpha-amber-line: rgba(138, 90, 0, 0.3);
   --alpha-red-line: rgba(180, 35, 24, 0.3);
+  --alpha-blue-line: rgba(30, 95, 168, 0.3);
+  --alpha-green-line-dk: rgba(111, 211, 166, 0.3);
+  --alpha-amber-line-dk: rgba(242, 196, 109, 0.3);
   --alpha-red-line-dk: rgba(245, 154, 148, 0.3);
+  --alpha-blue-line-dk: rgba(140, 189, 242, 0.3);
   --scrim: rgba(33, 26, 36, 0.4);
   --shadow-pop: 0 5px 20px -6px rgba(99, 103, 121, 0.14);
   --shadow-primary: 0 2px 6px rgba(114, 42, 130, 0.5);
@@ -95,7 +110,9 @@
   --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
   /* f.md §8 sizes at the default 16px root (value in px in the comment). */
+  --fs-tag: 0.65625rem;         /* 10.5: tags and tab counts (brief 004 D14) */
   --fs-caption: 0.75rem;        /* 12: sidebar group titles */
+  --fs-error: 0.765625rem;      /* 12.25: field errors */
   --fs-help: 0.8125rem;         /* 13: field help */
   --fs-body: 0.875rem;          /* 14: body, buttons, inputs, crumbs, footer */
   --fs-nav: 0.9rem;             /* 14.4: sidebar items, wordmark */
@@ -104,6 +121,7 @@
   --fs-page-title: 1.125rem;    /* 18: shell h1 */
   --fs-motto: 1.3125rem;        /* 21: sign-in motto */
 
+  --lh-flat: 1;
   --lh-tight: 1.2;
   --lh-body: 1.5;
   --lh-motto: 1.4;
@@ -125,6 +143,11 @@
   --nav-list-top: 10px;
   --nav-icon-inset: 26px;
   --search-pad-start: 36px;
+  --tag-pad-y: 3px;
+  --tag-pad-x: 5px;
+  --error-gap: 6px;
+  --icon-nudge: 2px;
+  --textarea-pad-y: 10px;
   --fieldset-gap: 32px;
   --signin-band-pad: 32px;
 
@@ -152,6 +175,19 @@
   --gutter: 24px;
   --page-pad-x: 30px;
   --target: 44px;
+  --tab-h: 56px;
+  --cal-day-min: 120px;         /* a month day box's minimum height (brief 009) */
+  --cal-num: 28px;              /* the round "today" marker behind the day number */
+  --cal-time-w: 11em;           /* day list: the time-range column */
+  --cal-ref-w: 6.5em;           /* day list: the reference column */
+  --form-w: 640px;
+  --field-narrow: 16rem;
+  --textarea-min: 110px;
+  --measure: 40ch;
+  --disc-lg: 64px;
+  --row-label-w: 8.5em;
+  --facts-dt-min: 8em;
+  --facts-dt-max: 12em;
   --search-w: 19rem;
   --pop-w: 320px;
   --pop-min-w: 160px;
@@ -169,9 +205,12 @@
   --signin-disc-sm: 132px;
   --signin-crest-sm: 96px;
 
+  --icon-sm: 12px;
+  --icon-inline: 14px;
   --icon-md: 16px;
   --icon-lg: 18px;
   --icon-xl: 20px;
+  --icon-disc: 28px;
 
   --dur-fast: 150ms;
   --dur: 200ms;
@@ -208,11 +247,21 @@
   --c-on-primary: var(--white);
   --c-focus: var(--crest-600);
   --c-ok-text: var(--green-700);
+  --c-ok-soft: var(--green-50);
+  --c-ok-line: var(--alpha-green-line);
   --c-warn-text: var(--amber-700);
+  --c-warn-soft: var(--amber-50);
+  --c-warn-line: var(--alpha-amber-line);
   --c-bad-text: var(--red-700);
   --c-bad-soft: var(--red-50);
   --c-bad-line: var(--alpha-red-line);
   --c-note-text: var(--blue-700);
+  --c-note-soft: var(--blue-50);
+  --c-note-line: var(--alpha-blue-line);
+  --c-plain-text: var(--grey-650);
+  --c-plain-soft: var(--grey-100);
+  --c-brand-text: var(--crest-600);
+  --c-brand-soft: var(--crest-100);
   --c-boxed-outside: var(--grey-150);
   --c-shadow-pop: var(--shadow-pop);
   --c-shadow-sheet: var(--shadow-sheet);
@@ -303,11 +352,21 @@
   --c-primary-soft: var(--crest-900);
   --c-focus: var(--crest-300);
   --c-ok-text: var(--green-300);
+  --c-ok-soft: var(--green-900);
+  --c-ok-line: var(--alpha-green-line-dk);
   --c-warn-text: var(--amber-300);
+  --c-warn-soft: var(--amber-900);
+  --c-warn-line: var(--alpha-amber-line-dk);
   --c-bad-text: var(--red-300);
   --c-bad-soft: var(--red-900);
   --c-bad-line: var(--alpha-red-line-dk);
   --c-note-text: var(--blue-300);
+  --c-note-soft: var(--blue-900);
+  --c-note-line: var(--alpha-blue-line-dk);
+  --c-plain-text: var(--grey-300);
+  --c-plain-soft: var(--grey-750);
+  --c-brand-text: var(--crest-300);
+  --c-brand-soft: var(--crest-900);
   --c-boxed-outside: var(--grey-950);
   --c-shadow-pop: var(--shadow-pop-dk);
   --c-shadow-sheet: var(--shadow-sheet-dk);
@@ -385,11 +444,16 @@ body {
 
 h1,
 h2,
-p {
+h3,
+p,
+dl,
+dd {
   margin: 0;
 }
 
-h2 {
+/* .empty h3: an empty state nested under a box's h2 (the Zoom accounts list) looks like the queue's empty h2. */
+h2,
+.empty h3 {
   color: var(--c-heading);
   font-size: var(--fs-card-title);
   font-weight: var(--fw-medium);
@@ -406,7 +470,9 @@ img {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   color: inherit;
   font: inherit;
 }
@@ -835,6 +901,15 @@ main:focus {
   color: var(--c-muted);
 }
 
+/* The chevron between crumbs, inside each <li> after the first
+   (partials/crumb.html). Decorative: aria-hidden. */
+.crumbs__sep {
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+  margin: 0 var(--space-2);
+  color: var(--c-muted);
+}
+
 /* 4d. Footer */
 .page-foot {
   display: flex;
@@ -1194,6 +1269,13 @@ main:focus {
   line-height: var(--lh-body);
 }
 
+/* A list inside help text (Django's password rules, brief 010): the notice
+   lists' indent, just under the help's first line. */
+.field__help ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-5);
+}
+
 .input {
   display: block;
   width: 100%;
@@ -1224,6 +1306,236 @@ main:focus {
   border: var(--rule-strong) solid var(--c-bad-text);
 }
 
+textarea.input {
+  min-height: var(--textarea-min);
+  padding: var(--textarea-pad-y) var(--space-3);
+  resize: vertical;
+}
+
+/* Short values (dates, phone, meeting ID): a narrow box on wide screens,
+   full width on phones (section 8). */
+.input--narrow {
+  max-width: var(--field-narrow);
+}
+
+/* A field's error, under the control (or under a group's help): the
+   alert-circle icon plus words, so it never relies on colour. */
+.field__error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin-top: var(--error-gap);
+  color: var(--c-bad-text);
+  font-size: var(--fs-error);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-body);
+}
+
+.field__error .icon {
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+  margin-top: var(--icon-nudge);
+}
+
+.options .field__error {
+  margin: 0 0 var(--space-2);
+}
+
+/* Two fields side by side (start and end time); one column on phones. */
+.field-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+/* A radio or checkbox group: <fieldset class="options"> with a label-sized
+   legend. The list modifiers set the columns (docs/design/form-section.md). */
+.options {
+  min-width: 0;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  border: 0;
+}
+
+.options legend {
+  margin-bottom: var(--space-2);
+  padding: 0;
+  color: var(--c-heading);
+  font-weight: var(--fw-medium);
+}
+
+.options__list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.options__list--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.options__list--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.options__list--stack {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* A bordered sub-group inside a form section ("If it's every week"); the
+   legend sits on the border as native fieldsets do. */
+.options--group {
+  padding: var(--space-4);
+  border: var(--rule) solid var(--c-border);
+  border-radius: var(--radius);
+}
+
+.options--group > legend {
+  padding: 0 var(--space-1);
+}
+
+.options--group > :last-child {
+  margin-bottom: 0;
+}
+
+.choice:has(input[aria-invalid="true"]) {
+  border-color: var(--c-bad-text);
+}
+
+/* A taller choice: the control at the top, a name and help lines beside it. */
+.choice--tall {
+  align-items: flex-start;
+  padding: var(--space-3);
+}
+
+.choice--tall input {
+  margin-top: var(--icon-nudge);
+}
+
+.choice__words {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.choice__help {
+  color: var(--c-muted);
+  font-size: var(--fs-help);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* A choice the viewer can't change (brief 010, D.13). The words keep their
+   full colours, so they hold AA; only the native control dims. The dashed
+   border is the non-colour cue, and the lock icon and words say why. */
+.choice:has(input:disabled) {
+  border-style: dashed;
+  cursor: default;
+}
+
+.choice__reason {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  color: var(--c-text);
+  font-size: var(--fs-help);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-body);
+}
+
+.choice__reason .icon {
+  flex: none;
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+  margin-top: var(--icon-nudge);
+}
+
+/* One checkbox with its words on a 44px row; its help sits under the words. */
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--target);
+  color: var(--c-heading);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+
+.check input {
+  flex: none;
+  width: var(--radio);
+  height: var(--radio);
+  margin: 0;
+  accent-color: var(--c-primary-text);
+}
+
+.check__help {
+  padding-left: calc(var(--radio) + var(--space-2));
+}
+
+/* The search field with its icon at the start. */
+.searchbox {
+  position: relative;
+}
+
+.searchbox > .icon {
+  position: absolute;
+  top: 50%;
+  left: var(--space-3);
+  color: var(--c-muted);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.searchbox .input {
+  padding-left: var(--search-pad-start);
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.form-actions + .field__help {
+  margin-top: var(--space-3);
+}
+
+/* A long form's named part (docs/design/form-section.md): a <fieldset>
+   whose legend reads one step above a field label, without being a
+   heading. The float keeps the legend inside the box, not on its border. */
+.formsection {
+  min-width: 0;
+  margin: 0 0 var(--space-6);
+  padding: var(--space-5) 0 0;
+  border: 0;
+  border-top: var(--rule) solid var(--c-border);
+}
+
+.formsection:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.formsection__title {
+  float: left;
+  width: 100%;
+  margin-bottom: var(--space-4);
+  padding: 0;
+  color: var(--c-heading);
+  font-size: var(--fs-card-title);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+}
+
+.formsection__title + * {
+  clear: both;
+}
+
 /* 5f. Notices and flash messages */
 .notice {
   display: flex;
@@ -1232,6 +1544,7 @@ main:focus {
   padding: var(--space-3) var(--space-4);
   border: var(--rule) solid;
   border-radius: var(--radius);
+  scroll-margin-top: calc(var(--topbar-h) + var(--space-4));
 }
 
 .notice:focus-visible {
@@ -1246,6 +1559,30 @@ main:focus {
   border-color: var(--c-bad-line);
   background: var(--c-bad-soft);
   color: var(--c-bad-text);
+}
+
+.notice--ok { border-color: var(--c-ok-line); background: var(--c-ok-soft); color: var(--c-ok-text); }
+.notice--warn { border-color: var(--c-warn-line); background: var(--c-warn-soft); color: var(--c-warn-text); }
+.notice--note { border-color: var(--c-note-line); background: var(--c-note-soft); color: var(--c-note-text); }
+
+.notice__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.notice__strong {
+  font-weight: var(--fw-semibold);
+}
+
+.notice ul {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.notice a {
+  color: inherit;
 }
 
 /* Django messages sit in the page flow under the title row, never as a
@@ -1282,6 +1619,616 @@ main:focus {
 
 .flash .button {
   flex: none;
+}
+
+/* 5g. Tags (soft status badges): always an icon and a word. The tone and
+   icon for a request status are chosen only in zoom/partials/status_tag.html. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--tag-pad-y) var(--tag-pad-x);
+  border-radius: var(--radius);
+  font-size: var(--fs-tag);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-flat);
+  white-space: nowrap;
+}
+
+.tag .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.tag--ok { background: var(--c-ok-soft); color: var(--c-ok-text); }
+.tag--warn { background: var(--c-warn-soft); color: var(--c-warn-text); }
+.tag--note { background: var(--c-note-soft); color: var(--c-note-text); }
+.tag--plain { background: var(--c-plain-soft); color: var(--c-plain-text); }
+.tag--brand { background: var(--c-brand-soft); color: var(--c-brand-text); }
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* 5h. Status tabs (docs/design/status-tabs.md): links, not ARIA tabs.
+   Each loads the list for one status; the current one has a bar and 600
+   weight as well as colour. */
+.box__head--tabs {
+  padding: 0 var(--space-5);
+}
+
+.tabs__list {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tabs__link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tab-h);
+  padding: 0 var(--space-4);
+  color: var(--c-text);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-regular);
+  text-decoration: none;
+}
+
+.tabs__link:hover {
+  color: var(--c-primary-text);
+}
+
+.tabs__link:focus-visible {
+  outline-offset: calc(var(--focus-width) * -1);
+}
+
+.tabs__link[aria-current="page"] {
+  color: var(--c-primary-text);
+  font-weight: var(--fw-semibold);
+}
+
+.tabs__link[aria-current="page"]::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: var(--nav-bar);
+  background: var(--c-primary-text);
+  content: "";
+}
+
+.tabs__count {
+  padding: var(--tag-pad-y) var(--tag-pad-x);
+  border-radius: var(--radius);
+  background: var(--c-plain-soft);
+  color: var(--c-plain-text);
+  font-size: var(--fs-tag);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-flat);
+}
+
+.tabs__link[aria-current="page"] .tabs__count {
+  background: var(--c-brand-soft);
+  color: var(--c-brand-text);
+}
+
+/* 5i. Finding things: the search row and the line that counts results. */
+.finder__search {
+  display: grid;
+  grid-auto-columns: auto;
+  grid-auto-flow: column;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.finder__search .field {
+  margin-bottom: 0;
+}
+
+.result-line {
+  margin: var(--space-5) 0 var(--space-4);
+  color: var(--c-heading);
+  font-weight: var(--fw-medium);
+}
+
+/* 5j. Data grid. Below 768px each row becomes a card (section 8); the
+   templates keep explicit table roles so it still reads as a table. */
+.datagrid-wrap {
+  overflow-x: auto;
+}
+
+.datagrid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-body);
+}
+
+.datagrid th,
+.datagrid td {
+  padding: var(--space-3);
+  border-bottom: var(--rule) solid var(--c-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.datagrid th {
+  color: var(--c-heading);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+.datagrid tbody tr:hover {
+  background: var(--c-surface-2);
+}
+
+.datagrid__label {
+  display: none;
+}
+
+.datagrid__ref {
+  color: var(--c-heading);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+.datagrid time {
+  white-space: nowrap;
+}
+
+/* Several lines in one cell (name, email, phone; a class and its tag). */
+.datagrid__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+  font-weight: var(--fw-regular);
+  white-space: normal;
+}
+
+.datagrid__strong {
+  color: var(--c-heading);
+  font-weight: var(--fw-medium);
+}
+
+/* 5k. Empty state and the round icon holder */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-5);
+  text-align: center;
+}
+
+.empty p {
+  max-width: var(--measure);
+  color: var(--c-muted);
+}
+
+.disc {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  border-radius: var(--radius-round);
+  background: var(--c-surface-2);
+  color: var(--c-muted);
+}
+
+.disc--64 {
+  width: var(--disc-lg);
+  height: var(--disc-lg);
+}
+
+.disc--64 > .icon {
+  width: var(--icon-disc);
+  height: var(--icon-disc);
+}
+
+.disc--ok { background: var(--c-ok-soft); color: var(--c-ok-text); }
+.disc--note { background: var(--c-note-soft); color: var(--c-note-text); }
+
+/* 5l. Facts (a <dl> of label and value), pager, work list */
+.facts {
+  display: grid;
+  grid-template-columns: minmax(var(--facts-dt-min), var(--facts-dt-max)) minmax(0, 1fr);
+  gap: var(--space-3) var(--space-4);
+}
+
+.facts dt {
+  color: var(--c-muted);
+}
+
+.facts dd {
+  min-width: 0;
+  color: var(--c-heading);
+  font-weight: var(--fw-medium);
+  overflow-wrap: anywhere;
+}
+
+.facts-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-6);
+}
+
+.pager {
+  margin-top: var(--space-5);
+}
+
+.pager ul {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pager a {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--target);
+  height: var(--target);
+  border: var(--rule) solid var(--c-border);
+  border-radius: var(--radius);
+  color: var(--c-text);
+  text-decoration: none;
+}
+
+.pager a:hover {
+  background: var(--c-surface-2);
+}
+
+.pager__text {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target);
+  padding: 0 var(--space-2);
+  color: var(--c-muted);
+}
+
+.worklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.worklist li + li {
+  border-top: var(--rule) solid var(--c-border);
+}
+
+/* Not a link itself: only the reference inside it is. */
+.worklist__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+
+.worklist__ref {
+  color: var(--c-heading);
+  font-weight: var(--fw-semibold);
+}
+
+/* 5m. Availability list (docs/design/availability-list.md): one row per
+   account with its tag and, when busy, its own list of clashes. */
+.avail {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.avail__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-4) 0;
+}
+
+.avail__item + .avail__item {
+  border-top: var(--rule) solid var(--c-border);
+}
+
+.avail__name {
+  color: var(--c-heading);
+  font-weight: var(--fw-semibold);
+}
+
+.avail__email {
+  color: var(--c-muted);
+  overflow-wrap: anywhere;
+}
+
+.avail__item > .tag {
+  align-self: start;
+}
+
+.avail__clashes {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.avail__clashes li {
+  margin-bottom: var(--space-1);
+  color: var(--c-text);
+  line-height: var(--lh-body);
+}
+
+/* 5n. Numbered list of class dates; two columns on wide screens when long
+   (the template adds --cols from the count; section 8). */
+.occurrences {
+  margin: 0;
+  padding-left: var(--space-6);
+}
+
+.occurrences li {
+  break-inside: avoid;
+}
+
+.occurrences li + li {
+  margin-top: var(--space-1);
+}
+
+/* 5o. Box parts used by the long detail pages */
+.box__lead {
+  margin-bottom: var(--space-4);
+  color: var(--c-muted);
+}
+
+.box__section {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: var(--rule) solid var(--c-border);
+}
+
+.box__subtitle {
+  margin-bottom: var(--space-2);
+  color: var(--c-heading);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+
+/* A form inside a wide box keeps the readable form width. */
+.box__form {
+  max-width: var(--form-w);
+}
+
+/* 5p. Small text helpers */
+.text-muted {
+  color: var(--c-muted);
+}
+
+.break-anywhere {
+  overflow-wrap: anywhere;
+}
+
+/* Blocks that follow each other with one even gap. */
+.stack > * + * {
+  margin-top: var(--space-4);
+}
+
+/* 5q. Month calendar (docs/design/month-calendar.md, brief 009): the
+   month and day links, the month grid and the day list, sharing one entry
+   link. The grid is a real table (explicit roles in the template); its
+   desktop edges and its phone list are in section 8. */
+.cal-nav__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The box body above the grid: the filter and the summary line, without
+   the result line's own margins doubling the body padding. */
+.cal-top > :first-child {
+  margin-top: 0;
+}
+
+.cal-top > :last-child {
+  margin-bottom: 0;
+}
+
+/* The grid sits flush in its box; the clip keeps the corner cells inside
+   the rounded border (every focus ring in the grid is inset). */
+.box--cal {
+  overflow: hidden;
+}
+
+.cal {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--fs-body);
+}
+
+.cal th {
+  padding: var(--space-2);
+  border-top: var(--rule) solid var(--c-border);
+  border-bottom: var(--rule) solid var(--c-border);
+  color: var(--c-heading);
+  font-size: var(--fs-help);
+  font-weight: var(--fw-semibold);
+  text-align: left;
+}
+
+/* height on a cell is a minimum: every box in a week grows to the tallest. */
+.cal__day {
+  height: var(--cal-day-min);
+  padding: var(--space-1);
+  border: var(--rule) solid var(--c-border);
+  background: var(--c-surface);
+  vertical-align: top;
+}
+
+/* A day outside the month: a flat fill, nothing inside (D2). */
+.cal__day--out {
+  background: var(--c-surface-2);
+}
+
+/* Today: the word (a tag), the filled number and a bar along the top. */
+.cal__day--today {
+  box-shadow: inset 0 var(--nav-bar) 0 var(--c-primary-text);
+}
+
+.cal__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--target);
+}
+
+.cal__date {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-flat);
+}
+
+.cal__date-link {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--target);
+  min-height: var(--target);
+  color: var(--c-heading);
+  text-decoration: none;
+}
+
+.cal__date-link:hover .cal__num {
+  text-decoration: underline;
+}
+
+.cal__num {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--cal-num);
+  height: var(--cal-num);
+  border-radius: var(--radius-round);
+}
+
+.cal__day--today .cal__num {
+  background: var(--c-primary);
+  color: var(--c-on-primary);
+}
+
+.cal__entries {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One class: the whole block is the link, full width and 44px or more.
+   position keeps its visually hidden words inside it. */
+.cal__entry {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-height: var(--target);
+  padding: var(--space-1) var(--space-2);
+  border-left: var(--nav-bar) solid var(--c-primary-text);
+  border-radius: var(--radius-sm);
+  background: var(--c-primary-soft);
+  color: var(--c-text);
+  font-size: var(--fs-help);
+  line-height: var(--lh-tight);
+  text-decoration: none;
+}
+
+/* Waiting for IT: the tag's icon and word carry the meaning; the dashed
+   outline is a second cue that is not colour. */
+.cal__entry--waiting {
+  border: var(--rule) dashed var(--c-control);
+  border-left: var(--nav-bar) solid var(--c-warn-text);
+  background: var(--c-surface);
+}
+
+.cal__entry:hover .cal__name {
+  text-decoration: underline;
+}
+
+.cal__time {
+  color: var(--c-heading);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+/* Names wrap, breaking anywhere if they must; never cut off. */
+.cal__name,
+.cal__account {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.cal__account {
+  color: var(--c-text);
+  font-weight: var(--fw-medium);
+}
+
+/* In a narrow day box the Waiting for IT tag wraps instead of overflowing. */
+.cal__entry .tag {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.cal__more {
+  display: flex;
+  align-items: center;
+  min-height: var(--target);
+  padding: 0 var(--space-2);
+  color: var(--c-primary-text);
+  font-size: var(--fs-help);
+  font-weight: var(--fw-semibold);
+  text-decoration: underline;
+}
+
+/* Focus rings sit inside, so the next cell's border never clips them. */
+.cal__date-link:focus-visible,
+.cal__entry:focus-visible,
+.cal__more:focus-visible {
+  outline-offset: calc(var(--focus-width) * -1);
+}
+
+/* The day view: every class that day, one row each. */
+.cal-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cal__entry--row {
+  display: grid;
+  grid-template-columns: var(--cal-time-w) var(--cal-ref-w) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: var(--tab-h);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--fs-body);
+}
+
+.cal__ref {
+  color: var(--c-heading);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
 }
 
 /* =====================================================================
@@ -1406,7 +2353,9 @@ main:focus {
   background: var(--c-surface);
 }
 
-.signin__brandline {
+/* The crest brand line, shared by sign-in and the public frame (7b). */
+.signin__brandline,
+.public__brand {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1417,7 +2366,9 @@ main:focus {
   line-height: var(--lh-tight);
 }
 
-.signin__brandline img {
+.signin__brandline img,
+.public__brand img {
+  flex: none;
   width: var(--crest-chip-sm);
   height: var(--crest-chip-sm);
   border-radius: var(--radius);
@@ -1429,7 +2380,8 @@ main:focus {
   right: var(--space-1);
 }
 
-.signin__mode .icon-button {
+.signin__mode .icon-button,
+.public__mode .icon-button {
   width: var(--target);
   height: var(--target);
 }
@@ -1492,6 +2444,77 @@ main:focus {
   font-size: var(--fs-motto);
   font-weight: var(--fw-light);
   line-height: var(--lh-motto);
+}
+
+/* 7b. Public frame (templates/public_base.html; docs/design/public-frame.md):
+   pages anyone can open without signing in. No shell: the brand line, the
+   colour-mode button, one centred column (a card on the grey page from
+   768px up), the shared footer. */
+.public {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--c-surface-2);
+}
+
+.public__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--topbar-h);
+  padding: 0 var(--space-4);
+}
+
+.public__mode {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+}
+
+.public__main {
+  flex: 1;
+  width: 100%;
+  max-width: calc(var(--form-w) + 2 * var(--page-pad-x));
+  margin: 0 auto var(--space-8);
+  padding: var(--page-pad-x);
+  border: var(--rule) solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+}
+
+.public__title {
+  margin-bottom: var(--space-3);
+  color: var(--c-heading);
+  font-size: var(--fs-title);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+}
+
+/* The one-message pages ("Check your email", "Request confirmed"): a
+   centred disc and title; the text under them stays left-aligned. */
+.public__title--centre {
+  text-align: center;
+}
+
+.public__disc {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-4);
+}
+
+.public__lead {
+  margin-bottom: var(--space-6);
+  color: var(--c-muted);
+}
+
+/* The h2 over the list of classes on the confirm page. */
+.public__main h2 {
+  margin: var(--space-6) 0 var(--space-3);
+}
+
+.public__main .occurrences + form {
+  margin-top: var(--space-6);
 }
 
 /* =====================================================================
@@ -1686,6 +2709,41 @@ main:focus {
   }
 }
 
+@media (min-width: 768px) {
+  /* A long list of classes reads in two columns. */
+  .occurrences--cols {
+    columns: 2;
+    column-gap: var(--space-8);
+  }
+
+  /* The month grid's outer lines are the box's own border. */
+  .cal__day:first-child {
+    border-left: 0;
+  }
+
+  .cal__day:last-child {
+    border-right: 0;
+  }
+
+  .cal tbody tr:last-child .cal__day {
+    border-bottom: 0;
+  }
+
+  /* .visually-hidden, scoped to 768px and wider: a day heading shows only
+     its number but still reads "Tue 1 Sep". */
+  .cal__date-extra {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
 @media (max-width: 767.98px) {
   .titlebar {
     flex-direction: column;
@@ -1705,11 +2763,243 @@ main:focus {
     padding: var(--space-5) var(--page-pad-x);
     text-align: center;
   }
+
+  /* Links that stand alone in a cell, list or fact get a full 44px target
+     on phones; the text size does not change. */
+  .tap-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target);
+  }
+
+  .tabs__link {
+    min-height: var(--target);
+  }
+
+  .facts-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The data grid becomes one card per row. */
+  .datagrid-wrap {
+    overflow-x: visible;
+  }
+
+  .datagrid,
+  .datagrid tbody,
+  .datagrid tr,
+  .datagrid th,
+  .datagrid td {
+    display: block;
+  }
+
+  /* The column heads, visually hidden (each cell carries its own label). */
+  .datagrid thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .datagrid tr {
+    margin-bottom: var(--space-3);
+    padding: var(--space-3);
+    border: var(--rule) solid var(--c-border);
+    border-radius: var(--radius);
+  }
+
+  .datagrid tbody th,
+  .datagrid td {
+    display: grid;
+    grid-template-columns: var(--row-label-w) minmax(0, 1fr);
+    gap: var(--space-2);
+    align-items: center;
+    justify-items: start;
+    padding: var(--error-gap) 0;
+    border: 0;
+    white-space: normal;
+  }
+
+  .datagrid__label {
+    display: block;
+    color: var(--c-muted);
+    font-weight: var(--fw-regular);
+  }
+
+  /* The month grid becomes a list of the days that have classes (D5): the
+     same table, its explicit roles keeping the table meaning. */
+  .cal,
+  .cal tbody,
+  .cal tr,
+  .cal td {
+    display: block;
+  }
+
+  .cal tbody {
+    padding: 0 var(--space-5) var(--space-2);
+  }
+
+  /* The weekday heads, visually hidden (each day names itself). */
+  .cal thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* Days with no classes, and days outside the month, drop out of view but
+     stay in the accessibility tree: clipped, not display:none. Chrome takes
+     a cell's column header from its position among the cells left in the
+     tree and ignores aria-colindex for that, so removing them would put
+     "Tue 1 Sep" under Monday (review round 1, SF1). An empty day's date
+     link is hidden, so no invisible focus stop is left behind. */
+  .cal .cal__day--out,
+  .cal .cal__day--empty {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    border: 0;
+  }
+
+  .cal .cal__day--empty > * {
+    visibility: hidden;
+  }
+
+  .cal__day {
+    height: auto;
+    margin-bottom: var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius);
+  }
+
+  .cal__date-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    min-width: 0;
+    text-decoration: underline;
+  }
+
+  /* No circle: it would ring one word of "Tue 28 Sep". */
+  .cal__num,
+  .cal__day--today .cal__num {
+    display: inline;
+    min-width: 0;
+    height: auto;
+    background: none;
+    color: inherit;
+  }
+
+  .cal .cal__entry {
+    min-height: var(--tab-h);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  /* The public frame drops its card: the page is the surface. */
+  .public {
+    background: var(--c-surface);
+  }
+
+  .public__head {
+    justify-content: flex-start;
+    padding-right: calc(var(--target) + var(--space-3));
+  }
+
+  .public__brand {
+    justify-content: flex-start;
+  }
+
+  .public__main {
+    margin-bottom: 0;
+    padding: var(--space-5);
+    border: 0;
+    border-radius: 0;
+  }
 }
 
 @media (max-width: 599.98px) {
   .topbar__settings {
     display: none;
+  }
+
+  .field-pair,
+  .options__list,
+  .options__list--two,
+  .finder__search {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .options__list--four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .finder__search {
+    grid-auto-flow: row;
+  }
+
+  .input--narrow {
+    max-width: none;
+  }
+
+  .form-actions .button {
+    width: 100%;
+  }
+
+  .tabs__list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tabs__link {
+    display: flex;
+  }
+
+  /* Facts stack: the label above its value. */
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+
+  .facts dd + dt {
+    margin-top: var(--space-2);
+  }
+
+  .avail__item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Month and day links: previous and next side by side, the middle link
+     (This month, Back to the month) on its own row below. */
+  .cal-nav {
+    width: 100%;
+  }
+
+  .cal-nav__list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cal-nav__list .button {
+    width: 100%;
+  }
+
+  .cal-nav__wide {
+    grid-column: 1 / -1;
+    order: 1;
+  }
+
+  /* The day list: one column, time, reference, name, tags. */
+  .cal__entry--row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
   }
 
   .pop__panel {
@@ -1745,6 +3035,10 @@ main:focus {
 
   .pop__panel--menu {
     left: auto;
+  }
+
+  .public__main {
+    padding: var(--space-4);
   }
 }
 

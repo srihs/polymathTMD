@@ -1,0 +1,24 @@
+{# Body of the "link approved" message, to the verified requester only (brief 005, D.8). Plain text. Context: link_request (LinkRequest with join_url, meeting_id, passcode, wants_recording), occurrences (list of Occurrence), host_key (str, decrypted by services.approve; "" prints the ask-the-IT-desk line). The only template that ever receives a host key. #}{% autoescape off %}Hello {{ link_request.requester_name }},
+
+The IT desk has approved your request {{ link_request.reference }}. Here is your Zoom link.
+
+Join link: {{ link_request.join_url }}
+Meeting ID: {{ link_request.meeting_id }}
+Passcode: {{ link_request.passcode|default:"none" }}
+
+Use the same link for every class below.
+
+{% if host_key %}Starting the class as host
+Host key: {{ host_key }}
+To start the class as host, join, choose "Claim host" and type this host key. Keep it private: anyone who has it can take control of meetings on this Zoom account.{% else %}Ask the IT desk for the host key to start the class as host.{% endif %}
+
+{% if link_request.wants_recording %}You asked for this class to be recorded to the Zoom cloud.
+
+{% endif %}When: {{ link_request.schedule_summary }}
+Your classes ({{ occurrences|length }}):
+{% for occurrence in occurrences %}- {{ occurrence }}
+{% endfor %}
+To change the times, send a new request. Please don't forward this email{% if host_key %}, because it has the host key in it{% endif %}.
+
+Polymath College IT desk
+{% endautoescape %}

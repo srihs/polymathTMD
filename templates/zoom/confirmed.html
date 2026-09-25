@@ -1,0 +1,24 @@
+{# Public "Request confirmed" page after the confirm POST (brief 005, D.3), in the public frame: the reference to keep, and that IT will email once they've looked at the request, with no reply-time promise (D23). Context: link_request (LinkRequest: reference, class_name, requester_email). Partials: none. #}{% extends "public_base.html" %}
+
+{% block title %}Request confirmed{% endblock %}
+
+{% block above_heading %}<div class="public__disc"><span class="disc disc--64 disc--ok"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg></span></div>{% endblock %}
+
+{% block heading_class %} public__title--centre{% endblock %}
+
+{% block heading %}Request confirmed{% endblock %}
+
+{% block content %}
+<div class="stack">
+  <p>Your request is with the IT desk.</p>
+  <dl class="facts">
+    <dt>Reference</dt>
+    <dd>{{ link_request.reference }}</dd>
+    <dt>Class</dt>
+    <dd>{{ link_request.class_name }}</dd>
+  </dl>
+  <p>IT will email <strong class="break-anywhere">{{ link_request.requester_email }}</strong> once they've looked at your request, with the Zoom link or the reason they can't give one.</p>
+  <p>Keep your reference, {{ link_request.reference }}, in case you need to phone the IT desk.</p>
+  <p class="text-muted">You can close this page.</p>
+</div>
+{% endblock %}

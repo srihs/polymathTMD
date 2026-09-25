@@ -1,4 +1,4 @@
-{# Sidebar (desktop column, phone drawer): brand link to Home, the phone-only "Close the menu" link, and the Main nav listing only destinations that exist (D6). with: current (str, the page's view name, e.g. "core:home", or ""; sets aria-current), current_ns (str, the page's URL namespace or ""; brief 005 uses it to open a group's <details>), user (User; is_staff shows the Administration group). New sections go between Menu and Administration, which stays last. #}
+{# Sidebar (desktop column, phone drawer): brand link to Home, the phone-only "Close the menu" link, and the Main nav listing only destinations that exist (D6). with: current (str, the page's view name, e.g. "core:home", or ""; sets aria-current), current_ns (str, the page's URL namespace or ""; kept as a parameter, but items are marked current by view name, not namespace, brief 008 D9), user (User; kept as a parameter, no longer read here since brief 010, D5), perms (PermWrapper; accounts.view_user shows the Administration group, whose one item Staff and access is current on accounts:staff / staff_add / staff_edit / staff_password (brief 010; accounts:password_change marks no item, it belongs to the user menu); zoom.review_linkrequest or zoom.view_hostaccount shows the Zoom links group, and each item checks its own permission: Link requests needs review_linkrequest and is current on zoom:queue / detail / approve / reject, Timetable (brief 009) needs review_linkrequest and is current on zoom:timetable / timetable_day, Zoom accounts needs view_hostaccount and is current on zoom:accounts / account_add / account_edit). New sections go between Menu and Administration, which stays last. #}
 {% load static %}<aside class="sidenav" id="nav" data-nav>
  <div class="sidenav__inner">
   <a class="sidenav__brand" href="{% url 'core:home' %}"><img class="sidenav__crest" src="{% static 'img/crest-chip.png' %}" alt="" width="32" height="32"><span class="sidenav__wordmark">Technology Management Desk</span></a>
@@ -8,10 +8,18 @@
     <ul class="sidenav__list" aria-labelledby="nav-menu">
       <li><a class="sidenav__link" href="{% url 'core:home' %}"{% if current == "core:home" %} aria-current="page"{% endif %}><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-home"></use></svg><span class="sidenav__label">Home</span></a></li>
     </ul>
-    {% if user.is_staff %}
+    {% if perms.zoom.review_linkrequest or perms.zoom.view_hostaccount %}
+    <p class="sidenav__group-title" id="nav-zoom">Zoom links</p>
+    <ul class="sidenav__list" aria-labelledby="nav-zoom">
+      {% if perms.zoom.review_linkrequest %}<li><a class="sidenav__link" href="{% url 'zoom:queue' %}"{% if current == "zoom:queue" or current == "zoom:detail" or current == "zoom:approve" or current == "zoom:reject" %} aria-current="page"{% endif %}><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-video"></use></svg><span class="sidenav__label">Link requests</span></a></li>{% endif %}
+      {% if perms.zoom.review_linkrequest %}<li><a class="sidenav__link" href="{% url 'zoom:timetable' %}"{% if current == "zoom:timetable" or current == "zoom:timetable_day" %} aria-current="page"{% endif %}><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-calendar"></use></svg><span class="sidenav__label">Timetable</span></a></li>{% endif %}
+      {% if perms.zoom.view_hostaccount %}<li><a class="sidenav__link" href="{% url 'zoom:accounts' %}"{% if current == "zoom:accounts" or current == "zoom:account_add" or current == "zoom:account_edit" %} aria-current="page"{% endif %}><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-layers"></use></svg><span class="sidenav__label">Zoom accounts</span></a></li>{% endif %}
+    </ul>
+    {% endif %}
+    {% if perms.accounts.view_user %}
     <p class="sidenav__group-title" id="nav-admin">Administration</p>
     <ul class="sidenav__list" aria-labelledby="nav-admin">
-      <li><a class="sidenav__link" href="{% url 'admin:index' %}"><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-shield"></use></svg><span class="sidenav__label">Admin</span></a></li>
+      <li><a class="sidenav__link" href="{% url 'accounts:staff' %}"{% if current == "accounts:staff" or current == "accounts:staff_add" or current == "accounts:staff_edit" or current == "accounts:staff_password" %} aria-current="page"{% endif %}><svg class="icon sidenav__icon" aria-hidden="true" focusable="false"><use href="#i-users"></use></svg><span class="sidenav__label">Staff and access</span></a></li>
     </ul>
     {% endif %}
   </nav>

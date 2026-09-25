@@ -1,0 +1,27 @@
+{# Public "Check your email" page after the request form (brief 005, D.3), in the public frame; the same page follows a honeypot hit. Says where the link went and that IT will email once they've looked at the request, with no reply-time promise (D23; so no "hours" either: the link's life is said as "one day" when it is 24 hours). Context: sent_to (str or None; None gives the generic line), link_hours (int, how long the confirm link works). Partials: none. #}{% extends "public_base.html" %}
+
+{% block title %}Check your email{% endblock %}
+
+{% block above_heading %}<div class="public__disc"><span class="disc disc--64 disc--note"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mail"></use></svg></span></div>{% endblock %}
+
+{% block heading_class %} public__title--centre{% endblock %}
+
+{% block heading %}Check your email{% endblock %}
+
+{% block content %}
+<div class="stack">
+  <p>{% if sent_to %}We've sent a link to <strong class="break-anywhere">{{ sent_to }}</strong>.{% else %}We've sent a link to the email address you gave.{% endif %}</p>
+  <p>Open the email and choose the link in it to confirm your request. The link works for {% if link_hours == 24 %}one day{% else %}{{ link_hours }} hours{% endif %}.</p>
+  <p>IT won't see your request until you confirm it. After that, IT will email you once they've looked at your request.</p>
+  <div class="notice notice--note">
+    <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg>
+    <div class="notice__body">
+      <p class="notice__title">No email?</p>
+      <p>Check your spam or junk folder. If it isn't there after 10 minutes, send your request again and check the email address.</p>
+    </div>
+  </div>
+  <div class="form-actions">
+    <a class="button button--secondary" href="{% url 'zoom:request' %}">Send a new request</a>
+  </div>
+</div>
+{% endblock %}

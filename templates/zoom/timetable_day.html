@@ -1,0 +1,45 @@
+{# Every Zoom class on one date (brief 009, criterion 14, Design D.1 and D.3), in the shell; only for zoom.review_linkrequest. Read-only. One box: the head holds the day links (previous day, back to the month, next day; plain links that keep ?account), the body holds the account filter, then the count line and the full day list with no cap, or the empty state. The crumb and "Back to …" both use month_url, which the view builds (D9), so this does no URL string building for it. Never shows a host key, requester details or join details. Context: day (date), day_label (str, "Wed 7 Oct 2026"), previous_day / next_day (date), month (Month: label), month_url (str, the month page with ?month and, when filtered, &account), entries (list of Occurrence, sorted), filter_accounts (list of HostAccount: pk, label; holds selected_account when set), selected_account (HostAccount or None), show_waiting (bool; unused here, the copy keys off selected_account). Partials: partials/crumb, zoom/partials/timetable_filter, zoom/partials/timetable_entry. Filters: zoom_format (class_date). #}{% extends "base.html" %}
+{% load zoom_format %}
+
+{% block title %}Zoom classes on {{ day_label }}{% endblock %}
+
+{% block heading %}Zoom classes on {{ day_label }}{% endblock %}
+
+{% block breadcrumb %}{% include "partials/crumb.html" with url=month_url text="Zoom timetable" current=False only %}{% include "partials/crumb.html" with url="" text=day_label current=True only %}{% endblock %}
+
+{% block content %}
+{% url 'zoom:timetable_day' day.year day.month day.day as day_page_url %}
+<div class="box">
+  <div class="box__head">
+    <nav class="cal-nav" aria-label="Choose a day">
+      <ul class="cal-nav__list" role="list">
+        <li><a class="button button--secondary" href="{% url 'zoom:timetable_day' previous_day.year previous_day.month previous_day.day %}{% if selected_account %}?account={{ selected_account.pk }}{% endif %}"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg>Previous day<span class="visually-hidden">, {{ previous_day|class_date }}</span></a></li>
+        <li class="cal-nav__wide"><a class="button button--quiet" href="{{ month_url }}">Back to {{ month.label }}</a></li>
+        <li><a class="button button--secondary" href="{% url 'zoom:timetable_day' next_day.year next_day.month next_day.day %}{% if selected_account %}?account={{ selected_account.pk }}{% endif %}">Next day<span class="visually-hidden">, {{ next_day|class_date }}</span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg></a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="box__body cal-top">
+    {% if filter_accounts or selected_account %}{% include "zoom/partials/timetable_filter.html" with action=day_page_url month_value="" filter_accounts=filter_accounts selected_account=selected_account only %}{% endif %}
+    {% if entries %}
+    {% with n=entries|length %}<p class="result-line">{{ n }} class{{ n|pluralize:"es" }} on {% if selected_account %}{{ selected_account.label }} on {% endif %}{{ day_label }}.</p>{% endwith %}
+    <ol class="cal-list" role="list">
+      {% for entry in entries %}<li>{% include "zoom/partials/timetable_entry.html" with entry=entry full=True only %}</li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <div class="empty">
+      <span class="disc disc--64"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-calendar"></use></svg></span>
+      {% if selected_account %}
+      <h2>No classes on {{ selected_account.label }} on {{ day_label }}.</h2>
+      <p>Classes waiting for IT are hidden while one account is chosen.</p>
+      <a class="button button--secondary" href="{{ day_page_url }}">Show all accounts</a>
+      {% else %}
+      <h2>No classes on {{ day_label }}.</h2>
+      <p>Use Previous day or Next day to look at other dates.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

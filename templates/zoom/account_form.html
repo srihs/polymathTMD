@@ -1,0 +1,94 @@
+{# Add a Zoom account, or change one (brief 008, D.2 and D.3), in the shell; add needs zoom.add_hostaccount, change needs zoom.change_hostaccount. One template: is_add chooses the h1, breadcrumb, title and button. After a failed POST the error summary is the first thing after the title row. Three sections, in the form's field order (G1): The account (label, email, notes), Booking (the booked-classes note on change, is_paid, is_active, sort_order), Host key (the state line on change, the "wasn't kept" note, host_key, remove_host_key when the form has it). The host key input is written out here, always with no value, so its aria-describedby can add host_key-note (D.3); a saved key is never shown, only its state. The stop-booking errors (criterion 17) arrive as ordinary field errors on is_active and is_paid. Context: form (HostAccountForm: label, email, notes, is_paid, is_active, sort_order, host_key, remove_host_key only when a key is saved, key_was_typed (bool); labels and help texts come from the form), account (HostAccount or None; on change: has_host_key, host_key_changed_at, host_key_changed_by (User or None)), is_add (bool), host_key_state (str: "saved", "saved_legacy", "unreadable" or "none"), saved_label (str, change only: the stored name, not what was just typed; falls back to account.label), upcoming_count (int, change only, optional) and next_class_start (aware datetime or None, optional) for the booked-classes note. Partials: partials/crumb, partials/error_summary, partials/field, partials/check_field, partials/field_error. Filters: zoom_format (class_date). #}{% extends "base.html" %}
+{% load zoom_format %}
+
+{% block title %}{% if is_add %}Add a Zoom account{% else %}Change {{ saved_label|default:account.label }}{% endif %}{% endblock %}
+
+{% block heading %}<span class="break-anywhere">{% if is_add %}Add a Zoom account{% else %}Change {{ saved_label|default:account.label }}{% endif %}</span>{% endblock %}
+
+{% block breadcrumb %}{% url 'zoom:accounts' as accounts_url %}{% include "partials/crumb.html" with url=accounts_url text="Zoom accounts" current=False only %}{% if is_add %}{% include "partials/crumb.html" with url="" text="Add a Zoom account" current=True only %}{% else %}{% include "partials/crumb.html" with url="" text=saved_label|default:account.label current=True only %}{% endif %}{% endblock %}
+
+{% block content %}
+{% include "partials/error_summary.html" with form=form lead="We couldn't save this account yet." only %}
+<div class="box">
+  <div class="box__body">
+    <div class="box__form">
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        <fieldset class="formsection">
+          <legend class="formsection__title">The account</legend>
+          {% include "partials/field.html" with field=form.label narrow=True only %}
+          {% include "partials/field.html" with field=form.email only %}
+          {% include "partials/field.html" with field=form.notes only %}
+        </fieldset>
+
+        <fieldset class="formsection">
+          <legend class="formsection__title">Booking</legend>
+          {% if not is_add and upcoming_count and not form.is_paid.errors and not form.is_active.errors %}
+          <div class="notice notice--note">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg>
+            <p>{% with name=saved_label|default:account.label %}{% if upcoming_count == 1 %}{{ name }} has 1 booked class, on {{ next_class_start|class_date }}. It must stay paid and in use until that class has finished.{% else %}{{ name }} has {{ upcoming_count }} booked classes. The next one is on {{ next_class_start|class_date }}. It must stay paid and in use until the last one has finished.{% endif %}{% endwith %}</p>
+          </div>
+          {% endif %}
+          {% include "partials/check_field.html" with field=form.is_paid only %}
+          {% include "partials/check_field.html" with field=form.is_active only %}
+          {% include "partials/field.html" with field=form.sort_order narrow=True only %}
+        </fieldset>
+
+        <fieldset class="formsection">
+          <legend class="formsection__title">Host key</legend>
+          {% if not is_add %}
+          {% if host_key_state == "saved" %}
+          <div class="notice notice--ok">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>
+            <p>Host key saved on {{ account.host_key_changed_at|class_date }}{% if account.host_key_changed_by %} by {{ account.host_key_changed_by }}{% endif %}</p>
+          </div>
+          {% elif host_key_state == "saved_legacy" %}
+          <div class="notice notice--ok">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>
+            <p>Host key saved</p>
+          </div>
+          {% elif host_key_state == "unreadable" %}
+          <div class="notice notice--bad">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg>
+            <p>A host key is saved, but it can't be read with the current encryption keys. Type it again.</p>
+          </div>
+          {% else %}
+          <div class="notice notice--warn">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+            <div class="notice__body">
+              <p class="notice__title">No host key saved</p>
+              <p>Until one is saved, approval emails tell the requester to ask the IT desk for the host key.</p>
+            </div>
+          </div>
+          {% endif %}
+          {% endif %}
+
+          {# The host key, written out rather than through field.html: it never carries a value (a typed key is not echoed back, D7), and its aria-describedby adds host_key-note when that note shows. #}
+          {% with field=form.host_key name=form.host_key.html_name attrs=form.host_key.field.widget.attrs %}
+          {% if form.key_was_typed %}
+          <div class="notice notice--warn" id="{{ name }}-note">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+            <p>For your safety, the host key you typed wasn't kept. Type it again.</p>
+          </div>
+          {% endif %}
+          <div class="field">
+            <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {% if field.help_text %}<p class="field__help" id="{{ name }}-help">{{ field.help_text }}</p>{% endif %}
+            <input class="input input--narrow" type="text" id="{{ field.id_for_label }}" name="{{ name }}"{% for key, value in attrs.items %}{% if key != "type" and key != "value" %} {{ key }}="{{ value }}"{% endif %}{% endfor %}{% if field.errors %} aria-invalid="true"{% endif %}{% if field.errors or form.key_was_typed or field.help_text %} aria-describedby="{% if field.errors %}{{ name }}-error {% endif %}{% if form.key_was_typed %}{{ name }}-note {% endif %}{% if field.help_text %}{{ name }}-help{% endif %}"{% endif %}>
+            {% include "partials/field_error.html" with field=field only %}
+          </div>
+          {% endwith %}
+
+          {% if form.remove_host_key %}{% include "partials/check_field.html" with field=form.remove_host_key only %}{% endif %}
+        </fieldset>
+
+        <div class="form-actions">
+          <button class="button button--primary" type="submit">{% if is_add %}Add the account{% else %}Save changes{% endif %}</button>
+          <a class="button button--quiet" href="{% url 'zoom:accounts' %}">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

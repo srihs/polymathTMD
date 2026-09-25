@@ -1,14 +1,17 @@
+"""Project URLconf: one namespaced include per app.
+
+There's no ``admin/`` route: django.contrib.admin was removed in task 010 (D10), so
+``/admin/`` is a 404. Refusals render ``templates/403.html`` through Django's default
+``handler403``, so no handler is set here.
+"""
+
 from django.conf import settings
 from django.conf.urls.static import static
-from django.contrib import admin
 from django.urls import include, path
 
-admin.site.site_header = f"{settings.SITE_NAME} administration"
-admin.site.site_title = settings.SITE_NAME
-
 urlpatterns = [
-    path("admin/", admin.site.urls),
     path("accounts/", include("apps.accounts.urls")),
+    path("zoom/", include("apps.zoom.urls")),
     path("", include("apps.core.urls")),
 ]
 

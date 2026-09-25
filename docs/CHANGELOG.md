@@ -2,6 +2,200 @@
 
 Newest first. One entry per task. Each entry lists user-visible changes, then technical notes.
 
+## 2026-09-25 — 009: Zoom timetable (month calendar)
+
+- IT desk staff now have a **Zoom timetable** in the sidebar (**Zoom links → Timetable**): one
+  calendar month, weeks Monday to Sunday, with each day's box showing that day's classes — start
+  time, class name and Zoom account — up to three, then a `+N more` link that opens a **day page**
+  listing every class that day (the day number opens it too).
+- A class still waiting for IT approval shows a `Waiting for IT` tag instead of an account.
+- An account filter narrows the month and day pages to one Zoom account; filtering hides waiting
+  classes, since they have no account yet. `Previous month` / `Next month` links move a month at a
+  time and keep the filter.
+- On a phone, the month becomes a day-by-day list showing only the days that have classes.
+- An approved request's detail page now has a `See it on the timetable` link straight to its month
+  and account, and every row on the Zoom accounts list has a `Timetable` link.
+- The timetable is read-only: nothing is booked, moved or cancelled from it.
+- Technical notes:
+  - **No migrations.** The page adds no model fields.
+  - **`apps/zoom/timetable.py`** (new) holds every pure calculation — month arithmetic, the Mon–Sun
+    week grid, day grouping, the `+N more` cap — with no database access, so it's unit-tested
+    without the database and the views stay thin.
+  - **Two SQL queries per page** (plus the shell's fixed queries), the same with or without the
+    account filter: one for the filter's accounts, one for the classes. `OccurrenceQuerySet`
+    gained `in_period()` and `for_timetable()`; `HostAccountQuerySet` gained `timetable_accounts()`
+    (and the underlying `with_timetable_flag()`, `.only()`-limited to what the page reads).
+  - **Accessible weekday columns through the phone reflow.** Below 768px the month grid becomes a
+    day list from the same markup; empty and out-of-month cells are clipped (`.visually-hidden`
+    plus `visibility: hidden` on their contents), never `display: none`, and every cell carries
+    `aria-colcount`/`aria-colindex` — `display: none` drops a cell from the accessibility tree and
+    a screen reader then recomputes column headers from whatever's left, misreporting the weekday
+    (review round 1, SF1; independently re-checked with Windows UI Automation at 400px in round 2).
+  - **Four new CSS tokens** in the layout-geometry `:root` block (section 1b) of `style.css`:
+    `--cal-day-min`, `--cal-num`, `--cal-time-w`, `--cal-ref-w`. No colour literals were added.
+  - Verified PASS (699 tests, across two rounds, plus a prod-stack walkthrough and a UI Automation
+    check at 400px) and reviewed APPROVE (round 2, after one round-1 should-fix — the phone-reflow
+    weekday defect above — was resolved); see `docs/tasks/009-zoom-timetable.md`.
+  - Follow-ups: leaving `aria-current="date"` off an empty "today" cell on phones; the `.only()` on
+    the accounts query is also inherited by `timetable_accounts()`, worth a note for future reuse;
+    the previous/next month links have no special handling at the 2000/2100 date range limits
+    (accepted as a known limit — nobody books classes in 1999 or 2101); the day list's entry rows
+    borrow `--tab-h` rather than a row-height token of their own; and brief 011, "Cancel this
+    booking", stays a go-live prerequisite (see the 005, 008 and 010 entries above).
+
+## 2026-09-25 — 010: Staff and access; Django admin removed
+
+- Staff accounts, roles and passwords are now managed on a new **Staff and access** page
+  (sidebar → Administration), not the Django admin — which is gone from the app entirely.
+- Superusers and anyone with the new **Staff managers** role can list everyone who can sign in,
+  add a person with a starting password, change someone's name/username/email/roles, switch
+  someone off (nobody is deleted — their past decisions stay attached to them), and set a new
+  password for them (this signs that person out everywhere immediately).
+- A Staff manager can only give or take away a role whose rights they already hold themselves —
+  so, for example, someone who should be able to add people to `IT desk` needs to be in `IT desk`
+  too. They can't change their own roles, and can't manage a superuser or another Staff manager.
+  Giving someone the `Staff managers` role is one-way for a non-superuser: once given, only a
+  superuser can take it back.
+- Every signed-in user now has **Change your password** in their user menu; changing it keeps you
+  signed in on the browser you're using.
+- Opening a page you don't have the role for now shows a plain "You can't open this page" message
+  instead of Django's bare 403 page.
+- Technical notes:
+  - **Migrations (`apps/accounts`):** `0002_alter_user_managers` (the new `UserQuerySet`/
+    `UserManager`, no schema change); `0003_staff_managers_group`, a data migration creating the
+    `Staff managers` group with exactly `view_user`, `add_user` and `change_user` (reversible,
+    idempotent); `0004_remove_admin_leftovers`, which drops the leftover `django_admin_log` table
+    and deletes the stale `admin` `ContentType` rows (and their permissions/group links) that
+    uninstalling `django.contrib.admin` doesn't clean up on its own. Its reverse is a no-op.
+  - **`django.contrib.admin` is removed** from `INSTALLED_APPS` and `config/urls.py`; `/admin/`
+    now 404s. `django.contrib.auth`, `contenttypes`, `sessions` and `messages` are unchanged.
+    `apps/accounts/admin.py` is deleted. `manage.py createsuperuser` still works — it belongs to
+    `django.contrib.auth` — but is documented as first-account bootstrap only.
+  - **The access rules live on `User`**, not in views or templates: `can_give_role`,
+    `granted_permissions`, `can_be_managed_by` and `access_change_error`. `granted_permissions()`
+    reads a person's roles directly rather than Django's `get_all_permissions()`, which reports
+    nothing for a switched-off user and would otherwise let a peer read a switched-off Staff
+    manager as harmless and re-enable them.
+  - **The moved partials.** `templates/zoom/partials/error_summary.html`, `field.html`,
+    `field_error.html`, `choice_group_head.html` and `check_field.html` moved to
+    `templates/partials/`, because the new `accounts` templates need them and apps don't reach
+    into each other's template folders. Every `zoom` include was updated; nothing else changed for
+    `zoom`.
+  - **The password-leak fix.** `partials/field.html` used to write `value="{{ field.value }}"`
+    unconditionally, which on a bound password field would echo a typed password back on a failed
+    submit. It now skips `value` for password widgets — one fix in the shared partial covers every
+    password form (add a person, set someone's password, change your own).
+  - **`apps/core/mixins.py`:** `SignedInPermissionMixin`, factored out of `apps/zoom/views.py` so
+    `accounts` can use the same anonymous/403 gate without either app importing the other's views.
+  - No new settings, env vars or dependencies.
+  - Verified PASS (570 tests, across two rounds) and reviewed APPROVE (round 2, after one round-1
+    should-fix — "only roles they hold" — was resolved); see
+    `docs/tasks/010-staff-and-access.md`.
+  - Follow-ups: two cosmetic, markup-only nits in `staff_form.html` (a duplicated CSS class on a
+    locked role row, and a locked role showing the posted rather than stored state after a refused
+    crafted submit) — nothing is saved wrongly either way; moving `accounts`' and `zoom`'s shared
+    date-display format into `apps/core` so both apps read one source instead of `accounts`
+    repeating brief 005's format by hand; and brief 011, "Cancel this booking", which stays a
+    go-live prerequisite alongside brief 007 (see the 005 and 008 entries above).
+
+## 2026-09-25 — 008: Zoom accounts page
+
+- IT desk staff now manage Zoom host accounts on their own page, from the sidebar's **Zoom links →
+  Zoom accounts** item: a list of every account (in use first), an "Add a Zoom account" screen, and
+  a "Change {name}" screen. Anyone in the `IT desk` group can use it — there's no separate role.
+- A host key is now **write-only** everywhere: type it once and it's never shown again, to anyone,
+  on any screen. The list and change page instead say whether a key is saved, and when and by whom
+  it was last set.
+- An account can no longer be taken out of use, or marked as not paid, while it still has an
+  upcoming (not-yet-finished) approved class. The change page explains how many classes are booked,
+  over which dates, and when the change becomes possible.
+- Accounts are never deleted, only taken out of use.
+- The Django admin no longer has anything Zoom-related: host accounts, host keys and link requests
+  are all gone from `/admin/`. Every message that used to say "in the admin" now points to the Zoom
+  accounts page instead. Staff users and the `IT desk` group are still managed in the Django admin,
+  until brief 010 gives them in-app screens too.
+- Technical notes:
+  - **Migrations:** `zoom/0003_hostaccount_host_key_changed` adds `host_key_changed_at` and
+    `host_key_changed_by` to `HostAccount` (who last set or removed its key, and when), and rewords
+    the `host_key_encrypted` field's `help_text` away from the admin. `zoom/0004_it_desk_manages_host_accounts`
+    is a data migration that grants the `IT desk` group Django's built-in `zoom.view_hostaccount`,
+    `zoom.add_hostaccount` and `zoom.change_hostaccount` permissions — not a custom "manage"
+    permission, and no `delete_hostaccount` — so the group now holds exactly four permissions.
+    Reversible and idempotent.
+  - **The stop-booking rule** (`HostAccount.stop_booking_errors()`) runs inside the same transaction
+    as the save, locking the account row and its booked `Occurrence`/`LinkRequest` rows
+    (`select_for_update(of=("self", "link_request"))`) before counting upcoming classes, so it can't
+    race `services.approve()` booking a class on the account at the same moment. A two-connection
+    test (`apps/zoom/tests/test_race.py`) proves this at both READ COMMITTED (Django's MySQL
+    default) and REPEATABLE READ (MySQL's own default), catching a review-round-1 bug that only
+    showed up at the stricter level.
+  - `apps/zoom/admin.py` and `apps/zoom/tests/test_admin.py` are deleted; brief 005's admin-based
+    tests are re-proved against the in-app screens instead.
+  - Brief 005's optional review nit 2 (masking the host key local in the key-cleaning code) is now
+    done: `apps/zoom/validators.py`'s `validate_host_key` carries `@sensitive_variables`, alongside
+    every other method that touches a plaintext key.
+  - No settings, env vars or dependencies changed; the `.env.example` comment on
+    `HOST_KEY_ENCRYPTION_KEYS` now points to the Zoom accounts page instead of the admin.
+  - Verified PASS (398 tests, across two rounds, including a two-connection race test and a rebuilt
+    production-stack walkthrough) and reviewed APPROVE (round 2, after one round-1 blocker was
+    fixed); see `docs/tasks/008-zoom-accounts.md`.
+  - Follow-ups: brief 011, "Cancel this booking", is a go-live prerequisite alongside brief 007 —
+    until it exists, a wrong or unneeded approval can't be undone in the app, and (from this task
+    onwards) an account with a booking can't be taken out of use until that class is over; "send the
+    approval email again" is a smaller follow-up for when that email fails to send; and one optional
+    nit is still open, adding a mention of brief 008's stop-check race to `test_race.py`'s module
+    docstring.
+
+## 2026-09-25 — 005: Zoom link requests (without the live Zoom connection)
+
+- Anyone can ask for a Zoom link for a class, with no sign-in, at a public form staff can share by
+  link. It covers one-off and weekly classes and an optional recording request, and asks for the
+  requester's name, email and phone. IT never sees the request until the requester confirms their
+  email through a link that stays valid for one day.
+- IT desk staff review confirmed requests in a queue (Waiting / Link sent / Not approved / All, with
+  search). For each waiting request they see exactly which paid Zoom accounts are free for every
+  class in it, and which are busy, with the clashing booking named and linked. Approving books a
+  free account and emails the requester; rejecting asks for a reason and emails that instead.
+- The approval email carries the Zoom link and the booked account's host key, so the teacher can
+  take host control, plus a line reminding them if they asked for the class to be recorded.
+- Nobody is promised a reply time anywhere on the form, the confirmation pages or the emails — only
+  that IT will email the requester once they've looked at the request.
+- Technical notes:
+  - **New app, `apps/zoom`** (label and namespace `zoom`): models, QuerySets, `services.py`
+    (approve/reject orchestration), `providers.py` (a swappable meeting-provider interface, with
+    `fake` for dev/tests and `manual` for production until a later brief adds the live Zoom API),
+    `crypto.py`, forms, views, admin, checks and two migrations — the models/constraints, and a data
+    migration that creates the `IT desk` group with the one permission
+    `zoom.review_linkrequest`. New public frame `templates/public_base.html`, for pages with no
+    sign-in.
+  - **New dependency:** `cryptography` (Fernet/`MultiFernet`) encrypts host keys at rest. They're
+    never stored or logged in plaintext, and appear in exactly one outgoing email (the approval
+    email). `manage.py rotate_host_keys` re-encrypts every stored key when the key list is rotated.
+  - **New/moved env vars:** `ZOOM_PROVIDER` (`manual`/`fake`; the production image now refuses to
+    start with `fake`), `TRUSTED_PROXY_COUNT`, `HOST_KEY_ENCRYPTION_KEYS` (required). The `EMAIL_*`
+    settings moved from `prod.py` into `base.py` and now pass through `compose.yaml`'s
+    `web.environment` — before this, production mail never left the container.
+  - **New system checks:** `zoom.E001` (the fake provider can't run in a `--deploy` check),
+    `zoom.E002` (an unknown `ZOOM_PROVIDER`), `zoom.E003` (a missing or invalid
+    `HOST_KEY_ENCRYPTION_KEYS`).
+  - **Conflict-free booking** is enforced three ways: a live clash preview on the request detail
+    page, a locked re-check inside the approval transaction, and a database-level backstop — a
+    `HostSlot` table with a unique `(host_account, starts_at)` on 5-minute slots, so MySQL itself
+    refuses an overlapping booking even if application code somehow tried to store one.
+  - **Go-live gate:** production must not take real bookings yet. A later brief needs to import the
+    bookings already on IT's spreadsheet first, or the conflict engine can't see them and could
+    double-book an account.
+  - Verified PASS (308 tests, across two rounds), including a manual-mode walkthrough on the rebuilt
+    production stack and proof that the production image refuses to start with
+    `ZOOM_PROVIDER=fake`. Reviewed APPROVE (round 2, with two optional nits); see
+    `docs/tasks/005-zoom-link-requests.md`.
+  - Follow-ups: brief 006 adds the live Zoom provider (one Server-to-Server OAuth credential set per
+    paid host account); brief 007 imports future bookings from the spreadsheet, gates go-live, and
+    must call `services.approve()` only outside an open transaction — nested inside one, a real
+    deadlock would break the retry's savepoint (review round 2, nit 1, carried forward as a required
+    item for brief 007). One optional nit is still open: masking the `host_key` local in the admin
+    form's `clean_host_key`.
+
 ## 2026-09-24 — 004: The approved design becomes the app's theme
 
 - Sign-in and Home now use the client-approved look: a purple sidebar, a top bar, a page title

@@ -1296,7 +1296,9 @@ A throwaway superuser (`verifier009b`) and a plain user (`plain009b`), one host 
 - `docs/CHANGELOG.md`: added the newest-first entry "2026-09-25 — 009: Zoom timetable (month
   calendar)" — user-visible changes, then technical notes (no migrations, `timetable.py`, the
   two-query budget, the `aria-colindex`-plus-clipping rule, the four `--cal-*` tokens) and the
-  round-2 follow-ups, including brief 011 as a go-live prerequisite.
+  round-2 follow-ups, including brief 011 as a go-live prerequisite. *Amended by 006 (2026-09-25):
+  the go-live gate also needs task 006, the live Zoom connection, alongside brief 011 — see the 006
+  entry in `docs/CHANGELOG.md`.*
 - `docs/tasks/009-zoom-timetable.md` (this file): this Docs section, and Status set to Done.
 
 **Clarification on criterion 27's wording.** Criterion 27 says "CSS uses only tokens from the

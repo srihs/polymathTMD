@@ -45,6 +45,27 @@ def test_every_static_reference_in_templates_exists():
     assert not missing, missing
 
 
+def test_dockerignore_keeps_private_data_out_of_the_image():
+    """The runtime stages `COPY . .`, so an unlisted root file ships in the image.
+
+    Brief 006 criterion 44: the host-key spreadsheet was baked into local images.
+    """
+    lines = (settings.BASE_DIR / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    required = {
+        "/Dashboard 2A.xlsx",
+        "/*.xlsx",
+        "/*.xlsm",
+        "/*.xls",
+        "/*.ods",
+        "/*.csv",
+        "/data/private/",
+        "zoom-credentials.env",
+        ".env",
+        ".cache",
+    }
+    assert required <= {line.strip() for line in lines}
+
+
 def test_healthz_ignores_host_header(client):
     response = client.get("/healthz/", HTTP_HOST="unlisted-host.internal")
     assert response.status_code == 200

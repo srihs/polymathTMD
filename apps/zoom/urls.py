@@ -24,4 +24,5 @@ urlpatterns = [
     path("accounts/", views.HostAccountListView.as_view(), name="accounts"),
     path("accounts/add/", views.HostAccountCreateView.as_view(), name="account_add"),
     path("accounts/<int:pk>/edit/", views.HostAccountUpdateView.as_view(), name="account_edit"),
+    path("accounts/<int:pk>/check/", views.HostAccountCheckView.as_view(), name="account_check"),
 ]

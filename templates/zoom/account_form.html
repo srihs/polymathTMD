@@ -1,4 +1,4 @@
-{# Add a Zoom account, or change one (brief 008, D.2 and D.3), in the shell; add needs zoom.add_hostaccount, change needs zoom.change_hostaccount. One template: is_add chooses the h1, breadcrumb, title and button. After a failed POST the error summary is the first thing after the title row. Three sections, in the form's field order (G1): The account (label, email, notes), Booking (the booked-classes note on change, is_paid, is_active, sort_order), Host key (the state line on change, the "wasn't kept" note, host_key, remove_host_key when the form has it). The host key input is written out here, always with no value, so its aria-describedby can add host_key-note (D.3); a saved key is never shown, only its state. The stop-booking errors (criterion 17) arrive as ordinary field errors on is_active and is_paid. Context: form (HostAccountForm: label, email, notes, is_paid, is_active, sort_order, host_key, remove_host_key only when a key is saved, key_was_typed (bool); labels and help texts come from the form), account (HostAccount or None; on change: has_host_key, host_key_changed_at, host_key_changed_by (User or None)), is_add (bool), host_key_state (str: "saved", "saved_legacy", "unreadable" or "none"), saved_label (str, change only: the stored name, not what was just typed; falls back to account.label), upcoming_count (int, change only, optional) and next_class_start (aware datetime or None, optional) for the booked-classes note. Partials: partials/crumb, partials/error_summary, partials/field, partials/check_field, partials/field_error. Filters: zoom_format (class_date). #}{% extends "base.html" %}
+{# Add a Zoom account, or change one (brief 008, D.2 and D.3), in the shell; add needs zoom.add_hostaccount, change needs zoom.change_hostaccount. One template: is_add chooses the h1, breadcrumb, title and button. After a failed POST the error summary is the first thing after the title row. Four sections, in the form's field order (G1): The account (label, email, notes), Booking (the booked-classes note on change, is_paid, is_active, sort_order), Zoom connection (brief 006, D.3: on change the state line from the stored row, then credential_set, then, for can_check_connection, the Check connection button; the button submits the separate empty form #zoom-check, written after the main form through the HTML form attribute, so forms never nest and it works with no JS; both carry the busy-button hooks, docs/design/busy-button.md), Host key (the state line on change, the "wasn't kept" note, host_key, remove_host_key when the form has it). The host key input is written out here, always with no value, so its aria-describedby can add host_key-note (D.3); a saved key is never shown, only its state. The stop-booking errors (criterion 17) arrive as ordinary field errors on is_active and is_paid. Context: form (HostAccountForm: label, email, notes, is_paid, is_active, sort_order, credential_set (label, help and widget attributes from the form, brief 006 G4), host_key, remove_host_key only when a key is saved, key_was_typed (bool); labels and help texts come from the form), account (HostAccount or None; on change: has_host_key, host_key_changed_at, host_key_changed_by (User or None)), is_add (bool), host_key_state (str: "saved", "saved_legacy", "unreadable" or "none"), saved_label (str, change only: the stored name, not what was just typed; falls back to account.label), zoom_connection_state (str: "ready", "missing" or "none", from the stored row; "none" on add), zoom_connection_name (str: the stored slug, for the missing sentence; "" on add), can_check_connection (bool; always false on add, and account is then present for account.pk, brief 006 G5), upcoming_count (int, change only, optional) and next_class_start (aware datetime or None, optional) for the booked-classes note. Partials: partials/crumb, partials/error_summary, partials/field, partials/check_field, partials/field_error. Filters: zoom_format (class_date). #}{% extends "base.html" %}
 {% load zoom_format %}
 
 {% block title %}{% if is_add %}Add a Zoom account{% else %}Change {{ saved_label|default:account.label }}{% endif %}{% endblock %}
@@ -33,6 +33,45 @@
           {% include "partials/check_field.html" with field=form.is_paid only %}
           {% include "partials/check_field.html" with field=form.is_active only %}
           {% include "partials/field.html" with field=form.sort_order narrow=True only %}
+        </fieldset>
+
+        <fieldset class="formsection">
+          <legend class="formsection__title">Zoom connection</legend>
+          {% if not is_add %}
+          {% if zoom_connection_state == "ready" %}
+          <div class="notice notice--ok">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>
+            <div class="notice__body">
+              <p class="notice__title">Set up</p>
+              <p>The server has a Zoom connection called <span class="break-anywhere">{{ zoom_connection_name }}</span>. Press Check connection to make sure Zoom accepts it.</p>
+            </div>
+          </div>
+          {% elif zoom_connection_state == "missing" %}
+          <div class="notice notice--warn">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+            <div class="notice__body">
+              <p class="notice__title">Missing on the server</p>
+              <p>The server has no Zoom connection called <span class="break-anywhere">{{ zoom_connection_name }}</span>. Check the name for typing mistakes, or ask whoever looks after the server to add it.</p>
+            </div>
+          </div>
+          {% else %}
+          <div class="notice notice--note">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg>
+            <div class="notice__body">
+              <p class="notice__title">Not set up</p>
+              <p>Paid accounts in use need a Zoom connection before classes can be booked on them.</p>
+            </div>
+          </div>
+          {% endif %}
+          {% endif %}
+          {% include "partials/field.html" with field=form.credential_set narrow=True only %}
+          {% if can_check_connection %}
+          <div class="field">
+            <button class="button button--secondary" type="submit" form="zoom-check" data-busy-text="Checking with Zoom…" aria-describedby="zoom-check-help">Check connection</button>
+            <p class="field__help" id="zoom-check-help">Asks Zoom whether this account's saved connection works. Save your changes first: checking reloads this page.</p>
+            <p class="visually-hidden" role="status" data-busy-status></p>
+          </div>
+          {% endif %}
         </fieldset>
 
         <fieldset class="formsection">
@@ -88,6 +127,7 @@
           <a class="button button--quiet" href="{% url 'zoom:accounts' %}">Cancel</a>
         </div>
       </form>
+      {% if can_check_connection %}<form id="zoom-check" method="post" action="{% url 'zoom:account_check' account.pk %}" data-busy-form>{% csrf_token %}</form>{% endif %}
     </div>
   </div>
 </div>

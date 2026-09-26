@@ -89,11 +89,22 @@ Django admin — add everyone else on the **Staff and access** page once you've 
 Open http://localhost:8010/. The port comes from `WEB_PORT` in `.env`; the default is 8000.
 
 The prod image refuses to start with `ZOOM_PROVIDER=fake` (a typical dev `.env` setting). To run
-the prod stack locally, override it rather than editing `.env`:
+the prod stack locally, override the provider rather than editing `.env`:
 
 ```powershell
 $env:ZOOM_PROVIDER = "manual"; docker compose up -d --build
 ```
+
+Set it to `zoom` instead once you want to test against real Zoom credentials. Put those in
+`zoom-credentials.env`, next to `.env`, first — see "Connecting an account to Zoom" below. That
+file is git-ignored and never baked into the image; `web` loads it through `env_file`, whether or
+not the file exists.
+
+**Security note:** builds made before 2026-09-25 could copy `Dashboard 2A.xlsx` (which holds Zoom
+host keys) into the image, because `.dockerignore` didn't exclude it. Rebuild any image built
+before that date, and rotate any Zoom host keys it could have reached. The spreadsheet itself stays
+on disk — it's git-ignored, excluded from the Docker build context, and never read by the app (task
+006); see "Zoom link requests" below.
 
 Migrations run when the web container starts (`DJANGO_MIGRATE=1`). Database data is kept in the `mysqldata` volume, and uploads in the `media` volume.
 
@@ -149,9 +160,14 @@ Set these environment variables on the host:
 | `USE_HTTPS` | Keep `True` behind TLS. Your proxy must send `X-Forwarded-Proto`. Use `False` only for local runs without TLS. |
 | `WEB_CONCURRENCY` | Number of Gunicorn workers (default 3) |
 | `EMAIL_BACKEND`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `DEFAULT_FROM_EMAIL` | SMTP settings. Required, or prod mail (including Zoom link emails) never leaves the container |
-| `ZOOM_PROVIDER` | `manual` (default; the only value production accepts) or `fake` (dev only — the prod image refuses to start with it) |
+| `ZOOM_PROVIDER` | `zoom` (production, once every paid account is connected) or `manual` (a fallback that can't see Zoom directly — `manage.py check --deploy` warns with `zoom.W001`). `fake` is dev only — the prod image refuses to start with it |
 | `TRUSTED_PROXY_COUNT` | Reverse proxies in front of the app that add to `X-Forwarded-For`. `0` for a direct connection; `1` behind the TLS proxy |
 | `HOST_KEY_ENCRYPTION_KEYS` | Required. Comma-separated Fernet key(s) that encrypt Zoom host keys at rest — see "Zoom link requests" below |
+
+Zoom credentials (`ZOOM_CREDENTIAL_SETS` and the three `ZOOM_S2S_<NAME>_*` variables per account)
+don't go in this table or in `compose.yaml`'s `web.environment` — they live in
+`zoom-credentials.env`, git-ignored and loaded through `env_file`. See "Connecting an account to
+Zoom" above.
 
 If you run more than one web replica, set `DJANGO_MIGRATE=0` on the replicas. Then run `python manage.py migrate` once as a separate job.
 
@@ -248,17 +264,116 @@ detail page carries a `See it on the timetable` link straight to its month and a
 Zoom accounts list has a `Timetable` link on every row. Nothing is booked, moved or cancelled from
 the timetable — it's read-only.
 
-**Manual mode, until a later brief adds the live Zoom API:** `ZOOM_PROVIDER=manual` is the only
-value production accepts. When IT approves a request, they first create the meeting in Zoom on the
-account the system assigned, turn on cloud recording by hand if the requester asked for it, then
-paste the join link, meeting ID and passcode into the approve form. The system then emails the
-requester the link together with that account's host key, so the teacher can claim host control.
+### Zoom providers
+
+`ZOOM_PROVIDER` picks how the app makes and checks meetings:
+
+| Value | When to use | What it does |
+|---|---|---|
+| `zoom` | Production, once every paid account is connected (see below) | The app calls the real Zoom API. Before it offers or books an account it asks Zoom for that account's existing meetings, so it also sees bookings made directly in Zoom. On approval it creates the real meeting |
+| `manual` | A fallback, and the default before `zoom` is switched on | The app can't see Zoom at all. IT creates the meeting in Zoom by hand and pastes its details into the approve form (below). `manage.py check --deploy` warns with `zoom.W001`, because this can double-book an account |
+| `fake` | Development and tests only | Makes links that don't work. The prod image refuses to start with it (`zoom.E001`) |
+
+### Connecting an account to Zoom
+
+Each paid Zoom account needs its own Server-to-Server OAuth app, set up once by whoever
+administers that Zoom subscription. **The scope names below are unconfirmed until the owner's live
+check (task 006, criterion 48, step 8) — check them against the Marketplace before relying on this
+list.**
+
+1. Sign in at marketplace.zoom.us as the owner or an admin of that Zoom subscription. An admin's
+   role needs the "Server-to-Server OAuth app" permission, under User Management → Roles.
+2. **Develop → Build App → Server-to-Server OAuth App → Create.** Name it `Polymath TMD`.
+3. On **App Credentials**, copy the **Account ID**, **Client ID** and **Client Secret**.
+4. Fill in the required company and developer contact fields under **Information**.
+5. Under **Scopes**, add exactly these, and nothing else *(unconfirmed, see above)*:
+   - `meeting:write:meeting:admin` — create a meeting
+   - `meeting:read:list_meetings:admin` — list a user's meetings
+   - `meeting:read:meeting:admin` — view a meeting, for recurring occurrences
+   - `meeting:delete:meeting:admin` — delete a meeting, for rollback and cancelling
+   - `user:read:user:admin` — view a user, for the connection check
+
+   If the app only offers classic scopes, use `meeting:write:admin`, `meeting:read:admin` and
+   `user:read:admin` instead.
+6. **Activate** the app.
+7. In that subscription's Zoom settings, turn on **cloud recording** (requesters can ask for it),
+   and set the account user's **host key** in their Zoom profile — type it on the Zoom accounts
+   page as before. **Also check "Allow participants to join before host" and "Waiting room"**
+   (Settings → Meeting): the app leaves both exactly as the account has them, and never turns
+   either on or off. A teacher who has only the host key has to be let into the meeting before they
+   can claim host, so join before host should be on and the waiting room off, unless someone who
+   can admit them is always there.
+8. On the server, copy `zoom-credentials.env.example` to `zoom-credentials.env`, next to `.env`.
+   It's git-ignored and never baked into the image. Add the account's slug to
+   `ZOOM_CREDENTIAL_SETS` (for example `zoom-01`), then set `ZOOM_S2S_ZOOM_01_ACCOUNT_ID`,
+   `ZOOM_S2S_ZOOM_01_CLIENT_ID` and `ZOOM_S2S_ZOOM_01_CLIENT_SECRET`.
+9. Recreate `web` (`docker compose up -d`) so it reads the file.
+10. On the Zoom accounts page, set that account's **Zoom connection name** to the slug, save, then
+    press **Check connection**.
+11. Once every paid account works: run `python manage.py check_zoom_connections` and
+    `python manage.py check --database default`, then set `ZOOM_PROVIDER=zoom` in `.env` and
+    recreate `web`.
+
+**Rotating a secret:** regenerate it on the app's App Credentials page in Zoom, update
+`zoom-credentials.env`, recreate `web`, then press **Check connection** again. The two free
+accounts need no app — they're never booked.
+
+**Checking connections from the command line:** `python manage.py check_zoom_connections` checks
+every active paid account at once (handy after rotating a secret). It prints one line per account
+(`{label}: works` or `{label}: {problem}`) and exits with a non-zero status if any account fails.
+No line ever prints a secret, a token or an account ID.
+
+**If Zoom can't be reached, the app fails closed.** It never guesses whether an account is free. An
+account it couldn't check shows as "Couldn't check with Zoom" or "Not connected to Zoom" on the
+request detail page and isn't offered; if the check fails partway through approving, nothing is
+booked, and IT sees a plain message saying what happened and what to try next.
+
+**Rules to follow:**
+
+- **Always schedule classes in Zoom with a date and time.** The app can only see dated, scheduled
+  meetings — never an instant meeting, a no-fixed-time recurring meeting, or one on a Personal
+  Meeting ID (PMI). A class booked directly in Zoom on one of those won't stop the app double-booking it.
+- **Check each account's own "join before host" and "waiting room" settings** (Settings → Meeting
+  in Zoom) — the app never changes either; see setup step 7 above.
+- **A meeting made directly in Zoom now counts as busy.** With `ZOOM_PROVIDER=zoom`, the app asks
+  Zoom for every scheduled meeting on an account before offering or booking it, not only the
+  bookings it made itself.
+
+**Known limits:**
+
+- Instant meetings, no-fixed-time recurring meetings and PMI meetings aren't seen as busy — always
+  schedule dated meetings.
+- Whether a teacher with only the host key can get into a meeting depends on that account's own
+  "join before host" and "waiting room" settings; the app leaves both alone.
+- Changes made directly in Zoom to a meeting the app created — moving it, or deleting it or one of
+  its classes — aren't seen by the app. It keeps treating the class as booked, so an account can
+  look busy when it isn't. That errs on the side of caution. Cancelling a booking from the app
+  (task 011) is the supported way to free it.
+- There's a gap of a second or two between the app checking Zoom and creating the meeting: a
+  meeting typed into Zoom by hand in that window is accepted.
+- An account's recurring series are read one at a time. An account with many of them (20 or more)
+  can miss the availability check's 8-second deadline and show "Couldn't check with Zoom" — safe,
+  but can be annoying; approving itself has no such deadline.
+- The timetable (`/zoom/timetable/`) shows only bookings the app made; meetings that exist only in
+  Zoom don't appear there.
+- The `recurrence.end_times` cap of 60 classes per series is unconfirmed against Zoom's current API
+  docs until the owner's live check (task 006, criterion 48, step 9). If Zoom's limit is now lower,
+  that's a blocker to report, not something to route around silently.
+
+**Manual mode, the fallback:** with `ZOOM_PROVIDER=manual`, the app can't see meetings in Zoom at
+all. When IT approves a request, they first create the meeting in Zoom on the account the system
+assigned, turn on cloud recording by hand if the requester asked for it, then paste the join link,
+meeting ID and passcode into the approve form. The system then emails the requester the link
+together with that account's host key, so the teacher can claim host control.
+`manage.py check --deploy` warns with `zoom.W001` whenever `manual` is set, because it can't see
+meetings made directly in Zoom and so can double-book them.
 
 **Go-live gate:** don't point real requesters at the public form in production yet, until both of
 these are done:
 
-1. A later brief (007) imports the bookings already on IT's spreadsheet; until it does, the
-   conflict checker can't see them and could double-book an account.
+1. `ZOOM_PROVIDER=zoom` is running in production, with every active paid Zoom account connected —
+   `python manage.py check_zoom_connections` passes, and `python manage.py check --database default`
+   reports no `zoom.E004`.
 2. A later brief (011), "Cancel this booking", adds a way to cancel a wrong or unneeded approval.
    Until then a mistaken approval can't be undone in the app — including, from brief 008 onwards,
    that an account with a booking can't be taken out of use until that class is over.

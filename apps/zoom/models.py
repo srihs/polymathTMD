@@ -9,13 +9,18 @@ Why the data is shaped like this (brief 005):
   ``(host_account, starts_at)`` makes a second booking of the same 5 minutes on one account
   impossible to store, whatever code path tries. That's why times must sit on 5-minute steps.
 - The schedule and the status rules live here (``clean()``, the QuerySets and the transition
-  methods) so views stay thin and every path (the forms, the shell, the 007 import) gets the
-  same answers.
+  methods) so views stay thin and every path (the forms, the shell, ``services.approve()``)
+  gets the same answers.
 - Host keys are the one secret stored (D17). They are encrypted through ``crypto.py`` and only
   reachable through ``set_host_key`` / ``get_host_key``, never as a plain field.
 - Host accounts are managed on the in-app Zoom accounts page (brief 008); the project doesn't
   use the Django admin. Taking an account out of use while classes are still booked on it is
   refused here, on the model (``stop_booking_errors``), so no screen can skip the rule.
+- The Zoom connection (brief 006) is named here (``credential_set``) but its credentials live
+  only in the server's environment (``settings.ZOOM_S2S_SECRETS``). ``zoom_connection_state``
+  and ``is_zoom_connected()`` are the one definition of "connected": they read settings only,
+  never the network or the database. ``LinkRequest.zoom_marker`` is the one definition of the
+  agenda marker that lets a retry find a meeting left in Zoom by a failed attempt.
 """
 
 import re
@@ -32,7 +37,12 @@ from django.views.decorators.debug import sensitive_variables
 
 from . import crypto
 from .crypto import HostKeyUnreadable  # noqa: F401  (re-exported: callers catch it from here)
-from .validators import format_phone, normalise_phone, validate_host_key
+from .validators import (
+    format_phone,
+    normalise_phone,
+    validate_credential_set,
+    validate_host_key,
+)
 
 SLOT_MINUTES = 5
 
@@ -141,6 +151,19 @@ BOOKABLE = Q(**BOOKABLE_FLAGS)
 def is_bookable_with(**flags) -> bool:
     """True when these flag values (``is_active=…, is_paid=…``) would make an account bookable."""
     return all(bool(flags[name]) == wanted for name, wanted in BOOKABLE_FLAGS.items())
+
+
+def zoom_connection_state_for(credential_set) -> str:
+    """``"none"``, ``"missing"`` or ``"ready"`` for a connection name (brief 006, criterion 35).
+
+    A module function so the change page can ask about the *stored* name even after an
+    invalid submit has put the typed one on the instance. Settings only: no query, no HTTP.
+    """
+    if not credential_set:
+        return "none"
+    if credential_set not in settings.ZOOM_S2S_SECRETS:
+        return "missing"
+    return "ready"
 
 
 class HostAccountQuerySet(models.QuerySet):
@@ -283,7 +306,7 @@ class HostAccount(models.Model):
         "name",
         max_length=60,
         unique=True,
-        help_text="IT's short name for the account, like the heading in the old spreadsheet.",
+        help_text="IT's short name for the account, like Zoom 01.",
     )
     email = models.EmailField(
         "Zoom sign-in email",
@@ -307,12 +330,15 @@ class HostAccount(models.Model):
         default=0,
         help_text="Lower numbers are suggested first when several accounts are free.",
     )
+    # Only the *name* of the connection. The credentials themselves are in the server's
+    # environment and never in the database (brief 006, D2).
     credential_set = models.SlugField(
-        "credential set",
+        "Zoom connection name",
         max_length=40,
         blank=True,
-        help_text="Name of this account's Zoom API credentials in the server settings, like "
-        "zoom-01. Leave empty until the live Zoom connection is set up.",
+        validators=[validate_credential_set],
+        help_text="The name of this account's Zoom connection on the server, like zoom-01. "
+        "Whoever looks after the server tells you the name.",
     )
     # Fernet token, never the key itself (D17). Read and written only by the methods below.
     host_key_encrypted = models.TextField(
@@ -411,6 +437,27 @@ class HostAccount(models.Model):
         except HostKeyUnreadable:
             return "unreadable"
         return "saved" if self.host_key_changed_at else "saved_legacy"
+
+    @property
+    def zoom_connection_state(self) -> str:
+        """``"none"`` (no name), ``"missing"`` (not on the server) or ``"ready"``."""
+        return zoom_connection_state_for(self.credential_set)
+
+    def is_zoom_connected(self) -> bool:
+        """The one definition used by the preview, ``approve()`` and check ``zoom.E004``."""
+        return self.zoom_connection_state == "ready"
+
+    @property
+    def needs_zoom_connection(self) -> bool:
+        """True when this account can be booked, so a missing Zoom connection matters.
+
+        A free account or one out of use is never booked, so it never needs a connection; the
+        accounts list shows its "Not set up" plainly rather than as a warning (brief 006,
+        D.2.2). Built on ``is_bookable_with`` so the template never repeats the bookable rule
+        (review round 1, SF2). It says nothing about whether a connection is set up: that's
+        ``zoom_connection_state``.
+        """
+        return is_bookable_with(is_active=self.is_active, is_paid=self.is_paid)
 
     def rotate_host_key(self) -> bool:
         """Re-encrypt the saved key with the first configured key. False when none is saved."""
@@ -750,6 +797,25 @@ class LinkRequest(models.Model):
         return f"ZL-{self.pk:04d}" if self.pk else ""
 
     @property
+    def zoom_marker(self) -> str:
+        """``Polymath TMD ZL-0042``: the agenda text of every Zoom meeting made for this request.
+
+        Zoom has no idempotency key, so this is how a later attempt recognises (and removes) a
+        meeting left in Zoom by an attempt that failed (brief 006, D6). The one place it's
+        defined; match it with ``agenda_has_marker()``, never a bare substring test.
+        """
+        return f"Polymath TMD {self.reference}"
+
+    def agenda_has_marker(self, agenda) -> bool:
+        """True when ``agenda`` carries this request's marker, and not a longer reference.
+
+        ``ZL-1234`` is a prefix of ``ZL-12345``, so the marker must not be followed by a digit.
+        """
+        if not self.pk or not agenda:
+            return False
+        return re.search(re.escape(self.zoom_marker) + r"(?!\d)", agenda) is not None
+
+    @property
     def weekday_numbers(self) -> list[int]:
         return [int(day) for day in (self.weekdays or "").split(",") if day.strip().isdigit()]
 
@@ -849,7 +915,7 @@ class LinkRequest(models.Model):
     # ----------------------------------------------------------------------- validation
 
     def clean(self):
-        """Every schedule rule of criterion 6, so the form, the shell and imports agree.
+        """Every schedule rule of criterion 6, so the form and the shell agree.
 
         It also normalises: the email is trimmed and lower-cased, weekdays are sorted and
         de-duplicated, and a one-off request drops any weekly fields that were sent.
@@ -1026,6 +1092,14 @@ class Occurrence(models.Model):
         blank=True,
         related_name="occurrences",
         verbose_name="booked on",
+    )
+    # Set only by approve() for a weekly (recurring) meeting; read by brief 011 to cancel a
+    # single class. Blank for one-off classes and for the manual and fake providers.
+    zoom_occurrence_id = models.CharField(
+        "Zoom occurrence ID",
+        max_length=20,
+        blank=True,
+        help_text="Zoom's ID for this class within its weekly meeting, when Zoom made it.",
     )
 
     objects = OccurrenceQuerySet.as_manager()

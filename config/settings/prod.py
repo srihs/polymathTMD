@@ -21,7 +21,8 @@ if not ALLOWED_HOSTS:
 # deploy check reports it, but nothing runs check --deploy at start-up, so refuse to start.
 if ZOOM_PROVIDER == "fake":
     raise ImproperlyConfigured(
-        "The fake Zoom provider can't run in production. Set ZOOM_PROVIDER=manual."
+        "The fake Zoom provider can't run in production. Set ZOOM_PROVIDER=zoom "
+        "(or manual, the fallback)."
     )
 
 STORAGES = {

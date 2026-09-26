@@ -1,4 +1,4 @@
-"""Forms for Zoom link requests (brief 005) and Zoom host accounts (brief 008).
+"""Forms for Zoom link requests (brief 005) and Zoom host accounts (briefs 008 and 006).
 
 Labels, help and error copy come from the briefs' Design sections and pinned criteria, so the
 form is their one source: the templates only print ``field.label`` and ``field.help_text``.
@@ -24,7 +24,14 @@ from .models import (
     LinkRequest,
 )
 from .services import NOT_OFFERED
-from .validators import HOST_KEY_ERROR, PHONE_ERROR, normalise_phone, validate_host_key
+from .validators import (
+    CREDENTIAL_SET_ERROR,
+    HOST_KEY_ERROR,
+    PHONE_ERROR,
+    normalise_phone,
+    validate_credential_set,
+    validate_host_key,
+)
 
 EMAIL_ERROR = (
     "Type an email address you can open now, like nimali@example.com. We'll send a link to it."
@@ -284,6 +291,9 @@ HOST_KEY_HELP_ADD = (
 )
 HOST_KEY_HELP_KEEP = "Leave it empty to keep the saved key."
 HOST_KEY_HELP_NONE = "Type the 6 to 10 digits from the account's Zoom profile."
+# The model field owns this copy; the form field is declared by hand (see the class docstring)
+# and borrows it rather than keeping a second copy (review round 1, SF3).
+CREDENTIAL_SET_HELP = HostAccount._meta.get_field("credential_set").help_text
 
 
 class HostAccountForm(forms.ModelForm):
@@ -298,6 +308,11 @@ class HostAccountForm(forms.ModelForm):
       ``key_was_typed`` tells the page to say why the box is empty.
     - Every method that holds the typed key in a local is ``@sensitive_variables``, so an
       error report masks it (brief 005, review round 2, nit 2).
+
+    ``credential_set`` (brief 006, criterion 34) is only the *name* of the account's Zoom
+    connection; the credentials stay in the server's environment. A name the server doesn't
+    have yet is allowed: the page says so. It's declared here, not generated, so it has one
+    validator and one pinned error, rather than the ``SlugField``'s own slug message as well.
 
     ``clean()`` also asks the account whether the ``In use`` or ``Paid`` tick may be removed
     (``stop_booking_errors``, brief 008, criterion 17). The view has locked the account row
@@ -315,6 +330,18 @@ class HostAccountForm(forms.ModelForm):
             attrs={"autocomplete": "off", "inputmode": "numeric", "spellcheck": "false"}
         ),
     )
+    credential_set = forms.CharField(
+        label="Zoom connection name",
+        help_text=CREDENTIAL_SET_HELP,
+        required=False,
+        max_length=40,
+        validators=[validate_credential_set],
+        error_messages={"max_length": CREDENTIAL_SET_ERROR},
+        # Not a word to correct or capitalise, and not something to autofill (G4).
+        widget=forms.TextInput(
+            attrs={"autocomplete": "off", "autocapitalize": "none", "spellcheck": "false"}
+        ),
+    )
     remove_host_key = forms.BooleanField(
         label="Remove the saved host key",
         help_text="Tick this if the saved key is wrong and you don't have the new one yet. "
@@ -330,14 +357,14 @@ class HostAccountForm(forms.ModelForm):
         "is_paid",
         "is_active",
         "sort_order",
+        "credential_set",
         "host_key",
         "remove_host_key",
     ]
 
     class Meta:
         model = HostAccount
-        # credential_set stays off this form until brief 006 needs it (D5).
-        fields = ["label", "email", "notes", "is_paid", "is_active", "sort_order"]
+        fields = ["label", "email", "notes", "is_paid", "is_active", "sort_order", "credential_set"]
         labels = {
             "label": "Name",
             "email": "Zoom sign-in email",

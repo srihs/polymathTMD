@@ -2,6 +2,73 @@
 
 Newest first. One entry per task. Each entry lists user-visible changes, then technical notes.
 
+## 2026-09-25 — 006: Live Zoom connection (awaiting the owner's live check)
+
+- The app can now talk to Zoom for real. With `ZOOM_PROVIDER=zoom`, before an account is offered or
+  booked the app asks Zoom whether it already has a meeting at that time — including meetings made
+  directly in Zoom, not just ones the app booked — and on approval it creates the real meeting in
+  Zoom: one meeting for a one-off class, one recurring meeting for a weekly series, with cloud
+  recording switched on when the requester asked for it. The emailed link, meeting ID and passcode
+  are now Zoom's real values.
+- If Zoom can't be reached, the app fails closed: nothing is offered or booked, and IT sees a plain
+  message saying what happened and what to try next. An account whose Zoom connection isn't set up
+  shows "Not connected to Zoom" and can't be booked.
+- The Zoom accounts page gets a new **Zoom connection** column and field (`Zoom connection name`),
+  and a **Check connection** button that asks Zoom directly whether the saved details work.
+- `manual` (paste the meeting details in by hand) stays as a fallback, but now raises a deploy
+  warning, because it can't see meetings made directly in Zoom.
+- The spreadsheet-import brief (007) is **dropped** — the owner decided IT will stop using the
+  spreadsheet to manage Zoom links once this system is live, rather than have it imported. The file
+  itself stays on disk; it's never read by the app.
+- Security: builds made before this task's early `.dockerignore` fix could copy
+  `Dashboard 2A.xlsx` (Zoom host keys) into the Docker image, because `.dockerignore` didn't exclude
+  it the way `.gitignore` already did. Anyone who built an image before 2026-09-25 should rebuild it
+  and consider rotating the host keys it could have reached. The spreadsheet stays on disk either
+  way — it was never a data source and never will be.
+- Technical notes:
+  - **New module, `apps/zoom/zoom_api.py`:** the only module that talks HTTP to Zoom, and the only
+    importer of `requests`. Fixed HTTPS hosts, a `(5, 15)`-second timeout on every call, a
+    process-memory Server-to-Server OAuth token cache per credential set (refreshed 5 minutes early
+    and once on a `401`), and the one mapping from Zoom's errors to a fixed set of user-facing
+    messages (`apps/zoom/errors.py`).
+  - **Credentials are env-only, never in the database.** `ZOOM_CREDENTIAL_SETS` plus three
+    `ZOOM_S2S_<NAME>_*` variables per account, read only in `config/settings/base.py` into
+    `settings.ZOOM_S2S_SECRETS` (masked in error reports because its name contains `SECRET`). They
+    ship through a new git-ignored `zoom-credentials.env` (copied from
+    `zoom-credentials.env.example`), loaded via `compose.yaml`'s `env_file:`, deliberately kept out
+    of `web.environment`.
+  - **`services.approve()` is reordered:** it asks Zoom for the chosen account's meetings *before*
+    taking any locks, then takes the locks, then makes exactly one `POST` create call while holding
+    them, then verifies and saves. Any failure after the create rolls back and sends a compensating
+    `DELETE`; a request's own leftover meetings (identified by an `agenda` marker,
+    `Polymath TMD ZL-{pk:04d}`) are cleaned up before a retry creates a new one.
+  - **New model fields (migration `zoom/0005_zoom_connection`):** `HostAccount.credential_set` gains
+    a format validator and new help text; `Occurrence.zoom_occurrence_id` (set for weekly meetings,
+    read by task 011 to cancel a single class).
+  - **New system checks:** `zoom.E004` (database-tagged: a paid account with no working Zoom
+    connection), `zoom.E005` (a broken `ZOOM_CREDENTIAL_SETS`/`ZOOM_S2S_*` setup) and `zoom.W001`
+    (deploy-tagged: `manual` can't see meetings made directly in Zoom).
+  - **New management command**, `check_zoom_connections`, checks every active paid account's
+    connection and exits non-zero if any fails.
+  - **New dependencies:** `requests` (runtime; the only HTTP client Zoom code uses) and `responses`
+    (dev only, mocks Zoom at the HTTP layer in tests).
+  - **New root-level `conftest.py`:** an autouse `responses` mock blocks every test from reaching the
+    real network; any unregistered call raises instead. No test uses `@responses.activate`.
+  - **New go-live gate:** replaces the one from briefs 005 and 008. Production must not take real
+    requests until this task is done and running with `ZOOM_PROVIDER=zoom` and every active paid
+    account connected, **and** task 011 ("Cancel this booking") exists.
+  - Verified PASS (48 of 49 automated criteria; 919 tests, run twice, across three re-verification
+    rounds) and reviewed APPROVE (round 3, after two rounds of should-fix items); see
+    `docs/tasks/006-live-zoom-connection.md`. **Criterion 48, the owner's live check against one real
+    paid Zoom account (including confirming the exact Marketplace scope names and Zoom's current
+    `recurrence.end_times` cap), hasn't been run yet — this task stays open until the owner reports
+    it.**
+  - Follow-ups: task 011, "Cancel this booking", is next, straight after this task (owner's
+    decision); reading an account's recurring series one after another, rather than in parallel,
+    against the availability preview's 8-second deadline, is accepted for now (see the risk
+    register) and can be revisited if it causes trouble in practice; showing Zoom-only meetings on
+    the timetable (brief 009) stays a follow-up.
+
 ## 2026-09-25 — 009: Zoom timetable (month calendar)
 
 - IT desk staff now have a **Zoom timetable** in the sidebar (**Zoom links → Timetable**): one
@@ -41,7 +108,9 @@ Newest first. One entry per task. Each entry lists user-visible changes, then te
     the previous/next month links have no special handling at the 2000/2100 date range limits
     (accepted as a known limit — nobody books classes in 1999 or 2101); the day list's entry rows
     borrow `--tab-h` rather than a row-height token of their own; and brief 011, "Cancel this
-    booking", stays a go-live prerequisite (see the 005, 008 and 010 entries above).
+    booking", stays a go-live prerequisite (see the 005, 008 and 010 entries above). *Superseded
+    2026-09-25: the go-live gate's other prerequisite is task 006 (the live Zoom connection), not
+    brief 007 — see the 006 entry above.*
 
 ## 2026-09-25 — 010: Staff and access; Django admin removed
 
@@ -96,7 +165,9 @@ Newest first. One entry per task. Each entry lists user-visible changes, then te
     crafted submit) — nothing is saved wrongly either way; moving `accounts`' and `zoom`'s shared
     date-display format into `apps/core` so both apps read one source instead of `accounts`
     repeating brief 005's format by hand; and brief 011, "Cancel this booking", which stays a
-    go-live prerequisite alongside brief 007 (see the 005 and 008 entries above).
+    go-live prerequisite alongside brief 007 (see the 005 and 008 entries above). *Superseded
+    2026-09-25: brief 007 (the spreadsheet import) was dropped; the go-live gate is now task 006
+    (the live Zoom connection) plus brief 011 — see the 006 entry above.*
 
 ## 2026-09-25 — 008: Zoom accounts page
 
@@ -144,7 +215,8 @@ Newest first. One entry per task. Each entry lists user-visible changes, then te
     onwards) an account with a booking can't be taken out of use until that class is over; "send the
     approval email again" is a smaller follow-up for when that email fails to send; and one optional
     nit is still open, adding a mention of brief 008's stop-check race to `test_race.py`'s module
-    docstring.
+    docstring. *Superseded 2026-09-25: brief 007 (the spreadsheet import) was dropped; the go-live
+    gate is now task 006 (the live Zoom connection) plus brief 011 — see the 006 entry above.*
 
 ## 2026-09-25 — 005: Zoom link requests (without the live Zoom connection)
 
@@ -194,7 +266,10 @@ Newest first. One entry per task. Each entry lists user-visible changes, then te
     must call `services.approve()` only outside an open transaction — nested inside one, a real
     deadlock would break the retry's savepoint (review round 2, nit 1, carried forward as a required
     item for brief 007). One optional nit is still open: masking the `host_key` local in the admin
-    form's `clean_host_key`.
+    form's `clean_host_key`. *Superseded 2026-09-25: brief 007 (the spreadsheet import) was dropped;
+    the go-live gate is now task 006 (the live Zoom connection) plus brief 011 — see the 006 entry
+    above. The "outside an open transaction" rule for `services.approve()` still holds; task 006's
+    live provider is now the first other caller, not an importer.*
 
 ## 2026-09-24 — 004: The approved design becomes the app's theme
 

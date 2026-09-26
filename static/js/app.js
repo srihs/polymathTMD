@@ -17,6 +17,7 @@
     7. Flash messages (close)
     8. Sign-in: the empty-field check
     9. Zoom link requests: weekly fields, error-summary focus
+   10. Busy submit button (slow POSTs that wait for Zoom)
 */
 (function () {
   'use strict';
@@ -386,6 +387,65 @@
     errorSummary.focus({ preventScroll: true });
     errorSummary.scrollIntoView({ block: 'start' });
   }
+
+  /* ------------------------------------------------------------------
+     10. Busy submit button (brief 006; docs/design/busy-button.md). For a
+     full-page POST that waits on Zoom (Approve and email the link, Check
+     connection), so nobody is left wondering whether the press worked.
+     Hooks: [data-busy-form] on the <form>; [data-busy-text] on its one
+     submit button, found inside the form or, for a button tied to it with
+     form="id", anywhere in the page; [data-busy-status], an empty polite
+     live region inside the form or beside the button.
+     On submit: a second press is swallowed; otherwise the button gets
+     aria-disabled (not disabled, which would drop focus) and the busy
+     words, which the live region repeats. Only text nodes change, so an
+     icon stays. Coming back through the back/forward cache restores the
+     idle state. The server is already safe against double submits; with
+     no JS the form simply posts as usual.
+     ------------------------------------------------------------------ */
+  function busyParts(form) {
+    var button = qs('[data-busy-text]', form) ||
+      (form.id ? qs('[form="' + form.id + '"][data-busy-text]') : null);
+    if (!button) { return null; }
+    var status = qs('[data-busy-status]', form) ||
+      (button.parentNode ? qs('[data-busy-status]', button.parentNode) : null);
+    var words = Array.prototype.filter.call(button.childNodes, function (node) {
+      return node.nodeType === 3 && node.nodeValue.trim();
+    });
+    return { button: button, status: status, words: words, idle: words.map(function (node) { return node.nodeValue; }) };
+  }
+
+  var busyForms = qsa('[data-busy-form]').map(function (form) {
+    return { form: form, parts: busyParts(form) };
+  }).filter(function (entry) { return entry.parts; });
+
+  busyForms.forEach(function (entry) {
+    var form = entry.form;
+    var parts = entry.parts;
+    form.addEventListener('submit', function (event) {
+      if (form.dataset.busy === 'true') {
+        event.preventDefault();
+        return;
+      }
+      if (event.defaultPrevented) { return; }
+      var text = parts.button.getAttribute('data-busy-text');
+      form.dataset.busy = 'true';
+      parts.button.setAttribute('aria-disabled', 'true');
+      parts.words.forEach(function (node, index) { node.nodeValue = index === 0 ? text : ''; });
+      if (parts.status) { parts.status.textContent = text; }
+    });
+  });
+
+  window.addEventListener('pageshow', function (event) {
+    if (!event.persisted) { return; }
+    busyForms.forEach(function (entry) {
+      var parts = entry.parts;
+      delete entry.form.dataset.busy;
+      parts.button.removeAttribute('aria-disabled');
+      parts.words.forEach(function (node, index) { node.nodeValue = parts.idle[index]; });
+      if (parts.status) { parts.status.textContent = ''; }
+    });
+  });
 
   syncAll();
 })();

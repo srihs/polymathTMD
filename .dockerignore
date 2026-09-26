@@ -1,14 +1,19 @@
 # Keep the build context small and secrets out of the image.
+# Both Dockerfile runtime stages do `COPY . .`, so anything not listed here ships
+# inside the image; apps/core/tests.py guards the private-data entries below.
 .git
 .gitignore
 .gitattributes
 .editorconfig
+.mailmap
 .vscode
 .idea
 
 .env
 .env.*
 !.env.example
+# Zoom Server-to-Server credentials (task 006); compose passes them in via env_file.
+zoom-credentials.env
 
 .venv
 venv
@@ -16,11 +21,32 @@ __pycache__
 *.py[cod]
 .pytest_cache
 .ruff_cache
+# pip's download cache, left in the repo root by host-side installs.
+.cache
 
 staticfiles
 media
 
+# Local working data, mirroring .gitignore: office files dropped at the repo root
+# and data/private/ hold Zoom host keys and staff personal data. Root-anchored so
+# fixtures inside apps/ still ship.
+/Dashboard 2A.xlsx
+/*.xlsx
+/*.xlsm
+/*.xls
+/*.ods
+/*.csv
+/data/private/
+
+# Planning, agent and research material; nothing at runtime reads it.
+.claude
+docs
 design
+CLAUDE.md
+OVERSIGHT_LOG.md
+# Source artwork; the served copies live in static/img/.
+logo.png
+
 Dockerfile
 compose*.yaml
 .dockerignore

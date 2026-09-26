@@ -1250,6 +1250,13 @@ main:focus {
   width: 100%;
 }
 
+/* A busy submit (docs/design/busy-button.md, brief 006): app.js sets
+   aria-disabled and swaps the words; colours and size stay as idle so the
+   contrast holds, and the pointer says the page is working. */
+.button[aria-disabled="true"] {
+  cursor: progress;
+}
+
 /* 5e. Form fields */
 .field {
   margin-bottom: var(--space-5);
@@ -1798,6 +1805,14 @@ textarea.input {
   font-weight: var(--fw-medium);
 }
 
+/* A wide table whose tags may wrap onto two lines (the Zoom accounts list,
+   brief 006 D.2): with seven columns beside the sidebar at 1024px, no-wrap
+   tags like "Missing on the server" would push it past its box. */
+.datagrid--wrap-tags .tag {
+  white-space: normal;
+  text-align: left;
+}
+
 /* 5k. Empty state and the round icon holder */
 .empty {
   display: flex;
@@ -1961,6 +1976,16 @@ textarea.input {
 
 .avail__clashes li {
   margin-bottom: var(--space-1);
+  color: var(--c-text);
+  line-height: var(--lh-body);
+}
+
+/* Why a row can't be booked (Couldn't check with Zoom, Not connected to
+   Zoom, brief 006 D.1.4), with its fix link inline: full width under the
+   name and tag, as the clash list is. */
+.avail__note {
+  grid-column: 1 / -1;
+  margin: 0;
   color: var(--c-text);
   line-height: var(--lh-body);
 }

@@ -9,10 +9,17 @@ to ``apps/core`` when a second app needs it.
 import re
 
 from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from django.views.decorators.debug import sensitive_variables
 
 PHONE_ERROR = "Type a phone number we can call, like 077 123 4567 or +94 77 123 4567."
 HOST_KEY_ERROR = "A Zoom host key is 6 to 10 digits."
+CREDENTIAL_SET_ERROR = "Use lower-case letters, numbers and hyphens only, like zoom-01."
+# A Zoom connection name (brief 006, criteria 4 and 34): lower-case words of letters and
+# digits joined by single hyphens. \Z, not $, so a trailing newline can't slip through. The
+# settings turn it into env var names (zoom-01 -> ZOOM_S2S_ZOOM_01_...), and check zoom.E005
+# holds ZOOM_CREDENTIAL_SETS to the same pattern.
+CREDENTIAL_SET_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*\Z"
 
 _PHONE_SEPARATORS = re.compile(r"[\s\-().]")
 _E164 = re.compile(r"\+\d{8,15}")
@@ -49,6 +56,11 @@ def format_phone(e164: str) -> str:
     if not match:
         return e164 or ""
     return "+94 {} {} {}".format(*match.groups())
+
+
+validate_credential_set = RegexValidator(
+    CREDENTIAL_SET_PATTERN, message=CREDENTIAL_SET_ERROR, code="invalid"
+)
 
 
 @sensitive_variables("value")

@@ -47,7 +47,11 @@ Yes, links can be created automatically with credentials. That uses a Zoom Serve
 | **006** | The live Zoom provider (outline in D16):<br>• **one Server-to-Server OAuth credential set per paid host account**, looked up by `HostAccount.credential_set`, from env only;<br>• a token for each set;<br>• create the meeting (type 2 for one class, type 8 weekly recurrence for a series), with `settings.auto_recording="cloud"` when the requester asked for recording (D18);<br>• map errors;<br>• delete the meeting when the DB commit fails;<br>• a check that every active paid account has a credential set. | Credentials issued for each account |
 | **007** | Import from `Dashboard 2A.xlsx` **only the bookings on or after the go-live date** (owner, Q4: "Future bookings only"), as approved requests with slots. There's no history before go-live. | Adds `openpyxl` (new dependency, reason: read `.xlsx`). Go-live date fixed by the owner |
 
+*Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011.*
+
 **Go-live gate:** 005 must not take real bookings in production until 007 has imported the future bookings already in the spreadsheet. Until then, the conflict engine can't see them, and it would double-book accounts. This is recorded in D14, and the docs writer puts it in the README.
+
+*Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011.*
 
 **In scope (005)**
 
@@ -93,7 +97,7 @@ Yes, links can be created automatically with credentials. That uses a Zoom Serve
 **Out of scope (005)**
 
 - Real Zoom API calls, OAuth and the per-account credential env vars (006, D16).
-- Spreadsheet import (007, future bookings only).
+- Spreadsheet import (007, future bookings only). *Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011.*
 - Tracking whether a recording was made or sent (owner, Q3).
 - Turning recording on in Zoom automatically (006). In 005's manual mode, IT turns it on by hand.
 - Requesters changing or cancelling a request. IT changing, cancelling or re-assigning an **approved** booking; for now, a superuser can delete the request in the admin, which frees its slots.
@@ -491,7 +495,7 @@ Yes, links can be created automatically with credentials. That uses a Zoom Serve
 
 **None open for 005.** The owner answered Q1–Q4 (2026-09-24, verbatim option labels below), and the defaults for Q5 and Q6 stand. They are recorded as D16–D19 and in D6 and D4. For later briefs, two things remain to be supplied, but neither is a design question:
 - **006:** the credentials for each account, issued by whoever administers each Zoom subscription.
-- **007:** the owner fixes the go-live date.
+- **007:** the owner fixes the go-live date. *Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011.*
 
 **Owner's answers**
 
@@ -523,7 +527,7 @@ Yes, links can be created automatically with credentials. That uses a Zoom Serve
   - A failure raises `ProviderError(user_message)`.
   - **`FakeProvider`** is deterministic. Its `join_url` is on the reserved `.invalid` TLD, so a fake link can never reach a real meeting. Tests can make it raise.
   - **`ManualProvider`** returns what IT typed.
-  - **006** adds `ZoomProvider`, which looks up `host_account.credential_set` in the env-held credential sets, one per account (D16).
+  - **006** adds `ZoomProvider`, which looks up `host_account.credential_set` in the env-held credential sets, one per account (D16). *Amended by 006 (2026-09-25): the interface actually grows `checks_zoom`, `busy_times()`, `delete_meeting()` and `check_connection()`, and the credential naming follows 006's D2 (three variables per set), not this outline.*
   - **Owner, Q6:** the manual provider is the production provider until 006.
   - The deploy check `zoom.E001` stops `fake` from reaching production.
 - **D5: Conflicts are impossible by construction**, in three layers:
@@ -574,8 +578,10 @@ Yes, links can be created automatically with credentials. That uses a Zoom Serve
   - it's a data migration with its own risk register.
 
   **Scope, per D19:** future bookings only. The import **gates go-live**: production must not take real bookings until the bookings on or after the go-live date are imported, or the conflict engine can't see them.
+
+  *Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011.*
 - **D15: Out of this brief because they widen it past one reviewable change:** changing or cancelling approved bookings (the admin delete is the stop-gap), requester self-service, and purging unconfirmed requests.
-- **D16: One Zoom credential set per paid host account** (owner, Q1: "Separate subscriptions"). This outline is for 006; nothing in 005 reads credentials.
+- **D16: One Zoom credential set per paid host account** (owner, Q1: "Separate subscriptions"). This outline is for 006; nothing in 005 reads credentials. *Amended by 006 (2026-09-25): 006's D2 supersedes this outline's colon-joined single-variable naming with three variables per set; see 006's D2.*
   - **Env naming scheme:**
     - `ZOOM_CREDENTIAL_SETS` is a comma-separated list of slugs, for example `zoom-01,zoom-02,…`. Each slug equals a `HostAccount.credential_set`.
     - For each slug, there's one variable `ZOOM_S2S_<SLUG>`: the slug upper-cased, with `-` turned into `_`. For example, `ZOOM_S2S_ZOOM_01=<account_id>:<client_id>:<client_secret>`.
@@ -626,6 +632,8 @@ Yes, links can be created automatically with credentials. That uses a Zoom Serve
   - It does not import rows before go-live, and it builds no reports.
   - The importer's unreadable rows (free-text times) go to a report file that IT checks before go-live.
   - The go-live gate (D14) stays.
+
+  *Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011.*
 
 **Rulings on the Design section's copy and contract points (2026-09-25)**
 
@@ -1038,7 +1046,7 @@ Suggested skills: `security-review`, `design-systems:accessibility-audit`. CHANG
   - the new env vars;
   - how to add IT staff (`IT desk` group) and host accounts (admin; mark free accounts unpaid);
   - `ZOOM_PROVIDER` values;
-  - the **go-live gate** (D14);
+  - the **go-live gate** (D14). *Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011.*
   - the manual-provider workflow, including turning recording on by hand;
   - entering host keys in the admin;
   - **generating and rotating `HOST_KEY_ENCRYPTION_KEYS`**, and the warning that losing every key means re-typing all host keys;
@@ -1053,6 +1061,8 @@ Suggested skills: `security-review`, `design-systems:accessibility-audit`. CHANG
 - **The brief:** closes it.
 
 **Order:** (1a ∥ 1b) → (2a after 1b ∥ 2b after 1a) → 3 → 4 → 5. Briefs 006 (D16, once each account's credentials are issued) and 007 (D19, once the owner sets the go-live date) follow. 007 gates production use (D14).
+
+*Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011.*
 
 ## Design
 <!-- owner: tmd-ui-designer — layout + wireframes, components (existing classes), states, copy, accessibility, progressive enhancement -->
@@ -2472,3 +2482,7 @@ Checked specifically: the retry's transaction handling is correct for the approv
 **Status:** Done — Verification PASS (308 tests; prod manual-mode walkthrough; prod refuses the
 fake provider) and Review APPROVE (round 2, two optional nits — nit 1 carried forward as a required
 item for brief 007).
+
+*Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011. Nit 1's "outside an open transaction"
+rule for `services.approve()` still holds; task 006's live provider is now the first other caller,
+not an importer.*

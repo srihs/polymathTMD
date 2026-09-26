@@ -693,8 +693,10 @@ def test_provider_error_rerenders_with_the_message(it_client, account):
         reverse("zoom:approve", args=[link_request.pk]), {"host_account": account.pk}
     )
     assert response.status_code == 200
-    assert response.context["approve_error"].startswith(
-        "Zoom didn't create the meeting: Zoom is not"
+    # Brief 006, criterion 30 (D25), amends 005's criterion 40 on purpose.
+    assert response.context["approve_error"] == (
+        "We couldn't make the meeting in Zoom: Zoom is not responding. Nothing was booked. "
+        "Try again in a few minutes."
     )
     assert mail.outbox == []
 

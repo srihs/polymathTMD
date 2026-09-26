@@ -48,13 +48,13 @@ The brief also takes everything Zoom-related out of the Django admin. `apps/zoom
 | **009** | **Zoom timetable**: a wall-calendar month grid (Mon–Sun weeks) of booked and waiting classes, plus a day view (`docs/tasks/009-zoom-timetable.md`) | 005; the cross-link from the accounts list needs 008 |
 
 - **Order:** **008 → 010 → 009**. All three edit `partials/sidebar.html`, so they're built one after another. Their designer steps can run ahead.
-- **Briefs 006 and 007:** 006 (the live Zoom API) and 007 (the spreadsheet import) keep their numbers.
+- **Briefs 006 and 007:** 006 (the live Zoom API) and 007 (the spreadsheet import) keep their numbers. *Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011.*
 - **New brief 011:** **Cancel a booking** (owner, Q3). It's a go-live prerequisite, recorded under D11.
 - **Migration numbering:** 008 adds `zoom/0003` and `zoom/0004`. Whichever brief lands later renumbers its own migrations onto the latest.
 
 **Go-live prerequisites (recorded here for the docs writer and the README):**
 
-1. Brief 007 imports the future spreadsheet bookings. This is brief 005's gate.
+1. Brief 007 imports the future spreadsheet bookings. This is brief 005's gate. *Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011.*
 2. Brief 011 **"Cancel this booking"** exists (owner, Q3). Until then, a wrong or unneeded approval can't be undone in the app. From 008 onwards, an account with a booking also can't be taken out of use until that class is over (Q2).
 
 **No Django admin: every current use, and where it goes**
@@ -404,7 +404,7 @@ This brief adds or changes:
   - **Risk the owner accepts:** every desk member can replace a host key, and a wrong key goes out in later approval emails. D3's "saved on … by …" line shows who changed it.
 - **D3: No partial key hints.** Two visible digits of a 6-digit key cut the guesses from 1,000,000 to 10,000. The page shows **when and by whom** a key was last set instead (`host_key_changed_at` and `host_key_changed_by`). After the admin is gone, no `LogEntry` exists, so these fields are the only record of a key change.
 - **D4: No hard delete in the app.** `PROTECT` already refuses accounts with bookings. Once the admin is gone, nothing deletes accounts. That's intended.
-- **D5: `credential_set` isn't on the form in 008.** It's blank for every account, and nothing reads it until brief 006, which adds it to this screen along with its check `zoom.E004`.
+- **D5: `credential_set` isn't on the form in 008.** It's blank for every account, and nothing reads it until brief 006, which adds it to this screen along with its check `zoom.E004`. *Amended by 006 (2026-09-25): done — `credential_set` is now on the form (006 criterion 34), and this brief's own test asserting `"credential_set" not in form.fields` is amended deliberately.*
 - **D6: One form class, `HostAccountForm`,** serves both add and change, so the host-key rules are defined once. The two 005 admin form classes are deleted along with `admin.py`.
 - **D7: A typed key isn't kept when the form re-renders with errors.** This is a deliberate exception to "keep what the user typed". Putting a secret back into the HTML would expose it to the browser cache, "view source" and screenshots. The note on the field says why it's gone.
 - **D8: Block, don't warn (owner, Q2).**
@@ -416,7 +416,7 @@ This brief adds or changes:
   - *This replaces the earlier draft's warn-and-confirm step. The `confirm_stop` field and `stop_warning` context are dropped.*
 - **D9: The sidebar marks the current item by view name, not by namespace.** Brief 005 used `current_ns == "zoom"`, which would mark `Link requests` on the accounts pages too. The sidebar now compares `current` against explicit view names. `current_ns` stays as a parameter.
 - **D10: Host keys can't be read anywhere any more.** Brief 005 let superusers read them in the admin (criterion 62). Now a key leaves the system only in the approval email. If that email failed, the key is in the account's Zoom profile, as criterion 25's copy says. "Send the approval email again" is a follow-up for the changelog.
-- **D11: Brief 011, "Cancel this booking", is a go-live prerequisite (owner, Q3).** It adds an in-app way to cancel an approved request, or one of its classes, with a `cancelled` status. Cancelling frees the account's slots, emails the requester and, after brief 006, deletes the Zoom meeting. It also amends criterion 17's copy to add "or cancel them". The README's go-live gate lists it alongside brief 007. Until then, there's no replacement for the admin's "delete a request", and production isn't taking real bookings anyway (brief 005's gate).
+- **D11: Brief 011, "Cancel this booking", is a go-live prerequisite (owner, Q3).** It adds an in-app way to cancel an approved request, or one of its classes, with a `cancelled` status. Cancelling frees the account's slots, emails the requester and, after brief 006, deletes the Zoom meeting. It also amends criterion 17's copy to add "or cancel them". The README's go-live gate lists it alongside brief 007. Until then, there's no replacement for the admin's "delete a request", and production isn't taking real bookings anyway (brief 005's gate). *Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011.*
 
 ## MVT plan
 <!-- owner: tmd-planner -->
@@ -594,7 +594,7 @@ Home                                    [Menu]
      - who can use it (the IT desk);
      - that host keys can't be read anywhere, and what to do if a key leaks;
      - the Q2 rule;
-     - the go-live prerequisites (007 and **011**).
+     - the go-live prerequisites (007 and **011**). *Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011.*
    - **CLAUDE.md:** the `zoom` app bullet.
    - **`docs/CHANGELOG.md`:** the follow-ups, which are "send the approval email again" (D10) and brief 011 (D11).
 
@@ -1320,7 +1320,8 @@ Verification was PASS (398 tests) and review round 2 was APPROVE, so this brief 
   from migration 0004), that a host key is write-only and never shown again, that there's no delete,
   the Q2 stop-booking rule, that IT desk group membership and staff users are still managed in the
   admin until brief 010, and the leaked-key / key-rotation steps pointed at the Zoom accounts page.
-  The go-live gate now lists both prerequisites (007 and 011).
+  The go-live gate now lists both prerequisites (007 and 011). *Amended by 006 (2026-09-25): 007
+  dropped; gate = 006 + 011.*
 - `CLAUDE.md` — Architecture → Current apps: the `zoom` bullet now says `apps/zoom/admin.py` is gone
   and host accounts are managed on in-app screens, records the one-sentence
   `stop_booking_errors`/`select_for_update(of=("self", "link_request"))` invariant, and notes that

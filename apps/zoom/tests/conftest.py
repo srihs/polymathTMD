@@ -7,6 +7,10 @@
   tiny stubs, so these tests pin the view layer (status codes, redirects, context) whatever the
   markup looks like. The rendered pages are the verifier's to test. The plain-text email
   templates are the real ones.
+- Brief 006: the in-process Zoom token cache and Django's cache (which holds the preview's
+  Zoom answers) are emptied around every test (criterion 45), so no test sees another's
+  token or busy times. The project conftest blocks real HTTP; ``zoommock.py`` has the helpers
+  for registering Zoom's answers.
 """
 
 from datetime import date, datetime, time
@@ -16,9 +20,10 @@ import pytest
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.core.cache import cache
 from django.utils import timezone
 
-from apps.zoom import services
+from apps.zoom import services, zoom_api
 from apps.zoom.models import HostAccount, LinkRequest
 from apps.zoom.providers import FakeProvider
 
@@ -59,6 +64,15 @@ STUB_TEMPLATES = {
 def frozen_now(monkeypatch):
     monkeypatch.setattr(timezone, "now", lambda: FROZEN_NOW.astimezone(ZoneInfo("UTC")))
     return FROZEN_NOW
+
+
+@pytest.fixture(autouse=True)
+def fresh_zoom_caches():
+    zoom_api.reset_token_cache()
+    cache.clear()
+    yield
+    zoom_api.reset_token_cache()
+    cache.clear()
 
 
 @pytest.fixture(autouse=True)

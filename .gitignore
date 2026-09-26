@@ -5,9 +5,13 @@ __pycache__/
 venv/
 .pytest_cache/
 .ruff_cache/
+# pip's download cache, left in the repo root by host-side installs.
+/.cache/
 
 # Django
 .env
+# Zoom Server-to-Server credentials (brief 006); only zoom-credentials.env.example is tracked.
+zoom-credentials.env
 /staticfiles/
 /media/
 

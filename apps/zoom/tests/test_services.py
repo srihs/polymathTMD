@@ -149,8 +149,9 @@ def test_provider_failure_books_nothing(account, it_user):
     link_request = make_request()
     result = services.approve(link_request.pk, account_id=account.pk, by=it_user)
     assert result.outcome == Outcome.PROVIDER_ERROR
+    # Brief 006, criterion 30 (D25), amends 005's criterion 40 on purpose.
     assert result.message == (
-        "Zoom didn't create the meeting: Zoom is not responding. Nothing was booked. "
+        "We couldn't make the meeting in Zoom: Zoom is not responding. Nothing was booked. "
         "Try again in a few minutes."
     )
     link_request.refresh_from_db()
@@ -380,10 +381,17 @@ def test_get_provider_follows_the_setting(settings):
     assert get_provider().needs_manual_details
 
 
-@pytest.mark.parametrize(("value", "ids"), [("fake", []), ("manual", []), ("zoom", ["zoom.E002"])])
+@pytest.mark.parametrize(
+    ("value", "ids"),
+    [("fake", []), ("manual", []), ("zoom", []), ("live", ["zoom.E002"]), (None, ["zoom.E002"])],
+)
 def test_check_e002_rejects_unknown_providers(settings, value, ids):
+    """Brief 006, criterion 1: exactly fake, manual and zoom, all named in the message."""
     settings.ZOOM_PROVIDER = value
-    assert [e.id for e in check_provider_setting()] == ids
+    errors = check_provider_setting()
+    assert [e.id for e in errors] == ids
+    for error in errors:
+        assert error.msg.endswith("it must be one of: fake, manual, zoom.")
 
 
 def test_check_e001_keeps_the_fake_provider_out_of_deploys(settings):
@@ -391,8 +399,7 @@ def test_check_e001_keeps_the_fake_provider_out_of_deploys(settings):
     [error] = check_fake_provider_not_deployed()
     assert error.id == "zoom.E001"
     assert error.msg == (
-        "The fake Zoom provider makes links that don't work. "
-        "Set ZOOM_PROVIDER=manual in production."
+        "The fake Zoom provider makes links that don't work. Set ZOOM_PROVIDER=zoom in production."
     )
     deploy_ids = {e.id for e in checks.run_checks(include_deployment_checks=True)}
     assert "zoom.E001" in deploy_ids

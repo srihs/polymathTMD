@@ -214,7 +214,16 @@ def test_list_page_chrome_and_table_markup_on_real_templates(client, settings, i
     assert '<h1 class="page-heading">Zoom accounts</h1>' in html
     assert '<span aria-current="page">Zoom accounts</span>' in html
     assert '<caption class="visually-hidden">Zoom accounts, those in use first</caption>' in html
-    columns = ["Name", "Zoom sign-in email", "Type", "In use", "Host key", "Upcoming classes"]
+    # Brief 006, criterion 35, amends 008 criterion 4: "Zoom connection" after "Host key".
+    columns = [
+        "Name",
+        "Zoom sign-in email",
+        "Type",
+        "In use",
+        "Host key",
+        "Zoom connection",
+        "Upcoming classes",
+    ]
     headers = re.findall(r'<th scope="col"[^>]*>([^<]+)</th>', html)
     assert headers == columns
 
@@ -296,9 +305,10 @@ def test_add_form_fields_order_labels_and_widgets(it_client):
         "is_paid",
         "is_active",
         "sort_order",
+        # Brief 006, criterion 34, amends 008's D5: the connection name is on the form now.
+        "credential_set",
         "host_key",
     ]
-    assert "credential_set" not in form.fields
     assert "remove_host_key" not in form.fields
     labels = {name: field.label for name, field in form.fields.items()}
     assert labels == {
@@ -308,6 +318,7 @@ def test_add_form_fields_order_labels_and_widgets(it_client):
         "is_paid": "Paid account",
         "is_active": "In use",
         "sort_order": "Order",
+        "credential_set": "Zoom connection name",
         "host_key": "Host key",
     }
     assert all(field.help_text for field in form.fields.values())

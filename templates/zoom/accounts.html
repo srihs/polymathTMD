@@ -1,4 +1,4 @@
-{# The Zoom accounts list for the IT desk (brief 008, D.1), in the shell; only for zoom.view_hostaccount. One box: the head with "Accounts ({n})" and, for add_hostaccount, the Add a Zoom account button; then the lead and the table (a card per row below 768px, explicit table roles as in queue.html), or the empty state. Accounts in use come first; the order comes from the view. Never shows a host key, only whether one is saved. Context: accounts (list of HostAccount: pk, label, email, is_paid, is_active, has_host_key, and the annotations upcoming_count (int) and next_class_start (aware datetime or None)), can_add (bool, zoom.add_hostaccount), can_change (bool; names link to zoom:account_edit), can_review (bool, zoom.review_linkrequest; shows each row's Timetable link, to zoom:timetable?account=pk, under Upcoming classes, brief 009). Flashes from add and change come through base.html's messages. Partials: partials/crumb, zoom/partials/account_tag. Filters: zoom_format (class_date, class_time). #}{% extends "base.html" %}
+{# The Zoom accounts list for the IT desk (brief 008, D.1), in the shell; only for zoom.view_hostaccount. One box: the head with "Accounts ({n})" and, for add_hostaccount, the Add a Zoom account button; then the lead and the table (a card per row below 768px, explicit table roles as in queue.html; datagrid--wrap-tags lets its tags wrap so the seven columns fit at 1024px, brief 006 D.2), or the empty state. Accounts in use come first; the order comes from the view. Never shows a host key, only whether one is saved. Context: accounts (list of HostAccount: pk, label, email, is_paid, is_active, has_host_key, zoom_connection_state (str: "none", "missing" or "ready"; a model property with no query or HTTP, brief 006), needs_zoom_connection (bool; a model property, review round 1), and the annotations upcoming_count (int) and next_class_start (aware datetime or None)), can_add (bool, zoom.add_hostaccount), can_change (bool; names link to zoom:account_edit), can_review (bool, zoom.review_linkrequest; shows each row's Timetable link, to zoom:timetable?account=pk, under Upcoming classes, brief 009). Flashes from add and change come through base.html's messages. Partials: partials/crumb, zoom/partials/account_tag. Filters: zoom_format (class_date, class_time). #}{% extends "base.html" %}
 {% load zoom_format %}
 
 {% block title %}Zoom accounts{% endblock %}
@@ -17,10 +17,10 @@
     {% if accounts %}
     <p class="box__lead">Classes can be booked only on accounts that are paid and in use. For safety, saved host keys are never shown.</p>
     <div class="datagrid-wrap">
-      <table class="datagrid" role="table">
+      <table class="datagrid datagrid--wrap-tags" role="table">
         <caption class="visually-hidden">Zoom accounts, those in use first</caption>
         <thead role="rowgroup">
-          <tr role="row"><th scope="col" role="columnheader">Name</th><th scope="col" role="columnheader">Zoom sign-in email</th><th scope="col" role="columnheader">Type</th><th scope="col" role="columnheader">In use</th><th scope="col" role="columnheader">Host key</th><th scope="col" role="columnheader">Upcoming classes</th></tr>
+          <tr role="row"><th scope="col" role="columnheader">Name</th><th scope="col" role="columnheader">Zoom sign-in email</th><th scope="col" role="columnheader">Type</th><th scope="col" role="columnheader">In use</th><th scope="col" role="columnheader">Host key</th><th scope="col" role="columnheader">Zoom connection</th><th scope="col" role="columnheader">Upcoming classes</th></tr>
         </thead>
         <tbody role="rowgroup">
           {% for account in accounts %}
@@ -30,6 +30,7 @@
             <td role="cell"><span class="datagrid__label" aria-hidden="true">Type</span><span>{% include "zoom/partials/account_tag.html" with kind="type" on=account.is_paid only %}</span></td>
             <td role="cell"><span class="datagrid__label" aria-hidden="true">In use</span><span>{% include "zoom/partials/account_tag.html" with kind="use" on=account.is_active only %}</span></td>
             <td role="cell"><span class="datagrid__label" aria-hidden="true">Host key</span><span>{% include "zoom/partials/account_tag.html" with kind="key" on=account.has_host_key only %}</span></td>
+            <td role="cell"><span class="datagrid__label" aria-hidden="true">Zoom connection</span><span>{% include "zoom/partials/account_tag.html" with kind="zoom" state=account.zoom_connection_state needs_zoom_connection=account.needs_zoom_connection only %}</span></td>
             <td role="cell"><span class="datagrid__label" aria-hidden="true">Upcoming classes</span><span class="datagrid__stack">{% if account.upcoming_count %}<span class="datagrid__strong">{{ account.upcoming_count }} booked</span><span>Next: <time datetime="{{ account.next_class_start|date:'c' }}">{{ account.next_class_start|class_date }}</time>, {{ account.next_class_start|class_time }}</span>{% else %}<span class="text-muted">None booked</span>{% endif %}{% if can_review %}<a class="tap-link" href="{% url 'zoom:timetable' %}?account={{ account.pk }}">Timetable<span class="visually-hidden"> for {{ account.label }}</span></a>{% endif %}</span></td>
           </tr>
           {% endfor %}

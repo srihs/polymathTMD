@@ -1,5 +1,5 @@
-"""Views for Zoom link requests (brief 005), Zoom host accounts (brief 008) and the Zoom
-timetable (brief 009).
+"""Views for Zoom link requests (brief 005), Zoom host accounts (brief 008), the Zoom
+timetable (brief 009) and the live Zoom connection (brief 006).
 
 Four areas:
 
@@ -7,13 +7,16 @@ Four areas:
   confirmed. Abuse protection is a honeypot, hourly limits counted in the database, CSRF and
   a signed, expiring confirmation link (D8).
 - **IT** (``zoom.review_linkrequest``, the shell): the queue, the detail with its clash
-  preview, approve and reject. Anonymous visitors are sent to sign in; signed-in users without
-  the permission get 403 (``PermissionRequiredMixin``'s default split).
+  preview, approve and reject. The detail, approve and reject views are
+  ``non_atomic_requests``: they wait on Zoom over HTTP, and no database transaction may be
+  held open meanwhile (brief 006, D8, criterion 20). Anonymous visitors are sent to sign in;
+  signed-in users without the permission get 403 (``PermissionRequiredMixin``'s default split).
 - **Zoom accounts** (the shell): list, add and change host accounts, each page gated by its own
   built-in model permission (``view_``/``add_``/``change_hostaccount``), all held by the
   ``IT desk`` group. There's no delete (D4). The add and change views mask ``host_key`` in
   error reports, and the change view locks the account row on POST so the stop-booking rule
-  can't race an approval (criterion 19).
+  can't race an approval (criterion 19). "Check connection" (brief 006) is a POST-only view
+  that asks Zoom, shows the answer as a message and stores nothing.
 - **Zoom timetable** (``zoom.review_linkrequest``, the shell; brief 009): a read-only month
   wall calendar and a day view. The calendar arithmetic is in ``timetable.py``; these views
   only parse the query, run two queries and call it.
@@ -42,6 +45,7 @@ from django.views.generic import (
     ListView,
     TemplateView,
     UpdateView,
+    View,
 )
 from django.views.generic.detail import SingleObjectMixin
 
@@ -58,6 +62,7 @@ from .models import (
     Occurrence,
     class_date,
     queue_tab,
+    zoom_connection_state_for,
 )
 from .providers import get_provider
 from .services import Outcome
@@ -242,6 +247,10 @@ class ReviewContextMixin:
     One builder means an approve or reject that fails shows exactly what a fresh load would,
     with the availability re-read at that moment (criterion 37: "refreshed availability").
     No value built here ever holds a decrypted host key; only ``has_host_key`` is exposed.
+
+    The availability comes from ``services.availability()``, which asks Zoom (brief 006). The
+    notice when there's no approve form is the template's, in the order ``has_started``, then
+    ``all_unchecked``, then "none free" (D22, G3); ``approve_form`` is ``None`` in all three.
     """
 
     def get_queryset(self):
@@ -261,23 +270,16 @@ class ReviewContextMixin:
         has_started = link_request.has_started()
         provider = get_provider()
 
-        availability = []
+        availability, free, zoom_checked_at, all_unchecked = [], [], None, False
         if can_decide:
-            for account, clashes in HostAccount.objects.availability_for(occurrences):
-                availability.append(
-                    {
-                        "account": account,
-                        "is_free": not clashes,
-                        "has_host_key": account.has_host_key,
-                        # Classes of this request that clash, not clash pairs (D22, G4).
-                        "busy_count": len({occurrence.pk for occurrence, _ in clashes}),
-                        "clashes": [
-                            {"occurrence": occurrence, "other": other}
-                            for occurrence, other in clashes
-                        ],
-                    }
-                )
-        free = [entry["account"] for entry in availability if entry["is_free"]]
+            result = services.availability(
+                link_request,
+                occurrences,
+                provider=provider,
+                account_edit_allowed=self.request.user.has_perm(CHANGE_ACCOUNT),
+            )
+            availability, free = result.entries, result.free_accounts
+            zoom_checked_at, all_unchecked = result.zoom_checked_at, result.all_unchecked
 
         if not can_decide or has_started or not free:
             approve_form = None
@@ -303,6 +305,9 @@ class ReviewContextMixin:
             "has_started": has_started,
             "availability": availability,
             "free_count": len(free),
+            "checks_zoom": provider.checks_zoom,
+            "zoom_checked_at": zoom_checked_at,
+            "all_unchecked": all_unchecked,
             "overlapping_waiting": (
                 LinkRequest.objects.overlapping_waiting(link_request, occurrences)
                 if can_decide
@@ -340,6 +345,9 @@ class ReviewContextMixin:
         return redirect("zoom:detail", pk=self.object.pk)
 
 
+# Not inside the request-wide transaction: the availability waits on Zoom over HTTP (brief
+# 006, D8), and no transaction may be held open meanwhile.
+@method_decorator(transaction.non_atomic_requests, name="dispatch")
 class LinkRequestDetailView(ReviewerRequiredMixin, ReviewContextMixin, DetailView):
     """Everything IT needs to decide: facts, classes, availability, and the two forms."""
 
@@ -424,6 +432,9 @@ class ApproveView(_DecisionView):
         return self.render_review(approve_form=form, approve_error=result.message, status=status)
 
 
+# Non-atomic for the same reason as the detail: an invalid reason re-renders the page, which
+# asks Zoom. ``reject()`` is one conditional UPDATE, so it needs no surrounding transaction.
+@method_decorator(transaction.non_atomic_requests, name="dispatch")
 class RejectView(_DecisionView):
     form_class = RejectForm
 
@@ -608,10 +619,17 @@ class HostAccountFormViewMixin(SignedInPermissionMixin):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         account = None if self.is_add else self.object
+        # The *stored* connection name: an invalid submit has already put the typed one on
+        # ``self.object``, and the state line describes what's saved (brief 006, criterion 35).
+        stored_name = "" if self.is_add else self.saved_credential_set
         context.update(
             account=account,
             is_add=self.is_add,
             host_key_state=account.host_key_state if account else "none",
+            zoom_connection_state=zoom_connection_state_for(stored_name),
+            zoom_connection_name=stored_name,
+            # G5: the check form's action uses account.pk, so it's only offered with an account.
+            can_check_connection=account is not None and self.request.user.has_perm(CHANGE_ACCOUNT),
         )
         return context
 
@@ -652,6 +670,7 @@ class HostAccountUpdateView(HostAccountFormViewMixin, UpdateView):
     def get_object(self, queryset=None):
         account = super().get_object(queryset)
         self.saved_label = account.label
+        self.saved_credential_set = account.credential_set
         self.upcoming_count = account.upcoming_count
         self.next_class_start = account.next_class_start
         return account
@@ -675,3 +694,23 @@ class HostAccountUpdateView(HostAccountFormViewMixin, UpdateView):
             message = ACCOUNT_SAVED
         messages.success(self.request, message.format(label=self.object.label))
         return response
+
+
+@method_decorator(transaction.non_atomic_requests, name="dispatch")
+class HostAccountCheckView(SignedInPermissionMixin, SingleObjectMixin, View):
+    """ "Check connection": ask Zoom whether this account's connection works (criterion 36).
+
+    POST only, because it calls out; gated by ``zoom.change_hostaccount``, which the IT desk
+    holds. Non-atomic: no transaction is held open while Zoom answers. The result comes back
+    as one message on the change page, and nothing about it is stored (D12).
+    """
+
+    permission_required = CHANGE_ACCOUNT
+    http_method_names = ["post"]
+    model = HostAccount
+
+    def post(self, request, *args, **kwargs):
+        account = self.get_object()
+        result = services.check_connection(account)
+        messages.add_message(request, result.level, result.message)
+        return redirect("zoom:account_edit", pk=account.pk)

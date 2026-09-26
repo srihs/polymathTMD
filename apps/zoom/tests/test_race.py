@@ -8,6 +8,13 @@ Instead they unblock the database, commit their own rows through the ``_tracked_
 (each row is registered for cleanup the instant it's created, not batched at the end of setup),
 and delete exactly those rows afterwards, plus a fixed-prefix backstop sweep (SF5, review
 round 1).
+
+pytest-django sets the test database up only when some collected test has a ``django_db``
+mark, and nothing here has one. Run on its own, this module would therefore write to the
+*development* database. ``committed`` refuses to run unless the connection points at a
+``test_`` database, and ``test_committed_rows_go_to_the_test_database`` (marked) makes sure
+the test database is set up whenever this module is collected (brief 006, found while
+adding ``test_zoom_race.py``).
 """
 
 import threading
@@ -40,6 +47,9 @@ def committed(django_db_setup, django_db_blocker):
     going through a tracked factory (review round 1, SF5).
     """
     created = {"requests": [], "accounts": [], "users": []}
+    assert connection.settings_dict["NAME"].startswith("test_"), (
+        "committed rows must go to the test database; collect a django_db-marked test too"
+    )
     with django_db_blocker.unblock():
         try:
             yield created
@@ -52,6 +62,12 @@ def committed(django_db_setup, django_db_blocker):
             HostAccount.objects.filter(label__startswith="Race ").delete()
             get_user_model().objects.filter(username="race-it").delete()
             connection.close()
+
+
+@pytest.mark.django_db
+def test_committed_rows_go_to_the_test_database():
+    """Its mark makes pytest-django set up the test database for this module's tests."""
+    assert connection.settings_dict["NAME"].startswith("test_")
 
 
 def _run_together(*jobs):

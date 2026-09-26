@@ -77,6 +77,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 
 # Worker count comes from WEB_CONCURRENCY (read by gunicorn itself).
 # The control socket goes in /tmp because /app is read-only for the app user.
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", \
+# docker/gunicorn.conf.py only swaps in a logger that hides class start tokens
+# (/zoom/start/<token>/ is a working host link) from the access log (brief 011).
+CMD ["gunicorn", "config.wsgi:application", "--config", "docker/gunicorn.conf.py", \
+     "--bind", "0.0.0.0:8000", \
      "--control-socket", "/tmp/gunicorn.ctl", \
      "--access-logfile", "-", "--error-logfile", "-"]

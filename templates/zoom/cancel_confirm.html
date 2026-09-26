@@ -1,0 +1,71 @@
+{# Confirm cancelling a whole booking, or one class of a weekly one (brief 011, D.2; criterion 7), in the shell; only for zoom.review_linkrequest. One template for both kinds: occurrence set means one class. Reached from the detail's Cancel this booking / Cancel this class links; a successful POST redirects to the detail with the backend's flash. After a failed POST the Not cancelled yet notice (cancel_error, printed as given) or the error summary is the first thing after the title row and is focused by app.js (data-error-summary). One box with the readable form width: the lead, the manual provider's Delete it in Zoom too warning (not checks_zoom), the facts, the classes that will be cancelled, the classes that stay (kept, whole cancel only), then the form: the reason (partials/field; the textarea's rows, maxlength, label and help come from CancelForm, G7), the one .button--danger (docs/design/danger-button.md) with the busy-button hooks (docs/design/busy-button.md), and the safe way out, Keep the class / Keep the booking. Works with no JS. Context: link_request (LinkRequest: pk, reference, class_name, requester_name, requester_email, host_account (label), G4), checks_zoom (bool; false for the manual provider, G3), occurrence (Occurrence or None; set for a one-class cancel), to_cancel (list of Occurrence, soonest first), kept (list of Occurrence; may be empty), form (CancelForm: reason), cancel_error (str or None). Partials: partials/crumb, partials/error_summary, partials/field, zoom/partials/occurrence_list. #}{% extends "base.html" %}
+
+{% block title %}{% if occurrence %}Cancel one class{% else %}Cancel this booking{% endif %}: {{ link_request.reference }}{% endblock %}
+
+{% block heading %}{% if occurrence %}Cancel one class{% else %}Cancel this booking{% endif %}{% endblock %}
+
+{% block breadcrumb %}{% url 'zoom:queue' as queue_url %}{% url 'zoom:detail' link_request.pk as detail_url %}{% include "partials/crumb.html" with url=queue_url text="Zoom link requests" current=False only %}{% include "partials/crumb.html" with url=detail_url text=link_request.reference current=False only %}{% include "partials/crumb.html" with url="" text="Cancel" current=True only %}{% endblock %}
+
+{% block content %}
+{% if cancel_error %}
+<div class="notice notice--bad" role="alert" tabindex="-1" data-error-summary>
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg>
+  <div class="notice__body">
+    <p class="notice__title">Not cancelled yet</p>
+    <p>{{ cancel_error }}</p>
+  </div>
+</div>
+{% endif %}
+{% include "partials/error_summary.html" with form=form lead="We couldn't cancel it yet." only %}
+<div class="box">
+  <div class="box__body">
+    <div class="box__form">
+      {% with label=link_request.host_account.label name=link_request.requester_name %}
+      <p class="box__lead">{% if occurrence %}{% if checks_zoom %}This removes this class from Zoom{% else %}This cancels this class here{% endif %}, frees {{ label }} at that time, and emails {{ name }} with your reason. The other classes stay booked. You can't undo it.{% else %}{% if checks_zoom %}This removes the classes below from Zoom{% else %}This cancels the classes below here{% endif %}, frees {{ label }} at those times, and emails {{ name }} with your reason. You can't undo it.{% endif %}</p>
+      {% if not checks_zoom %}
+      <div class="notice notice--warn">
+        <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+        <div class="notice__body">
+          <p class="notice__title">Delete it in Zoom too</p>
+          <p>This system can't reach Zoom. After you cancel here, delete {% if occurrence %}this class{% else %}the meeting{% endif %} in {{ label }}'s Zoom account.</p>
+        </div>
+      </div>
+      {% endif %}
+      <dl class="facts">
+        <dt>Request</dt>
+        <dd class="break-anywhere">{{ link_request.reference }}: {{ link_request.class_name }}</dd>
+        <dt>Booked on</dt>
+        <dd>{{ label }}</dd>
+        <dt>Requester</dt>
+        <dd>{{ name }}<br><span class="text-muted break-anywhere">{{ link_request.requester_email }}</span></dd>
+      </dl>
+      {% endwith %}
+
+      <div class="box__section">
+        <h2 class="box__subtitle">{% if occurrence %}Class to cancel{% else %}Classes to cancel ({{ to_cancel|length }}){% endif %}</h2>
+        {% include "zoom/partials/occurrence_list.html" with occurrences=to_cancel only %}
+      </div>
+
+      {% if kept %}
+      <div class="box__section">
+        <h2 class="box__subtitle">Classes that stay ({{ kept|length }})</h2>
+        <p class="box__lead">These have started or finished, so they stay as they were.</p>
+        {% include "zoom/partials/occurrence_list.html" with occurrences=kept only %}
+      </div>
+      {% endif %}
+
+      <div class="box__section">
+        <form method="post" action="{% if occurrence %}{% url 'zoom:cancel_class' link_request.pk occurrence.pk %}{% else %}{% url 'zoom:cancel' link_request.pk %}{% endif %}" novalidate data-busy-form>
+          {% csrf_token %}
+          {% include "partials/field.html" with field=form.reason only %}
+          <div class="form-actions">
+            <button class="button button--danger" type="submit" data-busy-text="{% if checks_zoom %}Removing it from Zoom…{% else %}Cancelling…{% endif %}">Cancel and email the requester</button>
+            <a class="button button--quiet" href="{% url 'zoom:detail' link_request.pk %}">{% if occurrence %}Keep the class{% else %}Keep the booking{% endif %}</a>
+            <p class="visually-hidden" role="status" data-busy-status></p>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

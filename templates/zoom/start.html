@@ -1,0 +1,84 @@
+{# The public Start this class page, reached from the start link in the approval email (brief 011, D.5; criteria 21–23, 26, 47), in the public frame, no sign-in. One short column, one h1 (zoom/partials/start_heading), six states. ready: the lead, the failed-POST notice when start_error (focused by app.js, data-error-summary), the class facts, then a POST form (CSRF) with the one primary button Start this class and the busy-button hooks; a GET never calls Zoom. too_early: when the link opens (opens_at; the "class before it" wording when opens_after_other_class), the facts, and Check again (a plain GET link). ended / cancelled: the notice, the facts, and a link to send a new request. invalid (404): the notice only, no facts. not_set_up (the manual provider): the notice and the facts, no form. The contact sentence after the four teacher-facing problems is zoom/partials/it_desk_contact: still=True for invalid and the Zoom failure, still=False for not_set_up and the meeting gone (start_error_still). Shows only the class name, reference and the class times; nothing else about the request. Works with no JS. Context: state (str: "ready", "too_early", "ended", "cancelled", "invalid" or "not_set_up"), link_request (LinkRequest or None; None only when invalid; reads class_name and reference), occurrence (Occurrence or None: starts_at, ends_at), opens_at (aware datetime or None; too_early), opens_after_other_class (bool), start_error (str or None; printed as given, without the contact sentence), start_error_still (bool), token (str or None; None only when invalid; for zoom:start), it_desk_phone (dict {"display", "tel"} or None). Partials: zoom/partials/start_heading, zoom/partials/it_desk_contact, zoom/partials/class_span. Filters: zoom_format (class_date, class_time). #}{% extends "public_base.html" %}
+{% load zoom_format %}
+
+{% block title %}{% include "zoom/partials/start_heading.html" with state=state only %}{% endblock %}
+
+{% block heading %}{% include "zoom/partials/start_heading.html" with state=state only %}{% endblock %}
+
+{% block content %}
+<div class="stack">
+{% if state == "invalid" %}
+<div class="notice notice--warn">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+  <p>This start link doesn't work. Check you copied all of it. {% include "zoom/partials/it_desk_contact.html" with phone=it_desk_phone still=True only %}</p>
+</div>
+{% else %}
+{% if state == "ready" %}
+<p class="public__lead">When you're ready, press Start this class. Zoom opens and starts the meeting with you as the host.</p>
+{% if start_error %}
+<div class="notice notice--bad" role="alert" tabindex="-1" data-error-summary>
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg>
+  <div class="notice__body">
+    <p class="notice__title">The class didn't start</p>
+    <p>{{ start_error }} {% include "zoom/partials/it_desk_contact.html" with phone=it_desk_phone still=start_error_still only %}</p>
+  </div>
+</div>
+{% endif %}
+{% elif state == "too_early" %}
+<div class="notice notice--note">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg>
+  <p>{% if opens_after_other_class %}This link works from {{ opens_at|class_time }} on {{ opens_at|class_date }}, when the class before it on this Zoom account ends.{% else %}This link works from {{ opens_at|class_time }} on {{ opens_at|class_date }}, 30 minutes before the class, until it ends.{% endif %}</p>
+</div>
+{% elif state == "ended" %}
+<div class="notice notice--note">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg>
+  <p>All the classes for this booking have finished.</p>
+</div>
+{% elif state == "cancelled" %}
+<div class="notice notice--warn">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+  <div class="notice__body">
+    <p class="notice__title">This booking was cancelled.</p>
+    <p>The IT desk emailed the reason to the person who booked it.</p>
+  </div>
+</div>
+{% else %}
+<div class="notice notice--note">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg>
+  <p>Starting a class from a link isn't set up yet. {% include "zoom/partials/it_desk_contact.html" with phone=it_desk_phone still=False only %}</p>
+</div>
+{% endif %}
+
+<dl class="facts">
+  <dt>Class</dt>
+  <dd class="break-anywhere">{{ link_request.class_name }}</dd>
+  <dt>Reference</dt>
+  <dd>{{ link_request.reference }}</dd>
+  {% if occurrence %}
+  <dt>{% if state == "ready" %}This class{% elif state == "too_early" %}Next class{% elif state == "ended" %}Last class{% else %}Class time{% endif %}</dt>
+  <dd>{% include "zoom/partials/class_span.html" with start=occurrence.starts_at end=occurrence.ends_at only %}</dd>
+  {% endif %}
+</dl>
+
+{% if state == "ready" %}
+<form method="post" action="{% url 'zoom:start' token %}" data-busy-form>
+  {% csrf_token %}
+  <div class="form-actions">
+    <button class="button button--primary" type="submit" data-busy-text="Opening Zoom…"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-video"></use></svg>Start this class</button>
+    <p class="visually-hidden" role="status" data-busy-status></p>
+  </div>
+  <p class="field__help">You don't need to sign in to Zoom. If your browser asks whether to open Zoom, choose Open.</p>
+</form>
+{% elif state == "too_early" %}
+<p>Come back then. This page doesn't update by itself.</p>
+<div class="form-actions">
+  <a class="button button--secondary" href="{% url 'zoom:start' token %}">Check again</a>
+</div>
+{% elif state == "ended" %}
+<p>Need more classes? <a class="tap-link" href="{% url 'zoom:request' %}">Send a new request</a></p>
+{% elif state == "cancelled" %}
+<p>Need the class after all? <a class="tap-link" href="{% url 'zoom:request' %}">Send a new request</a></p>
+{% endif %}
+{% endif %}
+</div>
+{% endblock %}

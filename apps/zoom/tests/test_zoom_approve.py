@@ -172,7 +172,8 @@ def test_a_one_off_approval_makes_the_meeting_and_keeps_only_what_it_should(
     )
     assert list(link_request.occurrences.values_list("zoom_occurrence_id", flat=True)) == [""]
     [message] = mail.outbox
-    assert zm.JOIN_URL in message.body and "8421973" in message.body
+    # Brief 011, criterion 28: the host key is in no email any more.
+    assert zm.JOIN_URL in message.body and "8421973" not in message.body
 
     dump = _zoom_tables_dump()
     flashes = " ".join(str(m) for m in get_messages(response.wsgi_request))

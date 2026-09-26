@@ -21,6 +21,13 @@ Why the data is shaped like this (brief 005):
   and ``is_zoom_connected()`` are the one definition of "connected": they read settings only,
   never the network or the database. ``LinkRequest.zoom_marker`` is the one definition of the
   agenda marker that lets a retry find a meeting left in Zoom by a failed attempt.
+- Cancelling (brief 011) never deletes a row. A cancelled class keeps who cancelled it, when
+  and why, and its slots are removed so the account is free again. ``BOOKED`` leaves cancelled
+  classes out, so every screen built on ``booked()`` (the clash check, the timetable, the
+  accounts' upcoming counts) follows without a second rule. The cancel rules, the start-link
+  window and the start page's state are methods here, so the views and ``services`` only ask.
+- ``HostKeyReveal`` (brief 011, D11) records each time the IT desk was shown a host key, and
+  never the key itself.
 """
 
 import re
@@ -30,7 +37,19 @@ from datetime import datetime, timedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Case, Count, Exists, F, Min, OuterRef, Q, Subquery, Value, When
+from django.db.models import (
+    Case,
+    Count,
+    Exists,
+    F,
+    Max,
+    Min,
+    OuterRef,
+    Q,
+    Subquery,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce
 from django.utils import dateformat, timezone
 from django.views.decorators.debug import sensitive_variables
@@ -62,6 +81,7 @@ QUEUE_TABS = (
     ("waiting", "Waiting"),
     ("approved", "Link sent"),
     ("rejected", "Not approved"),
+    ("cancelled", "Cancelled"),
     ("all", "All"),
 )
 DEFAULT_QUEUE_TAB = "waiting"
@@ -82,19 +102,32 @@ TOO_MANY_CLASSES = (
 REASON_REQUIRED = "Tell the requester why, so they can fix it and ask again."
 
 # Brief 008, criterion 17: why an account can't stop being bookable yet. ``{what}`` comes from
-# STOP_BOOKING_WHAT, keyed by the field whose tick was removed.
+# STOP_BOOKING_WHAT, keyed by the field whose tick was removed. Brief 011, criterion 33 adds
+# "or been cancelled", now that a class can stop holding the account that way too.
 STOP_BOOKING_MANY = (
     "{label} still has {n} booked classes, from {first} to {last}. It can be {what} once the "
-    "last one has finished."
+    "last one has finished or been cancelled."
 )
 STOP_BOOKING_MANY_SAME_DAY = (
     "{label} still has {n} booked classes, on {first}. It can be {what} once the last one has "
-    "finished."
+    "finished or been cancelled."
 )
 STOP_BOOKING_ONE = (
-    "{label} still has 1 booked class, on {first}. It can be {what} once it has finished."
+    "{label} still has 1 booked class, on {first}. It can be {what} once it has finished or "
+    "been cancelled."
 )
 STOP_BOOKING_WHAT = {"is_active": "taken out of use", "is_paid": "marked as free"}
+
+# Brief 011, criterion 6: why there's nothing to cancel. They live beside the rules that
+# raise them (``cancel_booking_blocked_message`` and ``Occurrence.cancel_blocked_message``),
+# and the detail page shows the whole-booking ones too (G2), so the text is written once.
+CANCEL_IN_PROGRESS = (
+    "{occurrence} is in progress. Cancel the rest of this booking after it ends at {end}."
+)
+NOTHING_LEFT_TO_CANCEL = "There are no classes left to cancel in this booking."
+CLASS_STARTED = "That class has already started, so it can't be cancelled."
+CLASS_ALREADY_CANCELLED = "That class was already cancelled."
+CANCEL_REASON_REQUIRED = "Tell the requester why it's cancelled."
 
 
 class InvalidTransition(Exception):
@@ -292,9 +325,14 @@ class HostAccount(models.Model):
     (brief 008).
 
     Accounts are taken out of use, never deleted (``PROTECT``, and no screen deletes), so the
-    history of who hosted what stays intact. The host key is write-only: it's stored
-    encrypted, and the only record kept about it is when and by whom it was last changed (D3).
-    Nothing shows a saved key, even partly.
+    history of who hosted what stays intact. The host key is stored encrypted, with a record of
+    when and by whom it was last changed (brief 008, D3).
+
+    A host key is never shown back on the account's pages or in any list or email. An IT desk
+    member can show it on its own page as a fallback, and every time it's shown is recorded.
+    (Brief 011, D11 and criterion 45: this amends brief 008's "write-only" rule. The one place
+    a key is decrypted for showing is ``services.reveal_host_key()``, which writes a
+    ``HostKeyReveal`` row each time.)
     """
 
     # Uniqueness of the name and the email ignores letter case because the columns use the
@@ -466,6 +504,16 @@ class HostAccount(models.Model):
         self.host_key_encrypted = crypto.rotate(self.host_key_encrypted)
         return True
 
+    # ----------------------------------------------------------------------- key reveals
+
+    def last_key_reveal(self):
+        """The latest ``HostKeyReveal`` with its ``shown_by`` user, or ``None`` (criterion 44)."""
+        return self.key_reveals.select_related("shown_by").order_by("-shown_at", "-pk").first()
+
+    def key_reveal_count(self) -> int:
+        """How many times this account's key has been shown, ever (criterion 44)."""
+        return self.key_reveals.count()
+
     # ----------------------------------------------------------------------- booked classes
 
     def upcoming_classes(self, now=None):
@@ -568,6 +616,8 @@ class LinkRequestQuerySet(models.QuerySet):
         qs = qs.filter(status=tab)
         if tab == LinkRequest.Status.WAITING:
             return qs.order_by("first_start", "pk")
+        if tab == LinkRequest.Status.CANCELLED:
+            return qs.order_by("-cancelled_at", "-pk")
         return qs.order_by("-decided_at", "-pk")
 
     def tab_counts(self) -> dict:
@@ -577,6 +627,7 @@ class LinkRequestQuerySet(models.QuerySet):
             waiting=Count("pk", filter=Q(status=status.WAITING)),
             approved=Count("pk", filter=Q(status=status.APPROVED)),
             rejected=Count("pk", filter=Q(status=status.REJECTED)),
+            cancelled=Count("pk", filter=Q(status=status.CANCELLED)),
             all=Count("pk"),
         )
 
@@ -662,10 +713,13 @@ class LinkRequestQuerySet(models.QuerySet):
 class LinkRequest(models.Model):
     """One request, from one person, for one class schedule (one-off or weekly).
 
-    Status moves only forward: ``unverified`` (email not yet confirmed) → ``waiting`` (IT's
-    queue) → ``approved`` or ``rejected``, both terminal in brief 005. Confirming and
-    rejecting are methods here; approving spans several models and the meeting provider, so it
-    lives in ``services.approve()``.
+    Status moves only forward: unverified → waiting → approved | rejected; approved →
+    cancelled. ``unverified`` means the email isn't confirmed yet, ``waiting`` is IT's queue,
+    and ``rejected`` and ``cancelled`` are terminal (a cancelled booking is never restored,
+    brief 011 D9). Confirming and rejecting are methods here; approving and cancelling span
+    several models and the meeting provider, so they live in ``services``. The rules they ask
+    (can this booking be cancelled now, which classes, what status follows, what the start
+    page shows) are methods here, so every caller gets the same answer.
     """
 
     MAX_OCCURRENCES = 60  # Zoom's cap for a recurring meeting; keeps one request reviewable
@@ -676,6 +730,7 @@ class LinkRequest(models.Model):
         WAITING = "waiting", "Waiting for IT"
         APPROVED = "approved", "Link sent"
         REJECTED = "rejected", "Not approved"
+        CANCELLED = "cancelled", "Cancelled"
 
     class Repeat(models.TextChoices):
         ONCE = "once", "Just once"
@@ -754,6 +809,20 @@ class LinkRequest(models.Model):
     join_url = models.URLField("Zoom link", max_length=1000, blank=True)
     # The meeting passcode is given to the requester; it isn't an account credential.
     passcode = models.CharField("passcode", max_length=10, blank=True)
+    # Brief 011: who cancelled the whole booking, and when. Set only by ``services.cancel()``,
+    # when no class of the booking is left to come.
+    cancelled_at = models.DateTimeField(
+        "cancelled", null=True, blank=True, help_text="When the IT desk cancelled the booking."
+    )
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="cancelled by",
+        help_text="Who in the IT desk cancelled the booking.",
+    )
 
     objects = LinkRequestQuerySet.as_manager()
 
@@ -761,7 +830,13 @@ class LinkRequest(models.Model):
         ordering = ["-created_at"]
         verbose_name = "Zoom link request"
         verbose_name_plural = "Zoom link requests"
-        permissions = [("review_linkrequest", "Can approve or reject Zoom link requests")]
+        # Renamed in migration 0007 (brief 011, D8): migrate never renames a permission.
+        permissions = [
+            (
+                "review_linkrequest",
+                "Can approve, reject, reschedule or cancel Zoom link requests",
+            )
+        ]
         indexes = [
             models.Index(fields=["requester_email", "created_at"], name="zoom_lr_email_created"),
             models.Index(fields=["submitted_ip", "created_at"], name="zoom_lr_ip_created"),
@@ -783,6 +858,13 @@ class LinkRequest(models.Model):
             models.CheckConstraint(
                 condition=~Q(status="rejected") | ~Q(rejection_reason=""),
                 name="zoom_linkrequest_rejected_has_reason",
+            ),
+            # Brief 011, criterion 1: only a booking that had a link can be cancelled, and it
+            # always says when.
+            models.CheckConstraint(
+                condition=~Q(status="cancelled")
+                | (Q(host_account__isnull=False) & ~Q(join_url="") & Q(cancelled_at__isnull=False)),
+                name="zoom_linkrequest_cancelled_was_booked",
             ),
         ]
 
@@ -912,6 +994,109 @@ class LinkRequest(models.Model):
     def can_be_decided(self) -> bool:
         return self.status == self.Status.WAITING
 
+    # ----------------------------------------------------------------------- cancelling (011)
+    #
+    # Each rule takes ``now`` (default: the current time) and, optionally, the request's classes
+    # already in memory. ``services.cancel()`` passes the rows it has just locked, so its checks
+    # read exactly what it's about to change; pages pass the list they already show, so no rule
+    # costs a query of its own.
+
+    def _classes(self, occurrences):
+        found = self.occurrences.all() if occurrences is None else occurrences
+        return sorted(found, key=lambda occurrence: (occurrence.starts_at, occurrence.pk or 0))
+
+    def class_in_progress(self, now=None, *, occurrences=None):
+        """The booked class running at ``now`` (``starts_at <= now < ends_at``), or ``None``."""
+        now = now or timezone.now()
+        for occurrence in self._classes(occurrences):
+            if occurrence.is_booked() and occurrence.starts_at <= now < occurrence.ends_at:
+                return occurrence
+        return None
+
+    def cancellable_classes(self, now=None, *, occurrences=None) -> list["Occurrence"]:
+        """Booked classes that haven't started, soonest first (criterion 3)."""
+        now = now or timezone.now()
+        return [o for o in self._classes(occurrences) if o.can_be_cancelled(now)]
+
+    def kept_classes(self, now=None, *, occurrences=None) -> list["Occurrence"]:
+        """Booked classes that have started (in progress or over), soonest first.
+
+        The other half of ``cancellable_classes``: cancelling the whole booking leaves these as
+        they were (criterion 4), and the confirm page lists them under "Classes that stay". Kept
+        here, next to its complement, so the two can't drift apart (review round 1, SF2).
+        """
+        now = now or timezone.now()
+        return [o for o in self._classes(occurrences) if o.is_booked() and o.starts_at <= now]
+
+    def can_cancel_booking(self, now=None, *, occurrences=None) -> bool:
+        """Approved, at least one class left to cancel, and no class running right now.
+
+        A class in progress blocks the whole cancel (criterion 6): Zoom refuses to delete a
+        meeting that's running, and the teacher would be cut off mid-class.
+        """
+        if self.status != self.Status.APPROVED:
+            return False
+        classes = self._classes(occurrences)
+        return bool(self.cancellable_classes(now, occurrences=classes)) and (
+            self.class_in_progress(now, occurrences=classes) is None
+        )
+
+    def cancel_booking_blocked_message(self, now=None, *, occurrences=None):
+        """Criterion 6's whole-booking message when the booking can't be cancelled now, else None.
+
+        Used both to refuse a cancel and, on the detail page, to say why there's no cancel
+        link (G2), so the sentence is built in one place.
+        """
+        classes = self._classes(occurrences)
+        if self.can_cancel_booking(now, occurrences=classes):
+            return None
+        running = self.class_in_progress(now, occurrences=classes)
+        if running is not None:
+            return CANCEL_IN_PROGRESS.format(
+                occurrence=running, end=class_time(timezone.localtime(running.ends_at))
+            )
+        return NOTHING_LEFT_TO_CANCEL
+
+    def status_after_cancel(self, now=None, *, occurrences=None) -> str:
+        """``cancelled`` once no class is both not cancelled and not ended; else ``approved``.
+
+        A class that has ended stays as it was (criterion 4), so a booking whose remaining
+        classes are all cancelled is over, even though its held classes keep their history.
+        """
+        now = now or timezone.now()
+        still_on = any(
+            occurrence.cancelled_at is None and occurrence.ends_at > now
+            for occurrence in self._classes(occurrences)
+        )
+        return self.Status.APPROVED if still_on else self.Status.CANCELLED
+
+    def start_state(self, now=None, *, occurrences=None):
+        """``(state, occurrence)`` for the public start page (criterion 21).
+
+        - ``ready``: ``now`` is inside the start window of one of its booked classes (that one);
+        - ``too_early``: a booked class is still to come, but no window is open (the next one);
+        - ``ended``: no booked class is still to come (the last held class, or ``None``);
+        - ``cancelled``: the whole booking was cancelled (``None``).
+
+        Only a class whose 30 minutes before its start have come can be inside its window, so
+        at most a couple of windows are worked out, each one query.
+        """
+        if self.status == self.Status.CANCELLED:
+            return "cancelled", None
+        now = now or timezone.now()
+        booked = [o for o in self._classes(occurrences) if o.is_booked()]
+        to_come = [o for o in booked if o.ends_at > now]
+        lead = timedelta(minutes=Occurrence.START_WINDOW_MINUTES)
+        for occurrence in to_come:
+            if occurrence.starts_at - lead > now:
+                break
+            opens_at, closes_at = occurrence.start_window()
+            if opens_at <= now < closes_at:
+                return "ready", occurrence
+        if to_come:
+            return "too_early", to_come[0]
+        return "ended", (booked[-1] if booked else None)
+
     # ----------------------------------------------------------------------- validation
 
     def clean(self):
@@ -1028,8 +1213,14 @@ class LinkRequest(models.Model):
 
 
 # What makes a class booked, defined once: ``booked()`` filters on it, and the timetable ORs
-# it with "waiting" (brief 009, criterion 17), so the two can't drift apart.
-BOOKED = Q(link_request__status=LinkRequest.Status.APPROVED, host_account__isnull=False)
+# it with "waiting" (brief 009, criterion 17), so the two can't drift apart. A cancelled class
+# (brief 011, criterion 2) holds nothing, so everything built on ``booked()`` frees its time.
+# ``Occurrence.is_booked()`` is the same rule for a class already in memory.
+BOOKED = Q(
+    link_request__status=LinkRequest.Status.APPROVED,
+    host_account__isnull=False,
+    cancelled_at__isnull=True,
+)
 
 
 class OccurrenceQuerySet(models.QuerySet):
@@ -1075,7 +1266,19 @@ class OccurrenceQuerySet(models.QuerySet):
 
 
 class Occurrence(models.Model):
-    """One class meeting of a request. Its ``host_account`` is set when the request is approved."""
+    """One class meeting of a request. Its ``host_account`` is set when the request is approved.
+
+    A class is *booked* while its request is approved, it has an account and it isn't
+    cancelled; *started* once ``starts_at <= now``; *in progress* while ``starts_at <= now <
+    ends_at`` (brief 011). Cancelling sets ``cancelled_at``, ``cancelled_by`` and
+    ``cancel_reason`` and deletes its slots; the account stays recorded, as history.
+    """
+
+    # Brief 011, D4: the start link opens this many minutes before the class.
+    # The pinned copy types "30 minutes" out in three templates, which don't read this
+    # constant: zoom/start.html, zoom/detail.html and zoom/email/approved_body.txt. Change
+    # the number there too if it ever changes here (review round 1 nit).
+    START_WINDOW_MINUTES = 30
 
     link_request = models.ForeignKey(
         LinkRequest,
@@ -1101,6 +1304,25 @@ class Occurrence(models.Model):
         blank=True,
         help_text="Zoom's ID for this class within its weekly meeting, when Zoom made it.",
     )
+    # Brief 011: set together by ``services.cancel()``. A class that has started is never
+    # cancelled, so these always describe a class that didn't happen.
+    cancelled_at = models.DateTimeField(
+        "cancelled", null=True, blank=True, help_text="When the IT desk cancelled this class."
+    )
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="cancelled by",
+        help_text="Who in the IT desk cancelled this class.",
+    )
+    cancel_reason = models.TextField(
+        "reason for cancelling",
+        blank=True,
+        help_text="Why the class was cancelled. It's emailed to the requester.",
+    )
 
     objects = OccurrenceQuerySet.as_manager()
 
@@ -1115,6 +1337,11 @@ class Occurrence(models.Model):
             models.CheckConstraint(
                 condition=Q(ends_at__gt=F("starts_at")), name="zoom_occurrence_ends_after_start"
             ),
+            # Brief 011, criterion 1: a cancelled class always says why.
+            models.CheckConstraint(
+                condition=Q(cancelled_at__isnull=True) | ~Q(cancel_reason=""),
+                name="zoom_occurrence_cancel_has_reason",
+            ),
         ]
 
     def __str__(self):
@@ -1126,12 +1353,72 @@ class Occurrence(models.Model):
         """``a.start < b.end and b.start < a.end`` (D6): back-to-back classes don't clash."""
         return self.starts_at < other.ends_at and other.starts_at < self.ends_at
 
+    # ----------------------------------------------------------------------- brief 011
+
+    def is_booked(self) -> bool:
+        """``BOOKED`` for a class in memory.
+
+        It reads ``link_request``, which a request's own ``occurrences`` already carry, so
+        asking costs no query there.
+        """
+        return (
+            self.cancelled_at is None
+            and self.host_account_id is not None
+            and self.link_request.status == LinkRequest.Status.APPROVED
+        )
+
+    def can_be_cancelled(self, now=None) -> bool:
+        """Booked and not started (criterion 3): a class that has begun keeps its history."""
+        return self.is_booked() and self.starts_at > (now or timezone.now())
+
+    def cancel_blocked_message(self, now=None):
+        """Criterion 6's one-class message when this class can't be cancelled, else ``None``."""
+        if self.cancelled_at is not None:
+            return CLASS_ALREADY_CANCELLED
+        if self.can_be_cancelled(now):
+            return None
+        return CLASS_STARTED
+
+    def start_window(self):
+        """``(opens_at, closes_at)``: when the booking's start link works for this class (D4).
+
+        It opens ``START_WINDOW_MINUTES`` before the class, or when the account's previous
+        booked class ends if that's later, and closes when this class ends. The plan allows one
+        meeting at a time per Zoom user, so starting early while the previous class still runs
+        on the same account could end that class (R3). One query: the latest end of another
+        booked class on this account inside ``(starts_at - 30 min, starts_at]``. Remembered on
+        the instance, because the start page asks more than once.
+        """
+        if getattr(self, "_start_window", None) is None:
+            earliest = self.starts_at - timedelta(minutes=self.START_WINDOW_MINUTES)
+            previous_end = None
+            if self.host_account_id is not None:
+                previous_end = (
+                    Occurrence.objects.booked()
+                    .filter(
+                        host_account_id=self.host_account_id,
+                        ends_at__gt=earliest,
+                        ends_at__lte=self.starts_at,
+                    )
+                    .exclude(pk=self.pk)
+                    .aggregate(latest=Max("ends_at"))["latest"]
+                )
+            opens_at = max(earliest, previous_end) if previous_end else earliest
+            self._start_window = (opens_at, self.ends_at)
+        return self._start_window
+
+    def opens_after_other_class(self) -> bool:
+        """True when the window opens later than 30 minutes before, because of another class."""
+        earliest = self.starts_at - timedelta(minutes=self.START_WINDOW_MINUTES)
+        return self.start_window()[0] > earliest
+
 
 class HostSlot(models.Model):
     """One booked 5-minute slot of one account: the database backstop against double booking.
 
-    Written only by ``services.approve()``. Deleting a request cascades to its occurrences and
-    from them to these rows, which frees the account again.
+    Written only by ``services.approve()``, and deleted by ``services.cancel()`` for each class
+    it cancels (brief 011), which frees the account at those times. Deleting a request cascades
+    to its occurrences and from them to these rows too.
     """
 
     host_account = models.ForeignKey(
@@ -1171,3 +1458,36 @@ class HostSlot(models.Model):
             slots.append(cls(host_account=account, starts_at=start, occurrence=occurrence))
             start += step
         return slots
+
+
+class HostKeyReveal(models.Model):
+    """One time an IT desk member was shown an account's host key (brief 011, D11).
+
+    The owner asked for every reveal to be recorded with who and when, and the IT desk can't
+    read the server logs, so this table is the in-app record; the log line is the second copy.
+    It stores no key, and no part or hash of one. Written only by ``services.reveal_host_key()``.
+    """
+
+    host_account = models.ForeignKey(
+        HostAccount,
+        on_delete=models.PROTECT,
+        related_name="key_reveals",
+        verbose_name="account",
+        help_text="The Zoom account whose host key was shown.",
+    )
+    shown_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="+",
+        verbose_name="shown to",
+        help_text="The IT desk member who pressed Show host key.",
+    )
+    shown_at = models.DateTimeField("shown", auto_now_add=True)
+
+    class Meta:
+        ordering = ["-shown_at", "-pk"]
+        verbose_name = "host key reveal"
+        verbose_name_plural = "host key reveals"
+
+    def __str__(self):
+        return f"{self.host_account.label} shown to {self.shown_by}"

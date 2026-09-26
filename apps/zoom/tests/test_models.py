@@ -344,6 +344,7 @@ def test_unverified_requests_are_invisible_to_it():
         "waiting": 1,
         "approved": 0,
         "rejected": 0,
+        "cancelled": 0,
         "all": 1,
     }
 

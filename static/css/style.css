@@ -82,6 +82,7 @@
   --red-50: #FFE3E2;
   --red-300: #F59A94;
   --red-700: #B42318;
+  --red-800: #912018;
   --red-900: #432A2A;
   --blue-50: #DFEFFC;
   --blue-300: #8CBDF2;
@@ -108,6 +109,9 @@
 /* 1b. Type, space, sizes, motion. */
 :root {
   --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* A value read out or typed elsewhere (the host key, docs/design/secret-value.md):
+     1/l/7 and 0/O never look alike. */
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
 
   /* f.md §8 sizes at the default 16px root (value in px in the comment). */
   --fs-tag: 0.65625rem;         /* 10.5: tags and tab counts (brief 004 D14) */
@@ -120,6 +124,7 @@
   --fs-title: 1.09375rem;       /* 17.5: sign-in h1, settings title, phone motto */
   --fs-page-title: 1.125rem;    /* 18: shell h1 */
   --fs-motto: 1.3125rem;        /* 21: sign-in motto */
+  --fs-secret: 1.75rem;         /* 28: a secret value to read out (brief 011) */
 
   --lh-flat: 1;
   --lh-tight: 1.2;
@@ -262,6 +267,11 @@
   --c-plain-soft: var(--grey-100);
   --c-brand-text: var(--crest-600);
   --c-brand-soft: var(--crest-100);
+  /* The one destructive button (docs/design/danger-button.md, brief 011).
+     Not overridden in dark mode: the same fill and label work in both. */
+  --c-danger: var(--red-700);
+  --c-danger-hover: var(--red-800);
+  --c-on-danger: var(--white);
   --c-boxed-outside: var(--grey-150);
   --c-shadow-pop: var(--shadow-pop);
   --c-shadow-sheet: var(--shadow-sheet);
@@ -1237,6 +1247,21 @@ main:focus {
   color: var(--c-on-primary);
 }
 
+/* The one final button that destroys something and can't be undone, on a
+   page whose only job is to confirm it (docs/design/danger-button.md,
+   brief 011). The words say the act; the red only repeats it. No shadow:
+   --shadow-primary is purple and belongs to the primary button. */
+.button--danger {
+  border-color: var(--c-danger);
+  background: var(--c-danger);
+  color: var(--c-on-danger);
+}
+
+.button--danger:hover {
+  border-color: var(--c-danger-hover);
+  background: var(--c-danger-hover);
+}
+
 .button--quiet:hover {
   text-decoration: underline;
 }
@@ -2005,6 +2030,86 @@ textarea.input {
   margin-top: var(--space-1);
 }
 
+/* Class rows (docs/design/class-rows.md, brief 011): the same numbered list,
+   but each class can carry its own action or status tag, and a cancelled
+   class a note on a second line. The marker must survive, so items stay
+   list-items; the row inside is the flex line. */
+.classrows {
+  margin: 0;
+  padding-left: var(--space-6);
+}
+
+.classrows__item {
+  break-inside: avoid;
+}
+
+.classrows__item + .classrows__item {
+  margin-top: var(--space-1);
+}
+
+.classrows__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-height: var(--target);
+}
+
+/* Never struck through: a line through a date makes it harder to read. */
+.classrows__when {
+  color: var(--c-text);
+}
+
+/* The tag's icon and word carry "cancelled"; the muted date only repeats it. */
+.classrows__item--cancelled .classrows__when {
+  color: var(--c-muted);
+}
+
+/* 44px at every width, not just on phones: it sits in a dense list. */
+.classrows__action {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target);
+  margin-left: auto;
+}
+
+.classrows__note {
+  margin: 0 0 var(--space-2);
+  color: var(--c-text);
+  font-size: var(--fs-help);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* A secret value to read out or type elsewhere, printed once
+   (docs/design/secret-value.md, brief 011: the host key reveal page).
+   Large and monospaced; one click or tap selects exactly the value. */
+.secret {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-5);
+  border: var(--rule) solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-surface-2);
+}
+
+.secret__label {
+  margin: 0 0 var(--space-2);
+  color: var(--c-muted);
+  font-size: var(--fs-help);
+}
+
+.secret__value {
+  margin: 0;
+  color: var(--c-heading);
+  font-family: var(--font-mono);
+  font-size: var(--fs-secret);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  letter-spacing: 0.12em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 /* 5o. Box parts used by the long detail pages */
 .box__lead {
   margin-bottom: var(--space-4);
@@ -2566,6 +2671,15 @@ textarea.input {
   }
 }
 
+@media (min-width: 1400px) {
+  /* A long list of class rows reads in two columns only here: below this
+     width the action needs the room beside the date (class-rows.md). */
+  .classrows--cols {
+    columns: 2;
+    column-gap: var(--space-8);
+  }
+}
+
 @media (max-width: 1399.98px) {
   .signin {
     grid-template-columns: var(--signin-col-md) minmax(0, 1fr);
@@ -2978,6 +3092,12 @@ textarea.input {
     width: 100%;
   }
 
+  /* A wrapped action or tag starts at the left edge, under its date,
+     not pushed to the far right (class-rows.md). */
+  .classrows__action {
+    margin-left: 0;
+  }
+
   .tabs__list {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3112,5 +3232,10 @@ textarea.input {
 
   .box {
     break-inside: avoid;
+  }
+
+  /* A printed reveal page shows its label, never the key itself. */
+  .secret__value {
+    visibility: hidden;
   }
 }

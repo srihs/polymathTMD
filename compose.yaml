@@ -65,6 +65,8 @@ services:
       TRUSTED_PROXY_COUNT: ${TRUSTED_PROXY_COUNT:-0}
       # Required: without it no stored Zoom host key can be encrypted or read.
       HOST_KEY_ENCRYPTION_KEYS: ${HOST_KEY_ENCRYPTION_KEYS:?Set HOST_KEY_ENCRYPTION_KEYS in .env}
+      # Tap-to-call number on the public start-class page (brief 011). Optional; empty hides it.
+      IT_DESK_PHONE: ${IT_DESK_PHONE:-}
     # Zoom Server-to-Server credentials (brief 006, D2): ZOOM_CREDENTIAL_SETS plus three
     # ZOOM_S2S_<NAME>_* variables per set, about 34 in all, so they come from their own
     # git- and docker-ignored file instead of the list above. Deliberately not repeated in

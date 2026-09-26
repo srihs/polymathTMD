@@ -98,9 +98,7 @@ def _approver(link_request, account, user):
     def job():
         result = services.approve(link_request.pk, account_id=account.pk, by=user)
         if result.outcome == Outcome.APPROVED:
-            services.send_approved_email(
-                RequestFactory().get("/"), result.link_request, result.host_key
-            )
+            services.send_approved_email(RequestFactory().get("/"), result.link_request)
         return result
 
     return job

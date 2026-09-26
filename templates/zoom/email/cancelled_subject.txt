@@ -1,0 +1,1 @@
+{# Subject of the "booking cancelled" message to the requester (brief 011, criterion 17, pinned; D.8.2). One line. Context: link_request (LinkRequest: reference, class_name). #}{% autoescape off %}Cancelled: {{ link_request.reference }} {{ link_request.class_name }}{% endautoescape %}

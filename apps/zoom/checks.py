@@ -1,10 +1,12 @@
-"""System checks for the Zoom settings (brief 005, criteria 48 and 63; brief 006, criteria 1, 4-6).
+"""System checks for the Zoom settings (brief 005, criteria 48 and 63; brief 006, criteria 1, 4-6;
+brief 011, criterion 47).
 
 Registered explicitly in ``ZoomConfig.ready()``. Which check runs when:
 
 - **Untagged** (``manage.py check`` and ``migrate``): ``zoom.E002`` (the provider name),
-  ``zoom.E003`` (the host-key encryption keys) and ``zoom.E005`` (the Zoom credential sets,
-  when ``ZOOM_PROVIDER=zoom``). They read settings only. ``collectstatic``, which runs at image
+  ``zoom.E003`` (the host-key encryption keys), ``zoom.E005`` (the Zoom credential sets,
+  when ``ZOOM_PROVIDER=zoom``) and ``zoom.E006`` (``IT_DESK_PHONE`` is a number the app can
+  read). They read settings only. ``collectstatic``, which runs at image
   build time with no keys, only runs the ``staticfiles`` checks, so it isn't blocked.
 - **Deploy** (``check --deploy``): ``zoom.E001`` (the fake provider) and ``zoom.W001`` (the
   manual provider can't see meetings made directly in Zoom).
@@ -21,6 +23,7 @@ from collections import defaultdict
 from django.conf import settings
 from django.core.checks import Error
 from django.core.checks import Warning as CheckWarning
+from django.core.exceptions import ValidationError
 from django.db import DatabaseError
 
 # A pure function, imported rather than read through ``settings``: E005's name-collision test
@@ -33,7 +36,12 @@ from config.settings.base import zoom_credential_env_prefix
 from . import crypto
 from .models import HostAccount
 from .providers import PROVIDERS
-from .validators import CREDENTIAL_SET_ERROR, CREDENTIAL_SET_PATTERN
+from .validators import CREDENTIAL_SET_ERROR, CREDENTIAL_SET_PATTERN, normalise_phone
+
+IT_DESK_PHONE_ERROR = (
+    "IT_DESK_PHONE isn't a phone number the app can read. Use a form like 011 234 5678 or "
+    "+94 11 234 5678."
+)
 
 
 def check_provider_setting(app_configs=None, **kwargs):
@@ -61,6 +69,23 @@ def check_host_key_encryption_keys(app_configs=None, **kwargs):
             id="zoom.E003",
         )
     ]
+
+
+def check_it_desk_phone(app_configs=None, **kwargs):
+    """``zoom.E006``: a set ``IT_DESK_PHONE`` must be readable (brief 011, criterion 47).
+
+    It's read by the same ``normalise_phone`` the start page uses, so a typo is caught by
+    ``manage.py check`` rather than by a teacher tapping a dead number. Empty is allowed: the
+    page then says "contact the IT desk" with no number. The message never repeats the value.
+    """
+    value = (getattr(settings, "IT_DESK_PHONE", "") or "").strip()
+    if not value:
+        return []
+    try:
+        normalise_phone(value)
+    except ValidationError:
+        return [Error(IT_DESK_PHONE_ERROR, id="zoom.E006")]
+    return []
 
 
 def check_fake_provider_not_deployed(app_configs=None, **kwargs):

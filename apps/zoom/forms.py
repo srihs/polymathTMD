@@ -1,4 +1,5 @@
-"""Forms for Zoom link requests (brief 005) and Zoom host accounts (briefs 008 and 006).
+"""Forms for Zoom link requests (brief 005), Zoom host accounts (briefs 008 and 006) and
+cancelling a booking (brief 011).
 
 Labels, help and error copy come from the briefs' Design sections and pinned criteria, so the
 form is their one source: the templates only print ``field.label`` and ``field.help_text``.
@@ -7,15 +8,14 @@ The rules are not repeated here. Both model forms are ``ModelForm``s, so the mod
 """
 
 import re
-from urllib.parse import urlsplit
 
 from django import forms
 from django.core.exceptions import ValidationError
-from django.core.validators import URLValidator
 from django.forms.models import ModelChoiceIteratorValue
 from django.views.decorators.debug import sensitive_variables
 
 from .models import (
+    CANCEL_REASON_REQUIRED,
     CLASS_NAME_REQUIRED,
     LAST_DATE_NEEDED,
     REASON_REQUIRED,
@@ -28,6 +28,7 @@ from .validators import (
     CREDENTIAL_SET_ERROR,
     HOST_KEY_ERROR,
     PHONE_ERROR,
+    is_zoom_https_url,
     normalise_phone,
     validate_credential_set,
     validate_host_key,
@@ -163,7 +164,8 @@ class ApproveForm(forms.Form):
     """Pick the account; with the manual provider, also paste the meeting details.
 
     ``host_account`` offers only the free accounts but accepts any bookable one. The radios list
-    only accounts free for every class (criterion 30, see ``offer()``), while validation uses
+    only accounts free for every class (criterion 30, see ``offer()``); since brief 011 they
+    say nothing about host keys, which are no longer emailed. Validation uses
     ``HostAccount.objects.bookable()``, so a pick that turned busy since the page loaded reaches
     the service's locked re-check and gets the specific "booked a moment ago" answer (criterion
     37). Unpaid, inactive or unknown accounts fail here with ``Choose one of the free accounts
@@ -215,7 +217,7 @@ class ApproveForm(forms.Form):
 
         Called again after a failed approve with the refreshed list, so the radios always
         match the availability shown on the same page. Each choice value carries the account
-        (``choice.data.value.instance``), so the template can show its email and host-key word.
+        (``choice.data.value.instance``), so the template can show its email.
         """
         field = self.fields["host_account"]
         self.free_accounts = list(free_accounts)
@@ -227,22 +229,13 @@ class ApproveForm(forms.Form):
             self.initial.setdefault("host_account", self.free_accounts[0].pk)
 
     def clean_join_url(self):
-        r"""An https link on zoom.us or a subdomain of it, and nothing that could fool the check.
+        """An https link on zoom.us or a subdomain of it, and nothing that could fool the check.
 
-        A backslash is refused outright: browsers treat ``\`` like ``/``, so
-        ``https://evil.example\.zoom.us/…`` would pass a host-suffix test yet open evil.example.
-        ``URLValidator`` then rejects anything else that isn't a well-formed https URL.
+        The rule is ``validators.is_zoom_https_url``, shared with the start page's redirect
+        (brief 011), so the two can't drift apart.
         """
         value = self.cleaned_data["join_url"].strip()
-        if "\\" in value:
-            raise ValidationError(JOIN_URL_INVALID)
-        try:
-            URLValidator(schemes=["https"])(value)
-            parts = urlsplit(value)
-            host = (parts.hostname or "").lower()
-        except (ValidationError, ValueError):
-            raise ValidationError(JOIN_URL_INVALID) from None
-        if parts.scheme != "https" or not (host == "zoom.us" or host.endswith(".zoom.us")):
+        if not is_zoom_https_url(value):
             raise ValidationError(JOIN_URL_INVALID)
         return value
 
@@ -274,6 +267,31 @@ class RejectForm(forms.Form):
     )
 
 
+# The one place the cancel reason's limit is set: the server check, the browser's
+# ``maxlength`` and the error message all read it (review round 1 nit).
+CANCEL_REASON_MAX_LENGTH = 1000
+CANCEL_REASON_TOO_LONG = f"Keep the reason to {CANCEL_REASON_MAX_LENGTH} characters or fewer."
+
+
+class CancelForm(forms.Form):
+    """The one field of the cancel confirm page, for a whole booking or one class (brief 011).
+
+    The label, help, error and widget are all set here (criterion 7, G7), so
+    ``partials/field.html`` renders the textarea unchanged: ``rows="4"``, and a ``maxlength``
+    so the browser stops at the limit the server also checks. Django's ``CharField`` writes
+    that ``maxlength`` from ``max_length`` itself, so it isn't repeated in the widget. The
+    typed reason is kept on every re-render because the bound form is passed back as it is.
+    """
+
+    reason = forms.CharField(
+        label="Why is it cancelled?",
+        help_text="This goes in the email to the requester.",
+        max_length=CANCEL_REASON_MAX_LENGTH,
+        error_messages={"required": CANCEL_REASON_REQUIRED, "max_length": CANCEL_REASON_TOO_LONG},
+        widget=forms.Textarea(attrs={"rows": "4"}),
+    )
+
+
 # --------------------------------------------------------------------------- Zoom accounts
 
 ACCOUNT_LABEL_REQUIRED = "Type a short name for the account, like Zoom 01."
@@ -289,8 +307,16 @@ HOST_KEY_HELP_ADD = (
     "Optional. The 6 to 10 digits from the Profile page of this account in Zoom. You can add "
     "it later."
 )
-HOST_KEY_HELP_KEEP = "Leave it empty to keep the saved key."
-HOST_KEY_HELP_NONE = "Type the 6 to 10 digits from the account's Zoom profile."
+# Brief 011, criterion 30 (D11): keys aren't emailed any more. The change page's key field
+# carries this after its own instruction, so the page says it once (P6).
+HOST_KEYS_NOT_EMAILED = (
+    "Host keys aren't emailed. Teachers start classes with the start link in their approval "
+    "email. If that link fails, the IT desk can show the key on this page."
+)
+HOST_KEY_HELP_KEEP = f"Leave it empty to keep the saved key. {HOST_KEYS_NOT_EMAILED}"
+HOST_KEY_HELP_NONE = (
+    f"Type the 6 to 10 digits from the account's Zoom profile. {HOST_KEYS_NOT_EMAILED}"
+)
 # The model field owns this copy; the form field is declared by hand (see the class docstring)
 # and borrows it rather than keeping a second copy (review round 1, SF3).
 CREDENTIAL_SET_HELP = HostAccount._meta.get_field("credential_set").help_text
@@ -299,7 +325,8 @@ CREDENTIAL_SET_HELP = HostAccount._meta.get_field("credential_set").help_text
 class HostAccountForm(forms.ModelForm):
     """Add or change a Zoom host account; one class for both, so the key rules live once (D6).
 
-    The host key is write-only (D7):
+    The typed host key is never sent back to the browser (D7). Since brief 011 a saved key can
+    be shown to the IT desk on its own page, never here:
 
     - ``host_key`` is form-only and never has an initial value, so a saved key is never sent
       to the browser.
@@ -344,8 +371,7 @@ class HostAccountForm(forms.ModelForm):
     )
     remove_host_key = forms.BooleanField(
         label="Remove the saved host key",
-        help_text="Tick this if the saved key is wrong and you don't have the new one yet. "
-        "Approval emails will then tell the requester to ask the IT desk for the host key.",
+        help_text="Tick this if the saved key is wrong and you don't have the new one yet.",
         required=False,
     )
 

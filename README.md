@@ -66,6 +66,10 @@ Don't use `$` in any value. Docker Compose and django-environ both read it as th
 
 Django and the MySQL container both read the `MYSQL_*` values, so you only set the password in one place. `DB_HOST` and `DB_PORT` tell Django where MySQL is when it runs outside Docker. Inside Docker, compose sets `DB_HOST=db`.
 
+Optionally set `IT_DESK_PHONE` to a phone number, e.g. `011 234 5678`, for the public "Start this
+class" page to show as a tap-to-call link when it can't start a class. Leave it empty (the default)
+and the page just says "Contact the IT desk." instead.
+
 ## Running with Docker
 
 **Development** (live reload; your code is mounted into the container):
@@ -108,6 +112,12 @@ on disk — it's git-ignored, excluded from the Docker build context, and never 
 
 Migrations run when the web container starts (`DJANGO_MIGRATE=1`). Database data is kept in the `mysqldata` volume, and uploads in the `media` volume.
 
+**Rebuild both images after pulling task 011's changes:** `requirements/dev.txt` now installs
+`requirements/prod.txt` (it used to install `base.txt`), so the dev image also gets Gunicorn —
+needed for a test that exercises the real access-log configuration that hides start-link tokens.
+Run `docker compose -f compose.yaml -f compose.dev.yaml up -d --build` for the dev stack and
+`docker compose up -d --build` for the prod-like stack.
+
 The scripts in `docker/mysql/init/` run only when the `mysqldata` volume is first created. They let the app user create the `test_polymath_tmd` database that the tests use. If you change `MYSQL_DATABASE` or `MYSQL_USER` later, run `docker compose down -v` to recreate the volume. This deletes the data.
 
 Useful commands (with the dev overlay, add `-f compose.yaml -f compose.dev.yaml` after `docker compose`):
@@ -133,8 +143,8 @@ python manage.py runserver
 ```
 
 Re-run `pip install -r requirements\dev.txt` after pulling changes that add a dependency (for
-example `cryptography`, added to encrypt Zoom host keys at rest) — an existing `.venv` doesn't pick
-it up on its own.
+example `cryptography`, added to encrypt Zoom host keys at rest, or Gunicorn, now pulled in by
+`dev.txt` through `prod.txt`) — an existing `.venv` doesn't pick it up on its own.
 
 Django still needs MySQL. Start just the database with `docker compose -f compose.yaml -f compose.dev.yaml up -d db` (published on `127.0.0.1:3306`), or point `DB_HOST`/`DB_PORT` at another MySQL server. The MySQL user needs rights on `test_<MYSQL_DATABASE>` for `pytest`.
 
@@ -163,6 +173,7 @@ Set these environment variables on the host:
 | `ZOOM_PROVIDER` | `zoom` (production, once every paid account is connected) or `manual` (a fallback that can't see Zoom directly — `manage.py check --deploy` warns with `zoom.W001`). `fake` is dev only — the prod image refuses to start with it |
 | `TRUSTED_PROXY_COUNT` | Reverse proxies in front of the app that add to `X-Forwarded-For`. `0` for a direct connection; `1` behind the TLS proxy |
 | `HOST_KEY_ENCRYPTION_KEYS` | Required. Comma-separated Fernet key(s) that encrypt Zoom host keys at rest — see "Zoom link requests" below |
+| `IT_DESK_PHONE` | Optional, empty by default. A phone number the public "Start this class" page shows as a tap-to-call link when it can't start a class, e.g. `011 234 5678`. Leave it empty and the page just says "Contact the IT desk." instead. `manage.py check` fails with `zoom.E006` if it's set to something that isn't a phone number |
 
 Zoom credentials (`ZOOM_CREDENTIAL_SETS` and the three `ZOOM_S2S_<NAME>_*` variables per account)
 don't go in this table or in `compose.yaml`'s `web.environment` — they live in
@@ -243,12 +254,19 @@ built-in `view_hostaccount`, `add_hostaccount` and `change_hostaccount` permissi
 role is needed. Mark the two free, 40-minute accounts `Paid account` unticked so the system never
 books them; every other account is a paid Zoom subscription and gets offered to requesters.
 
-A host key is **write-only**: type it once, on the account's `Change {name}` page, and it is never
-shown again to anyone, on any screen — the list and the change page only ever say whether a key is
-saved, and when and by whom it was last set. There's no way to delete an account. An account can't
-be taken out of use, or marked as not paid, while it still has an upcoming (not-yet-finished)
-approved class; the change page explains how many classes are booked and when the last one
-finishes, so IT knows when the change will be possible.
+A host key is never shown back on the account's pages or in any list or email. Type it once, on
+the account's `Change {name}` page; from then on the list and the change page only ever say whether
+a key is saved, and when and by whom it was last set. An IT desk member holding
+`zoom.change_hostaccount` can still read it back, as a fallback, through **Show host key** on that
+same page — see "The host-key fallback" below for when to use it and what's recorded. There's no
+way to delete an account. An account can't be taken out of use, or marked as not paid, while it
+still has an upcoming (not-yet-finished), not-cancelled approved class; the change page explains how
+many classes are booked and when the last one finishes — or cancel one or more classes from the
+request's own page (see "Cancelling a booking" below) to free the account sooner.
+
+*Amended by 011 (2026-09-26): this replaces the "write-only" rule from task 005 (superseded once
+already by 008's "host keys can't be read anywhere any more"). The key is now readable again, but
+only as a recorded, IT-only fallback — never emailed, and never shown on any listing or edit page.*
 
 **Timetable:** the sidebar's **Zoom links → Timetable** item (`/zoom/timetable/`) opens a
 read-only month view for anyone in the `IT desk` group — the same access as the queue and the Zoom
@@ -261,8 +279,72 @@ filtering hides waiting classes, since they don't have an account to filter by �
 month` / `Next month` links move a month at a time, both keeping the filter. On a phone the same
 page becomes a day-by-day list showing only the days that have classes. An approved request's
 detail page carries a `See it on the timetable` link straight to its month and account, and the
-Zoom accounts list has a `Timetable` link on every row. Nothing is booked, moved or cancelled from
-the timetable — it's read-only.
+Zoom accounts list has a `Timetable` link on every row. Nothing is booked or moved from the
+timetable — it's read-only. A cancelled class simply disappears from it, with no struck-through
+"ghost" entry; its history stays on the request's own detail page.
+
+### Cancelling a booking, or one of its classes
+
+Only the IT desk can cancel — a requester can't cancel their own booking through a link. They reply
+to the approval email or phone the IT desk, and IT cancels for them from the request's own detail
+page: **Cancel this booking** removes every class that hasn't started yet, and **Cancel this
+class** (on a weekly booking) removes just one. Either way the app deletes the meeting in Zoom
+(with `ZOOM_PROVIDER=zoom`), frees the Zoom account at those times so it can be booked again, and
+asks IT why — the reason goes straight into the email it sends the requester. A class that's
+already started, or a booking while one of its classes is in progress, can't be cancelled; wait for
+it to finish.
+
+**Zoom doesn't tell anyone.** Its own cancel notifications are switched off, and in any case Zoom
+only ever emails the host, alternative hosts and registrants — never someone who was only sent the
+join link. So the app's cancellation email is the one notice anyone gets, and it reminds the
+requester to tell their own students, since Zoom won't.
+
+### Starting a class from the link, not the host key
+
+The approval email no longer carries the host account's host key. Instead it carries one private
+**start link** to the app, scoped to that booking. From 30 minutes before a class — or from when
+the account's previous booked class ends, if that's later — until the class ends, opening the link
+shows a **Start this class** button. Pressing it asks Zoom for a fresh host-start URL and sends the
+browser straight there, so the teacher starts the meeting as host with no Zoom sign-in. Outside
+that window the page explains when it will work instead, and there's a tap-to-call number for the
+IT desk (see `IT_DESK_PHONE` below) if it doesn't.
+
+**Treat the start link like a key.** Anyone holding it can start the booking's classes as host, for
+as long as the booking runs. Don't forward the approval email — it warns the requester of this
+itself — and don't paste the start link anywhere public; use the join link for that instead.
+
+Rotating `SECRET_KEY` invalidates every start link already emailed, because the link is a signed
+token with no separate expiry — the class's own time window is the expiry. If you don't want to
+break links already sent out, keep the old key in `SECRET_KEY_FALLBACKS` for a while after a
+rotation.
+
+### The host-key fallback: `Show host key`
+
+If a teacher's start link doesn't work, an IT desk member (`zoom.change_hostaccount`) can read the
+account's host key back from its own page, reached with **Show host key** on the account's `Change
+{name}` page. **Every reveal is recorded** — who and when — and shown on the change page as `Last
+shown to … Shown n time(s) in all.` Read the key to the teacher over the phone; never email it or
+send it in a message.
+
+**It has a known weakness.** If the account keeps its waiting room on, a teacher who joins with
+only the join link waits there first, and can only claim host once someone already in the meeting
+lets them in — if nobody's there yet, the key alone can't get them in. The reveal page itself says
+so, and points to the better fallback: open the request's own **Start link** row and start the
+class yourself, then let the teacher in and make them host.
+
+### Logs never show a start link's token
+
+Every request path under `/zoom/start/<token>/` is hidden in every log the app writes — gunicorn's
+access log (`docker/gunicorn.conf.py`) and Django's own loggers (`config/log_filters.py`, wired
+into every handler in `LOGGING`) both rewrite it to `/zoom/start/[hidden]/`, including any query
+string and the `Referer` header, before it's ever written out. The dev server gets the same filter,
+which is also why its request lines now use the plain "simple" format instead of Django's own
+double-printed default — one line per request, not two.
+
+**Don't set `ADMINS`** without first revisiting this. Django's 500-error email to `ADMINS` is built
+by `ExceptionReporter` from the request and the view's local variables, and the log filter only
+redacts the log line — not that email's body. `ADMINS` is unset by default, so this is inert today,
+but check it again before anyone turns it on.
 
 ### Zoom providers
 
@@ -277,16 +359,16 @@ the timetable — it's read-only.
 ### Connecting an account to Zoom
 
 Each paid Zoom account needs its own Server-to-Server OAuth app, set up once by whoever
-administers that Zoom subscription. **The scope names below are unconfirmed until the owner's live
-check (task 006, criterion 48, step 8) — check them against the Marketplace before relying on this
-list.**
+administers that Zoom subscription. **The scope names below are confirmed from Zoom's own
+documentation (2026-09-26): https://developers.zoom.us/docs/integrations/oauth-scopes-granular/ and
+https://developers.zoom.us/docs/api/meetings/.**
 
 1. Sign in at marketplace.zoom.us as the owner or an admin of that Zoom subscription. An admin's
    role needs the "Server-to-Server OAuth app" permission, under User Management → Roles.
 2. **Develop → Build App → Server-to-Server OAuth App → Create.** Name it `Polymath TMD`.
 3. On **App Credentials**, copy the **Account ID**, **Client ID** and **Client Secret**.
 4. Fill in the required company and developer contact fields under **Information**.
-5. Under **Scopes**, add exactly these, and nothing else *(unconfirmed, see above)*:
+5. Under **Scopes**, add exactly these, and nothing else *(confirmed, see above)*:
    - `meeting:write:meeting:admin` — create a meeting
    - `meeting:read:list_meetings:admin` — list a user's meetings
    - `meeting:read:meeting:admin` — view a meeting, for recurring occurrences
@@ -356,27 +438,30 @@ booked, and IT sees a plain message saying what happened and what to try next.
   but can be annoying; approving itself has no such deadline.
 - The timetable (`/zoom/timetable/`) shows only bookings the app made; meetings that exist only in
   Zoom don't appear there.
-- The `recurrence.end_times` cap of 60 classes per series is unconfirmed against Zoom's current API
-  docs until the owner's live check (task 006, criterion 48, step 9). If Zoom's limit is now lower,
-  that's a blocker to report, not something to route around silently.
+- The `recurrence.end_times` cap of 60 classes per series is confirmed from Zoom's own API docs
+  (2026-09-26): https://developers.zoom.us/docs/api/meetings/.
 
 **Manual mode, the fallback:** with `ZOOM_PROVIDER=manual`, the app can't see meetings in Zoom at
 all. When IT approves a request, they first create the meeting in Zoom on the account the system
 assigned, turn on cloud recording by hand if the requester asked for it, then paste the join link,
-meeting ID and passcode into the approve form. The system then emails the requester the link
-together with that account's host key, so the teacher can claim host control.
-`manage.py check --deploy` warns with `zoom.W001` whenever `manual` is set, because it can't see
-meetings made directly in Zoom and so can double-book them.
+meeting ID and passcode into the approve form. The system then emails the requester the link — with
+no start link, since the app never made the meeting itself and so has no `start_url` to fetch — and
+tells them to ask the IT desk how to start the class as host. `manage.py check --deploy` warns with
+`zoom.W001` whenever `manual` is set, because it can't see meetings made directly in Zoom and so can
+double-book them.
 
 **Go-live gate:** don't point real requesters at the public form in production yet, until both of
 these are done:
 
 1. `ZOOM_PROVIDER=zoom` is running in production, with every active paid Zoom account connected —
    `python manage.py check_zoom_connections` passes, and `python manage.py check --database default`
-   reports no `zoom.E004`.
-2. A later brief (011), "Cancel this booking", adds a way to cancel a wrong or unneeded approval.
-   Until then a mistaken approval can't be undone in the app — including, from brief 008 onwards,
-   that an account with a booking can't be taken out of use until that class is over.
+   reports no `zoom.E004`. Task 006 built this; it's passed every automated check and is waiting on
+   the owner's live check against one real paid Zoom account (`docs/tasks/006-live-zoom-connection.md`).
+2. Task 011, "Cancel a booking and start a class from a link", adds cancelling (so a wrong or
+   unneeded approval can be undone, and so an account with a booking can be freed without waiting
+   for the class to finish) and the start link that replaces emailing the host key. It's also built
+   and passing every automated check, and is waiting on the owner's live check against a real paid
+   Zoom account (`docs/tasks/011-cancel-and-start-link.md`).
 
 **If a host key leaks** (a forwarded email, a shared mailbox, a compromised account): change it in
 Zoom first, then re-type it on that account's Zoom accounts page (`Change {name}` → New host key).

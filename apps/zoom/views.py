@@ -1,7 +1,8 @@
 """Views for Zoom link requests (brief 005), Zoom host accounts (brief 008), the Zoom
-timetable (brief 009) and the live Zoom connection (brief 006).
+timetable (brief 009), the live Zoom connection (brief 006), and cancelling and the start link
+(brief 011).
 
-Four areas:
+Five areas:
 
 - **Public** (no sign-in, the public frame): the request form, "check your email", confirm and
   confirmed. Abuse protection is a honeypot, hourly limits counted in the database, CSRF and
@@ -20,6 +21,12 @@ Four areas:
 - **Zoom timetable** (``zoom.review_linkrequest``, the shell; brief 009): a read-only month
   wall calendar and a day view. The calendar arithmetic is in ``timetable.py``; these views
   only parse the query, run two queries and call it.
+- **Brief 011**: cancelling a booking or one class (``zoom.review_linkrequest``, a confirm page
+  then a POST, ``non_atomic_requests`` because ``services.cancel()`` owns its transaction and
+  calls Zoom); the public start page (a signed token, GET shows, POST asks Zoom and
+  redirects); and ``Show host key`` (``zoom.change_hostaccount``, POST only). The start page
+  and the reveal send ``Cache-Control: no-store`` and ``Referrer-Policy: no-referrer`` on
+  every response, because both carry something that lets its holder act as host.
 
 The views stay thin: rules are on the models and QuerySets, and anything spanning several
 models, the provider or email is in ``services.py``. Every context variable here is in the
@@ -27,17 +34,19 @@ brief's context contract.
 """
 
 from datetime import timedelta
+from functools import wraps
 
 from django.conf import settings
 from django.contrib import messages
 from django.db import transaction
 from django.http import Http404, HttpResponseRedirect
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.http import urlencode
-from django.views.decorators.debug import sensitive_post_parameters
+from django.views.decorators.cache import never_cache
+from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.generic import (
     CreateView,
     DetailView,
@@ -52,11 +61,12 @@ from django.views.generic.detail import SingleObjectMixin
 from apps.core.mixins import SignedInPermissionMixin
 
 from . import services, timetable
-from .forms import ApproveForm, HostAccountForm, LinkRequestForm, RejectForm
+from .forms import ApproveForm, CancelForm, HostAccountForm, LinkRequestForm, RejectForm
 from .models import (
     QUEUE_TABS,
     WEEKDAY_NAMES,
     HostAccount,
+    HostKeyUnreadable,
     InvalidTransition,
     LinkRequest,
     Occurrence,
@@ -70,9 +80,10 @@ from .services import Outcome
 # The session key that carries the address to "check your email" (popped on display).
 SENT_TO_SESSION_KEY = "zoom_sent_to"
 
+# Brief 011, criterion 30: the start link replaced the host key in the approval email.
 APPROVED_EMAIL_FAILED = (
-    "Approved, but the email to {email} didn't send. Copy the link below and send it to them "
-    "yourself. The host key is in the Zoom account's profile in Zoom."
+    "Approved, but the email to {email} didn't send. Copy the Zoom link and the start link "
+    "below and send them to them yourself."
 )
 REJECTED = "Not approved. We emailed the reason to {email}."
 REJECTED_EMAIL_FAILED = (
@@ -87,8 +98,33 @@ CHANGE_ACCOUNT = "zoom.change_hostaccount"
 # Success flashes of the accounts pages (brief 008, criteria 10 and 14).
 ACCOUNT_ADDED = "Added {label}."
 ACCOUNT_SAVED = "Saved {label}."
-ACCOUNT_SAVED_NEW_KEY = "Saved {label}. The new host key goes out with the next approved link."
+ACCOUNT_SAVED_NEW_KEY = "Saved {label} and its new host key."
 ACCOUNT_SAVED_KEY_REMOVED = "Saved {label}. Its host key was removed."
+# Brief 011, criterion 41: why Show host key didn't show one. The unreadable text is 008's.
+NO_HOST_KEY_SAVED = "{label} has no host key saved."
+HOST_KEY_CANT_BE_READ = (
+    "A host key is saved, but it can't be read with the current encryption keys. Type it again."
+)
+# The stored key states in which it can be decrypted and so shown (criterion 44).
+READABLE_KEY_STATES = ("saved", "saved_legacy")
+
+
+def no_referrer(view):
+    """Send ``Referrer-Policy: no-referrer`` on every response of ``view`` (brief 011, D4).
+
+    The start page's URL is a start link and the reveal page holds a host key: neither page's
+    address may leave the browser as a ``Referer``, to Zoom or anywhere else. Set on the
+    response itself, so ``SecurityMiddleware`` (which only fills the header in when it's
+    missing) leaves it alone.
+    """
+
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        response = view(request, *args, **kwargs)
+        response["Referrer-Policy"] = "no-referrer"
+        return response
+
+    return wrapper
 
 
 class ReviewerRequiredMixin(SignedInPermissionMixin):
@@ -248,13 +284,19 @@ class ReviewContextMixin:
     with the availability re-read at that moment (criterion 37: "refreshed availability").
     No value built here ever holds a decrypted host key; only ``has_host_key`` is exposed.
 
+    Brief 011 adds the cancel and start-link values. Every rule behind them is a model method
+    given the classes already loaded for the page, so they cost no query of their own.
+
     The availability comes from ``services.availability()``, which asks Zoom (brief 006). The
     notice when there's no approve form is the template's, in the order ``has_started``, then
     ``all_unchecked``, then "none free" (D22, G3); ``approve_form`` is ``None`` in all three.
     """
 
     def get_queryset(self):
-        return LinkRequest.objects.visible_to_it().select_related("host_account", "decided_by")
+        # ``cancelled_by`` too: a cancelled booking's notice names who cancelled it (011, SF1).
+        return LinkRequest.objects.visible_to_it().select_related(
+            "host_account", "decided_by", "cancelled_by"
+        )
 
     def review_context(
         self,
@@ -265,7 +307,9 @@ class ReviewContextMixin:
         reject_form=None,
         approve_error=None,
     ):
-        occurrences = list(link_request.occurrences.all())
+        # Each cancelled class's row says who cancelled it; joining the user here keeps that to
+        # no extra query per class (brief 011, review round 1, SF1).
+        occurrences = list(link_request.occurrences.select_related("cancelled_by"))
         can_decide = link_request.can_be_decided()
         has_started = link_request.has_started()
         provider = get_provider()
@@ -296,6 +340,10 @@ class ReviewContextMixin:
         elif reject_form is None:
             reject_form = RejectForm()
 
+        approved = link_request.status == LinkRequest.Status.APPROVED
+        now = timezone.now()
+        in_progress = link_request.class_in_progress(now, occurrences=occurrences)
+
         return {
             "object": link_request,
             "link_request": link_request,
@@ -320,6 +368,24 @@ class ReviewContextMixin:
             "approve_error": approve_error,
             "can_add_account": self.request.user.has_perm(ADD_ACCOUNT),
             "timetable_url": self.timetable_url(link_request, occurrences),
+            # Brief 011 (criteria 8 and 31; G1, G2).
+            "can_cancel_booking": link_request.can_cancel_booking(now, occurrences=occurrences),
+            "cancellable_ids": (
+                {o.pk for o in link_request.cancellable_classes(now, occurrences=occurrences)}
+                if link_request.repeat == LinkRequest.Repeat.WEEKLY
+                else set()
+            ),
+            "in_progress_id": in_progress.pk if in_progress else None,
+            "cancel_blocked_message": (
+                link_request.cancel_booking_blocked_message(now, occurrences=occurrences)
+                if approved
+                else None
+            ),
+            "start_link": (
+                services.start_link(self.request, link_request)
+                if approved and provider.can_start
+                else None
+            ),
         }
 
     @staticmethod
@@ -415,7 +481,7 @@ class ApproveView(_DecisionView):
         )
         if result.outcome == Outcome.APPROVED:
             link_request = result.link_request
-            if services.send_approved_email(self.request, link_request, result.host_key):
+            if services.send_approved_email(self.request, link_request):
                 messages.success(self.request, result.message)
             else:
                 messages.warning(
@@ -456,6 +522,192 @@ class RejectView(_DecisionView):
         else:
             messages.warning(self.request, REJECTED_EMAIL_FAILED.format(email=email))
         return self.detail_redirect()
+
+
+# --------------------------------------------------------------------------- Cancelling (011)
+
+
+# Not inside the request-wide transaction (ATOMIC_REQUESTS): services.cancel() must own the
+# outermost transaction, because it calls Zoom with the locks held and retries a deadlock,
+# which rolls back the whole transaction (criterion 10, as for approve).
+@method_decorator(transaction.non_atomic_requests, name="dispatch")
+class CancelBookingView(ReviewerRequiredMixin, SingleObjectMixin, FormView):
+    """Cancel a whole booking: GET shows the confirm page, POST cancels (brief 011, 5-15).
+
+    Only approved (or already cancelled) bookings have this page; any other request is a 404.
+    When there's nothing to cancel, GET and POST both go back to the detail with criterion 6's
+    message and no Zoom call. Everything else is ``services.cancel()``; this view parses the
+    form, calls it, and picks a response.
+    """
+
+    form_class = CancelForm
+    template_name = "zoom/cancel_confirm.html"
+    context_object_name = "link_request"
+
+    def get_queryset(self):
+        return LinkRequest.objects.filter(
+            status__in=[LinkRequest.Status.APPROVED, LinkRequest.Status.CANCELLED]
+        ).select_related("host_account")
+
+    def get_occurrence(self):
+        """The one class being cancelled, or ``None`` for the whole booking."""
+        return None
+
+    def setup_objects(self):
+        self.object = self.get_object()
+        self.occurrence = self.get_occurrence()
+        self.occurrences = list(self.object.occurrences.all())
+
+    def blocked_message(self):
+        """Criterion 6's message when there's nothing to do, else ``None`` (from the models)."""
+        if self.occurrence is not None:
+            return self.occurrence.cancel_blocked_message()
+        return self.object.cancel_booking_blocked_message(occurrences=self.occurrences)
+
+    def nothing_to_do(self, message):
+        messages.error(self.request, message)
+        return redirect("zoom:detail", pk=self.object.pk)
+
+    def get(self, request, *args, **kwargs):
+        self.setup_objects()
+        blocked = self.blocked_message()
+        if blocked:
+            return self.nothing_to_do(blocked)
+        return super().get(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        self.setup_objects()
+        blocked = self.blocked_message()
+        if blocked:
+            return self.nothing_to_do(blocked)
+        return super().post(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        now = timezone.now()
+        if self.occurrence is not None:
+            to_cancel, kept = [self.occurrence], []
+        else:
+            to_cancel = self.object.cancellable_classes(now, occurrences=self.occurrences)
+            kept = self.object.kept_classes(now, occurrences=self.occurrences)
+        context.update(
+            link_request=self.object,
+            occurrence=self.occurrence,
+            checks_zoom=get_provider().checks_zoom,
+            to_cancel=to_cancel,
+            kept=kept,
+            cancel_error=kwargs.get("cancel_error"),
+        )
+        return context
+
+    def form_valid(self, form):
+        reason = form.cleaned_data["reason"]
+        result = services.cancel(
+            self.object.pk,
+            occurrence_id=self.occurrence.pk if self.occurrence else None,
+            by=self.request.user,
+            reason=reason,
+        )
+        if result.outcome == Outcome.CANCELLED:
+            emailed = services.send_cancelled_email(
+                self.request, result.link_request, result.cancelled, result.remaining, reason
+            )
+            level, text = services.cancelled_message(
+                result, emailed=emailed, checks_zoom=get_provider().checks_zoom
+            )
+            messages.add_message(self.request, level, text)
+            return redirect("zoom:detail", pk=self.object.pk)
+        if result.outcome == Outcome.NOTHING_TO_DO:
+            return self.nothing_to_do(result.message)
+        # Nothing was cancelled here: show the page again, fresh, with the reason kept.
+        self.setup_objects()
+        return self.render_to_response(
+            self.get_context_data(form=form, cancel_error=result.message)
+        )
+
+
+class CancelClassView(CancelBookingView):
+    """Cancel one class of a weekly booking (brief 011, criterion 5).
+
+    A class of another request is a 404, and so is any class of a one-off booking: its only
+    class *is* the booking, which ``zoom:cancel`` cancels.
+    """
+
+    def get_occurrence(self):
+        if self.object.repeat != LinkRequest.Repeat.WEEKLY:
+            raise Http404("A one-off booking is cancelled as a whole.")
+        return get_object_or_404(
+            Occurrence.objects.select_related("host_account"),
+            pk=self.kwargs["occurrence_pk"],
+            link_request=self.object,
+        )
+
+
+# --------------------------------------------------------------------------- Start link (011)
+
+
+# never_cache gives Cache-Control: no-store (and no-cache, must-revalidate, private) on every
+# response, the redirect to Zoom included; non-atomic because the POST waits on Zoom.
+@method_decorator([never_cache, no_referrer, transaction.non_atomic_requests], name="dispatch")
+class StartClassView(TemplateView):
+    """ "Start this class", public, from the approval email (brief 011, criteria 19-26).
+
+    GET only shows the state and never calls Zoom, because mail scanners fetch links, and a
+    scanner that followed a redirect would hold a working host link (D4). POST, in the
+    ``ready`` state, asks Zoom for a fresh ``start_url`` and redirects there (302). That URL is
+    only in memory, in ``services.start_class()`` and here, and is never stored or logged.
+    """
+
+    template_name = "zoom/start.html"
+    # HEAD is answered as GET (Django's View does that), so `curl -I` shows the headers.
+    http_method_names = ["get", "head", "post"]
+
+    def get(self, request, *args, **kwargs):
+        link_request = services.link_request_from_start_token(kwargs["token"])
+        if link_request is None:
+            return self.invalid()
+        return self.show(link_request, services.start_state(link_request))
+
+    @sensitive_variables("result")
+    def post(self, request, *args, **kwargs):
+        link_request = services.link_request_from_start_token(kwargs["token"])
+        if link_request is None:
+            return self.invalid()
+        result = services.start_class(link_request, ip=services.client_ip(request))
+        if result.url:
+            return HttpResponseRedirect(result.url)
+        return self.show(link_request, result)
+
+    def base_context(self):
+        return {"it_desk_phone": services.it_desk_phone()}
+
+    def invalid(self):
+        context = self.base_context()
+        context.update(
+            state="invalid",
+            link_request=None,
+            occurrence=None,
+            opens_at=None,
+            opens_after_other_class=False,
+            start_error=None,
+            start_error_still=False,
+            token=None,
+        )
+        return self.render_to_response(context, status=404)
+
+    def show(self, link_request, result):
+        context = self.base_context()
+        context.update(
+            state=result.state,
+            link_request=link_request,
+            occurrence=result.occurrence,
+            opens_at=result.opens_at,
+            opens_after_other_class=result.opens_after_other_class,
+            start_error=result.error,
+            start_error_still=result.error_still,
+            token=self.kwargs["token"],
+        )
+        return self.render_to_response(context)
 
 
 # --------------------------------------------------------------------------- Zoom timetable
@@ -626,6 +878,10 @@ class HostAccountFormViewMixin(SignedInPermissionMixin):
             account=account,
             is_add=self.is_add,
             host_key_state=account.host_key_state if account else "none",
+            # Brief 011, criterion 44: the add page never offers a reveal.
+            can_reveal_host_key=False,
+            last_key_reveal=None,
+            key_reveal_count=0,
             zoom_connection_state=zoom_connection_state_for(stored_name),
             zoom_connection_name=stored_name,
             # G5: the check form's action uses account.pk, so it's only offered with an account.
@@ -677,10 +933,15 @@ class HostAccountUpdateView(HostAccountFormViewMixin, UpdateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        # Criterion 44: from the state the mixin already worked out, so no second decrypt.
+        readable = context["host_key_state"] in READABLE_KEY_STATES
         context.update(
             saved_label=self.saved_label,
             upcoming_count=self.upcoming_count,
             next_class_start=self.next_class_start,
+            can_reveal_host_key=readable and self.request.user.has_perm(CHANGE_ACCOUNT),
+            last_key_reveal=self.object.last_key_reveal(),
+            key_reveal_count=self.object.key_reveal_count(),
         )
         return context
 
@@ -714,3 +975,33 @@ class HostAccountCheckView(SignedInPermissionMixin, SingleObjectMixin, View):
         result = services.check_connection(account)
         messages.add_message(request, result.level, result.message)
         return redirect("zoom:account_edit", pk=account.pk)
+
+
+@method_decorator([never_cache, no_referrer], name="dispatch")
+class HostKeyRevealView(SignedInPermissionMixin, SingleObjectMixin, View):
+    """ "Show host key": the IT-only fallback when a start link fails (brief 011, 40-44; D11).
+
+    POST only, so nothing prefetches or caches it, and each reveal is one deliberate, recorded
+    act; gated by ``zoom.change_hostaccount``, which the IT desk holds. ``never_cache`` and
+    ``no_referrer`` cover every response, the page and both redirects. The key is decrypted
+    only in ``services.reveal_host_key()``, which records the reveal; this frame holds it as
+    ``plain``, masked in error reports, and hands it to ``zoom/host_key_reveal.html`` only.
+    """
+
+    permission_required = CHANGE_ACCOUNT
+    http_method_names = ["post"]
+    model = HostAccount
+
+    @sensitive_variables("plain", "context")
+    def post(self, request, *args, **kwargs):
+        account = self.get_object()
+        try:
+            plain = services.reveal_host_key(account, by=request.user)
+        except services.NoHostKeySaved:
+            messages.error(request, NO_HOST_KEY_SAVED.format(label=account.label))
+            return redirect("zoom:account_edit", pk=account.pk)
+        except HostKeyUnreadable:
+            messages.error(request, HOST_KEY_CANT_BE_READ)
+            return redirect("zoom:account_edit", pk=account.pk)
+        context = {"account": account, "host_key": plain}
+        return render(request, "zoom/host_key_reveal.html", context)

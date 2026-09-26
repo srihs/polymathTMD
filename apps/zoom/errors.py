@@ -107,3 +107,16 @@ class ZoomNotConnected(ProviderError):
 
     def __init__(self):
         super().__init__("this account isn't connected to Zoom")
+
+
+class ZoomMeetingNotFound(ZoomRejected):
+    """HTTP 404 with Zoom code 3001: Zoom has no such meeting (brief 011).
+
+    A subclass of ``ZoomRejected`` so every caller that already treats it as a lasting refusal
+    still does, and its message is still ``Zoom error 3001``. Two callers tell it apart: a
+    delete counts it as done (``ZoomClient.delete``), and the start page says the class's
+    meeting isn't in Zoom any more (criterion 23).
+    """
+
+    def __init__(self):
+        super().__init__(3001)

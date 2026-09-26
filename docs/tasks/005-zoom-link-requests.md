@@ -373,6 +373,12 @@ Yes, links can be created automatically with credentials. That uses a Zoom Serve
     - No field on any `zoom` model has a name matching `password|secret|host_key|hostkey|token|start_url` (pytest over `_meta.get_fields()`), with **exactly one allowed exception**: `HostAccount.host_key_encrypted` (criterion 60).
     - The provider result never includes, and the models never store, Zoom's `start_url`.
     - No Zoom API credential is stored anywhere in the database.
+
+    *Amended by 011 (2026-09-26): this rule still holds, unchanged, and its test still passes with
+    011's new fields added — 011's `HostKeyReveal` (the record of who was shown a key, and when)
+    stores no key, hash or fragment of one (011 criterion 40), and 011's start-link token is a
+    `django.core.signing` value carried only in the emailed URL and the running request, never a
+    model field.*
 47. **Host accounts are admin-only.**
     - `HostAccount` is registered in the admin with `label`, `email`, `is_paid`, `is_active`, `sort_order`, `credential_set` and `notes`, plus the form-only `host_key` field (criterion 62).
     - An `is_staff` IT user who has no `zoom.*_hostaccount` permission gets 403 on its admin changelist and doesn't see it in the admin index.
@@ -453,6 +459,12 @@ Yes, links can be created automatically with credentials. That uses a Zoom Serve
     - It does **not** appear in the confirm, IT new-request or rejection emails. It also doesn't appear in the rendered queue, detail (before or after approval), confirm or confirmed pages, or any flash message.
     - The test renders each page and email, then searches the output for the key.
     - If the booked account has no host key saved, the approval still goes through, and the email says `Ask the IT desk for the host key to start the class as host.` in its place. The detail page, before approval, shows `No host key saved` beside that account (criterion 30).
+
+    *Amended by 011 (2026-09-26): the host key now appears in **no** email — not even the approval
+    email. The approval email carries a "Start this class" link instead (011 criteria 27–28); the
+    key survives only as an IT-only fallback, shown once at a time on its own reveal page (011
+    criteria 41–42) and never in any email, page or message otherwise (011 criterion 43, which
+    restates and extends this criterion's test to that one deliberate exception).*
 62. **Admin only, for IT admins only.**
     - The `HostAccount` change form has one form-only field, `Host key` (a `ModelForm` field, not a model field). It's filled in with the decrypted key, **only for users with `zoom.change_hostaccount`** (superusers by default). Saving it calls `set_host_key`, and clearing it removes the key.
     - A user with only `view_hostaccount` sees the form without that field, and its value is not in the HTML.
@@ -469,6 +481,13 @@ Yes, links can be created automatically with credentials. That uses a Zoom Serve
     - no provider call is made and no email is sent;
     - the detail re-renders with the error `The host key saved for {label} can't be read. Ask an administrator to type it again in the admin, then approve.`;
     - the log record names the account label and `InvalidToken`, and contains nothing else.
+
+    *Amended by 011 (2026-09-26, deliberately): `approve()` no longer touches the host key at all
+    (011 criterion 27), so this criterion no longer applies — an account whose stored key can't be
+    decrypted now approves normally, with no error and no block. `Outcome.HOST_KEY_UNREADABLE` and
+    the error text above are removed; the corresponding test now asserts the opposite (approval
+    succeeds). Reading an unreadable key is still possible, and still reported plainly, but only on
+    011's own reveal path (011 criterion 41's "saved key can't be read" redirect).*
 65. **Never logged.** For the full flow (submit, confirm, approve, reject, admin edit of a host key, `rotate_host_keys`), with logging captured at `DEBUG` for the `apps.zoom` and `django` loggers, no captured record contains the plaintext host key or any value from `HOST_KEY_ENCRYPTION_KEYS`. `HostAccount.__str__` and `__repr__` never include the key.
 66. **Dependency recorded.** `requirements/base.txt` pins `cryptography` with the comment `# Fernet: encrypts Zoom host keys at rest (brief 005, D17)`. The prod image builds and runs without adding build tools to the runtime stage, because `cryptography` ships manylinux wheels. The verifier confirms it with `docker compose build` and a healthy `web`.
 
@@ -622,6 +641,13 @@ Yes, links can be created automatically with credentials. That uses a Zoom Serve
 
     Fernet keys are URL-safe base64 with no `$`, so they're safe in `.env`. **Losing every key means re-typing all host keys**, and the README says so. The encryption key is not `SECRET_KEY`, so rotating `SECRET_KEY` (sessions, signing) never makes stored host keys unreadable.
   - **Host key in the email for fake and manual modes too:** the key belongs to the account, not to the meeting, so it's known whichever provider made the link.
+
+  *Amended by 011 (2026-09-26): "emailed with the link" no longer holds. The owner reversed course
+  (011 Q1, D11): the host key stops being emailed at all — the "Start this class" link replaces it
+  in the approval email — and instead stays as an IT-only fallback an `zoom.change_hostaccount`
+  holder can read back, once, on its own page, with every reveal recorded. The encryption, storage
+  shape and rotation described above are unchanged; only where the plaintext key is ever allowed to
+  surface has changed.*
 - **D18: The requester can ask for recording** (owner, Q3: "Requester can ask for recording").
   - `LinkRequest.wants_recording` is a boolean, shown to IT and mentioned in the emails (criterion 59).
   - In 005's manual mode, IT turns on cloud recording by hand, and the approve note says so. In 006, the live provider creates the meeting with `settings.auto_recording = "cloud"` when it's true.

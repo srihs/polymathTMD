@@ -18,6 +18,7 @@ from apps.zoom.errors import (
     ProviderError,
     ZoomAuthFailed,
     ZoomBusy,
+    ZoomMeetingNotFound,
     ZoomMissingScope,
     ZoomRejected,
     ZoomUnavailable,
@@ -299,7 +300,13 @@ def _mock_get(http_mock, **kwargs):
             PHRASES[ZoomUserNotFound],
             False,
         ),
-        ({"status": 404, "json": zm.zoom_error(3001)}, ZoomRejected, "Zoom error 3001", False),
+        # Brief 011: its own subclass of ZoomRejected, with the same phrase.
+        (
+            {"status": 404, "json": zm.zoom_error(3001)},
+            ZoomMeetingNotFound,
+            "Zoom error 3001",
+            False,
+        ),
         ({"status": 400, "json": zm.zoom_error(300)}, ZoomRejected, "Zoom error 300", False),
         ({"status": 403, "body": "<html>no</html>"}, ZoomRejected, "Zoom error 403", False),
     ],

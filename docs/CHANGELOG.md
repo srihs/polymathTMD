@@ -2,6 +2,104 @@
 
 Newest first. One entry per task. Each entry lists user-visible changes, then technical notes.
 
+## 2026-09-26 — 011: Cancel a booking and Start this class link (awaiting the owner's live check)
+
+- The IT desk can now cancel a booking — the whole thing, or just one class of a weekly booking —
+  from the request's own detail page. Cancelling deletes the meeting in Zoom, frees the Zoom account
+  at those times so it can be booked again, and asks IT to type a reason, which goes straight into
+  an email to the requester. Zoom itself never tells anyone: it only emails hosts, alternative hosts
+  and registrants, never someone who was only sent the join link, so the app's email is the only
+  notice anyone gets, and it reminds the requester to tell their own students. A class that's already
+  started, or a whole booking while one of its classes is in progress, can't be cancelled. The queue
+  gets a new **Cancelled** tab.
+- The approval email no longer carries the host account's host key. It now carries one private
+  **start link** instead, scoped to the booking. From 30 minutes before each class — or from when
+  the account's previous booked class ends, if that's later — until the class ends, opening the link
+  shows a **Start this class** button; pressing it sends the teacher's browser straight to a fresh
+  Zoom host link, so they start the meeting as host with no Zoom sign-in. Outside that window the
+  page explains when it will work, with a tap-to-call number for the IT desk if `IT_DESK_PHONE` is
+  set. The link is never stored or logged, works from no sign-in, and is meant to be treated like a
+  key: anyone holding it can start the booking's classes as host until it ends.
+- The host key stays in the system, encrypted, as an **IT-only fallback** for when a start link
+  doesn't work: an IT desk member can read it back, once, on its own page, with **Show host key** on
+  the Zoom account's Change page. Every reveal is recorded — who and when — and summarised on the
+  Change page. The reveal page also explains the waiting-room weakness of this fallback and points to
+  the better one (start the class yourself from the request's Start link, then hand the teacher
+  host).
+- The "Can approve or reject Zoom link requests" permission is renamed "Can approve, reject,
+  reschedule or cancel Zoom link requests" (no change to who holds it).
+- The Zoom accounts stop-booking errors (task 008) now end "...once the last one has finished or
+  been cancelled", since cancelling a class is now a way to free an account sooner.
+- Technical notes:
+  - **New migrations:** `zoom/0006_cancel_and_start` (schema: `LinkRequest.Status.CANCELLED`,
+    `cancelled_at`/`cancelled_by` on `LinkRequest`, `cancelled_at`/`cancelled_by`/`cancel_reason` on
+    `Occurrence`, two new check constraints, and the new `HostKeyReveal` model — reversible, though
+    reversing after real cancels loses who/when/why and can leave a cancelled class looking booked
+    again) and `zoom/0007_review_permission_name` (data, renames the permission, reversible).
+  - **The start link** is a signed token (`django.core.signing`, its own salt
+    `apps.zoom.start-class`, no separate expiry — the class's own time window is the expiry),
+    resolved by `services.link_request_from_start_token()` and served by the public, sign-in-free
+    `zoom:start` view. `GET` never calls Zoom; only `POST` does, and only inside the window. Every
+    response carries `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. A fresh
+    `start_url` from Zoom must be `https` on `zoom.us` or it's refused. Rotating `SECRET_KEY`
+    invalidates every start link already emailed unless the old key is kept in
+    `SECRET_KEY_FALLBACKS`.
+  - **New components and tokens** in `static/css/style.css`: `.button--danger` (the cancel confirm
+    page's final button; `docs/design/danger-button.md`), `.classrows` (the detail page's per-class
+    actions and tags; `docs/design/class-rows.md`) and `.secret` (the host-key reveal page;
+    `docs/design/secret-value.md`), built on new tokens `--red-800`, `--c-danger`,
+    `--c-danger-hover`, `--c-on-danger`, `--font-mono` and `--fs-secret` — all in section 1's
+    `:root` blocks, `--red-800` in the first, colour-only block, per the existing rule.
+  - **New setting `IT_DESK_PHONE`** (optional, empty by default), read only in `base.py`, checked at
+    start-up by the new `zoom.E006` (an unreadable phone number fails `manage.py check`).
+  - **Log redaction, so a start link's token is never written to disk:** a new module,
+    `config/log_filters.py` (deliberately outside `config/settings/`, because `docker/gunicorn.conf.py`
+    imports it before Django's app registry exists, so it must not import Django or app code), hides
+    every `/zoom/start/<token>/` path — including its query string and any `Referer` header — from
+    gunicorn's access log and from every handler in Django's own `LOGGING`. The filter fails safe: a
+    malformed log call still reaches `logging`'s own error report instead of crashing the caller
+    (review round 2, should-fix 1). A side effect: the dev server no longer double-prints `django.*`
+    request lines, so `runserver`'s own lines now use the plain "simple" format instead of Django's
+    default. `requirements/dev.txt` now installs `-r prod.txt` instead of `-r base.txt` (so the dev
+    image also has Gunicorn, for a test that exercises the real access-log config) — **rebuild both
+    images** after pulling this change.
+  - **Don't set `ADMINS`** without first revisiting this redaction: Django's 500-error email body is
+    built by `ExceptionReporter` from the request and the view's local variables, and the filter
+    only redacts the log line, not that email's body. `ADMINS` is unset by default, so this is inert
+    today.
+  - **A `start_url`'s ZAK can stay valid for a while after it's issued,** beyond the single meeting
+    it was fetched for — unconfirmed research, recorded as risk R2 and checked in the owner's live
+    check (step 5 below).
+  - **Judged interpretation deviations** (both reviewed and accepted as compliant): a *cancelled*
+    booking's own cancel URLs redirect with a friendly message rather than 404ing, so that the loser
+    of a same-class cancel race sees "That class was already cancelled." instead of a 404; and
+    criterion 14's "saving fails after Zoom removed it" is tested by failing the transaction's
+    commit, the only step left after Zoom answers, because the brief's own fixed lock order (every
+    write, then the Zoom delete, then commit) makes a literal "fails at the request UPDATE" reading
+    impossible.
+  - Two unpinned, plainly-worded messages were added and are now covered by name/text assertions: a
+    lock-timeout-before-Zoom message (`Someone else was changing this booking at the same moment.
+    Nothing was cancelled. Try again.`) and the cancel reason's over-1000-characters error (`Keep the
+    reason to 1000 characters or fewer.`).
+  - Django's CSRF 403 page (shown for a start-page POST with no valid CSRF token) doesn't carry this
+    view's `no-store`/`no-referrer` headers, because `CsrfViewMiddleware` answers before the view
+    runs — accepted, since that page holds no secret.
+  - Verified PASS (1104 tests, three re-verification rounds) and reviewed APPROVE (round 3, after two
+    rounds of should-fix items); see `docs/tasks/011-cancel-and-start-link.md`. **Criterion 39, the
+    owner's live check against one real paid Zoom account (including whether a `start_url` signs the
+    holder into more than the one meeting, and whether deleting a meeting also removes the recordings
+    of classes that already happened), hasn't been run yet — this task stays open until the owner
+    reports it.** The README's go-live gate now lists both 006 and 011 as waiting on their owner live
+    checks.
+  - Follow-ups: an optional nit from review round 3 — use separate `try` blocks for the log message
+    and the traceback in `config/log_filters.py`, so a malformed call that also carries a token isn't
+    printed raw by `logging`'s own error report (the risk is judged negligible, so it's not blocking);
+    the frontend flagged that a one-off booking's whole-cancel confirm page reads "removes the
+    classes below … at those times" even though there's only one class, and suggested a singular
+    wording as a future copy polish; briefs 012 ("move a class"), 013 (Zoom webhook sync, so changes
+    made directly in Zoom are picked up) and 014 (email the recording link when Zoom finishes one)
+    are next, in that order, none of them a go-live prerequisite.
+
 ## 2026-09-25 — 006: Live Zoom connection (awaiting the owner's live check)
 
 - The app can now talk to Zoom for real. With `ZOOM_PROVIDER=zoom`, before an account is offered or
@@ -63,6 +161,10 @@ Newest first. One entry per task. Each entry lists user-visible changes, then te
     paid Zoom account (including confirming the exact Marketplace scope names and Zoom's current
     `recurrence.end_times` cap), hasn't been run yet — this task stays open until the owner reports
     it.**
+  - *2026-09-26: the scope names and the 60-occurrence recurring-series cap are now confirmed from
+    Zoom's own documentation (https://developers.zoom.us/docs/integrations/oauth-scopes-granular/,
+    https://developers.zoom.us/docs/api/meetings/), so criterion 48's steps 8–9 are satisfied;
+    steps 1–7 still need the owner's live check.*
   - Follow-ups: task 011, "Cancel this booking", is next, straight after this task (owner's
     decision); reading an account's recurring series one after another, rather than in parallel,
     against the availability preview's 8-second deadline, is accepted for now (see the risk

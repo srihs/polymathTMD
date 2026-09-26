@@ -1,4 +1,4 @@
-{# Add a Zoom account, or change one (brief 008, D.2 and D.3), in the shell; add needs zoom.add_hostaccount, change needs zoom.change_hostaccount. One template: is_add chooses the h1, breadcrumb, title and button. After a failed POST the error summary is the first thing after the title row. Four sections, in the form's field order (G1): The account (label, email, notes), Booking (the booked-classes note on change, is_paid, is_active, sort_order), Zoom connection (brief 006, D.3: on change the state line from the stored row, then credential_set, then, for can_check_connection, the Check connection button; the button submits the separate empty form #zoom-check, written after the main form through the HTML form attribute, so forms never nest and it works with no JS; both carry the busy-button hooks, docs/design/busy-button.md), Host key (the state line on change, the "wasn't kept" note, host_key, remove_host_key when the form has it). The host key input is written out here, always with no value, so its aria-describedby can add host_key-note (D.3); a saved key is never shown, only its state. The stop-booking errors (criterion 17) arrive as ordinary field errors on is_active and is_paid. Context: form (HostAccountForm: label, email, notes, is_paid, is_active, sort_order, credential_set (label, help and widget attributes from the form, brief 006 G4), host_key, remove_host_key only when a key is saved, key_was_typed (bool); labels and help texts come from the form), account (HostAccount or None; on change: has_host_key, host_key_changed_at, host_key_changed_by (User or None)), is_add (bool), host_key_state (str: "saved", "saved_legacy", "unreadable" or "none"), saved_label (str, change only: the stored name, not what was just typed; falls back to account.label), zoom_connection_state (str: "ready", "missing" or "none", from the stored row; "none" on add), zoom_connection_name (str: the stored slug, for the missing sentence; "" on add), can_check_connection (bool; always false on add, and account is then present for account.pk, brief 006 G5), upcoming_count (int, change only, optional) and next_class_start (aware datetime or None, optional) for the booked-classes note. Partials: partials/crumb, partials/error_summary, partials/field, partials/check_field, partials/field_error. Filters: zoom_format (class_date). #}{% extends "base.html" %}
+{# Add a Zoom account, or change one (brief 008, D.2 and D.3), in the shell; add needs zoom.add_hostaccount, change needs zoom.change_hostaccount. One template: is_add chooses the h1, breadcrumb, title and button. After a failed POST the error summary is the first thing after the title row. Four sections, in the form's field order (G1): The account (label, email, notes), Booking (the booked-classes note on change, is_paid, is_active, sort_order), Zoom connection (brief 006, D.3: on change the state line from the stored row, then credential_set, then, for can_check_connection, the Check connection button; the button submits the separate empty form #zoom-check, written after the main form through the HTML form attribute, so forms never nest and it works with no JS; both carry the busy-button hooks, docs/design/busy-button.md), Host key (the state line on change, then brief 011's Show host key button when can_reveal_host_key and the "Last shown to … Shown n time(s) in all." line when key_reveal_count > 0, D.6; the "wasn't kept" note, host_key, remove_host_key when the form has it). Show host key submits the separate empty form #host-key-show (POST to zoom:account_host_key), written after the main form through the HTML form attribute, like #zoom-check; the key then shows on its own page, zoom/host_key_reveal.html. The host key input is written out here, always with no value, so its aria-describedby can add host_key-note (D.3); a saved key is never shown on this page, only its state. The stop-booking errors (criterion 17) arrive as ordinary field errors on is_active and is_paid. Context: form (HostAccountForm: label, email, notes, is_paid, is_active, sort_order, credential_set (label, help and widget attributes from the form, brief 006 G4), host_key, remove_host_key only when a key is saved, key_was_typed (bool); labels and help texts come from the form), account (HostAccount or None; on change: has_host_key, host_key_changed_at, host_key_changed_by (User or None)), is_add (bool), host_key_state (str: "saved", "saved_legacy", "unreadable" or "none"), saved_label (str, change only: the stored name, not what was just typed; falls back to account.label), zoom_connection_state (str: "ready", "missing" or "none", from the stored row; "none" on add), zoom_connection_name (str: the stored slug, for the missing sentence; "" on add), can_check_connection (bool; always false on add, and account is then present for account.pk, brief 006 G5), upcoming_count (int, change only, optional) and next_class_start (aware datetime or None, optional) for the booked-classes note, can_reveal_host_key (bool; change page only, zoom.change_hostaccount and a readable saved key, brief 011), last_key_reveal (HostKeyReveal or None: shown_by, shown_at), key_reveal_count (int). Partials: partials/crumb, partials/error_summary, partials/field, partials/check_field, partials/field_error, zoom/partials/when. Filters: zoom_format (class_date). #}{% extends "base.html" %}
 {% load zoom_format %}
 
 {% block title %}{% if is_add %}Add a Zoom account{% else %}Change {{ saved_label|default:account.label }}{% endif %}{% endblock %}
@@ -93,12 +93,21 @@
             <p>A host key is saved, but it can't be read with the current encryption keys. Type it again.</p>
           </div>
           {% else %}
-          <div class="notice notice--warn">
-            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+          <div class="notice notice--note">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg>
             <div class="notice__body">
               <p class="notice__title">No host key saved</p>
-              <p>Until one is saved, approval emails tell the requester to ask the IT desk for the host key.</p>
+              <p>Save one below so the IT desk has a fallback if a start link doesn't work.</p>
             </div>
+          </div>
+          {% endif %}
+          {% if can_reveal_host_key or key_reveal_count %}
+          <div class="field">
+            {% if can_reveal_host_key %}
+            <button class="button button--secondary" type="submit" form="host-key-show" aria-describedby="host-key-show-help"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-key"></use></svg>Show host key</button>
+            <p class="field__help" id="host-key-show-help">For when a start link doesn't work. Every time the key is shown, it's recorded.</p>
+            {% endif %}
+            {% if key_reveal_count %}<p class="text-muted">Last shown to {{ last_key_reveal.shown_by }} on {% include "zoom/partials/when.html" with at=last_key_reveal.shown_at only %}. Shown {{ key_reveal_count }} time{{ key_reveal_count|pluralize }} in all.</p>{% endif %}
           </div>
           {% endif %}
           {% endif %}
@@ -128,6 +137,7 @@
         </div>
       </form>
       {% if can_check_connection %}<form id="zoom-check" method="post" action="{% url 'zoom:account_check' account.pk %}" data-busy-form>{% csrf_token %}</form>{% endif %}
+      {% if can_reveal_host_key %}<form id="host-key-show" method="post" action="{% url 'zoom:account_host_key' account.pk %}">{% csrf_token %}</form>{% endif %}
     </div>
   </div>
 </div>

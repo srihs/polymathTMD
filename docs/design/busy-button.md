@@ -57,3 +57,5 @@ The busy text says what the system is doing, in the user's words, as a present-t
 |---|---|---|
 | `zoom/detail.html` | `Approve and email the link` | `Making the meeting in Zoom…` when `checks_zoom`; `Approving…` otherwise |
 | `zoom/account_form.html` | `Check connection` | `Checking with Zoom…` |
+| `zoom/cancel_confirm.html` (brief 011) | `Cancel and email the requester` (`.button--danger`) | `Removing it from Zoom…` when `checks_zoom`; `Cancelling…` otherwise |
+| `zoom/start.html` (brief 011) | `Start this class` | `Opening Zoom…` |

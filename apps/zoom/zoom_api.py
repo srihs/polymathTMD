@@ -40,6 +40,7 @@ from urllib3.exceptions import ProtocolError
 from .errors import (
     ZoomAuthFailed,
     ZoomBusy,
+    ZoomMeetingNotFound,
     ZoomMissingScope,
     ZoomRejected,
     ZoomUnavailable,
@@ -105,6 +106,8 @@ def _api_error(response):
         return ZoomAuthFailed()
     if status == 404 and code == USER_NOT_FOUND:
         return ZoomUserNotFound()
+    if status == 404 and code == MEETING_NOT_FOUND:
+        return ZoomMeetingNotFound()
     return ZoomRejected(code if code is not None else status)
 
 

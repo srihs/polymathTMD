@@ -1,4 +1,6 @@
--r base.txt
+# prod.txt, not base.txt: the dev image then holds gunicorn, so apps/core tests can load
+# docker/gunicorn.conf.py (the access-log token filter, brief 011). One pin, in prod.txt.
+-r prod.txt
 
 pytest==9.1.1
 pytest-django==4.14.0

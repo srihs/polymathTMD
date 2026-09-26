@@ -2318,3 +2318,12 @@ criterion 48, the owner's live check against one real paid Zoom account — incl
 Marketplace scope names (step 8) and Zoom's current `recurrence.end_times` cap (step 9), both of
 which the README above marks "unconfirmed" until then. This brief closes, and Status moves to
 `Done`, once the owner reports those results and the verifier records them.
+
+**2026-09-26 update.** Brief 011's planning step confirmed both of criterion 48's documentation-only
+facts against Zoom's own docs: the five granular scope names
+(https://developers.zoom.us/docs/integrations/oauth-scopes-granular/ and
+https://developers.zoom.us/docs/api/meetings/) and the 60-occurrence cap on a recurring series
+(https://developers.zoom.us/docs/api/meetings/). `README.md` now marks both as confirmed, dated and
+sourced, instead of "unconfirmed". This satisfies criterion 48's **steps 8 and 9** by documentation.
+**Steps 1–7 still need the owner's live check against a real paid account**, so Status stays
+`Verifying`.

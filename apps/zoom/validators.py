@@ -7,9 +7,10 @@ to ``apps/core`` when a second app needs it.
 """
 
 import re
+from urllib.parse import urlsplit
 
 from django.core.exceptions import ValidationError
-from django.core.validators import RegexValidator
+from django.core.validators import RegexValidator, URLValidator
 from django.views.decorators.debug import sensitive_variables
 
 PHONE_ERROR = "Type a phone number we can call, like 077 123 4567 or +94 77 123 4567."
@@ -56,6 +57,27 @@ def format_phone(e164: str) -> str:
     if not match:
         return e164 or ""
     return "+94 {} {} {}".format(*match.groups())
+
+
+@sensitive_variables("value")
+def is_zoom_https_url(value) -> bool:
+    r"""True for a well-formed ``https`` URL on ``zoom.us`` or a subdomain of it.
+
+    One rule for the two places a Zoom URL is trusted: a join link IT pastes (brief 005) and
+    the ``start_url`` the start page redirects to (brief 011, criterion 18), so a strange answer
+    can never become an open redirect. A backslash is refused outright, because browsers treat
+    ``\`` like ``/``, so ``https://evil.example\.zoom.us/…`` would pass a host-suffix test yet
+    open evil.example. ``value`` may be a start URL, so it's masked in error reports.
+    """
+    if not isinstance(value, str) or not value or "\\" in value:
+        return False
+    try:
+        URLValidator(schemes=["https"])(value)
+        parts = urlsplit(value)
+        host = (parts.hostname or "").lower()
+    except (ValidationError, ValueError):
+        return False
+    return parts.scheme == "https" and (host == "zoom.us" or host.endswith(".zoom.us"))
 
 
 validate_credential_set = RegexValidator(

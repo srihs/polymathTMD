@@ -347,8 +347,10 @@ def test_delete_sends_no_reminder_and_can_name_one_class(http_mock, zoom_account
     provider.delete_meeting(host_account=zoom_account, meeting_id="123")
     provider.delete_meeting(host_account=zoom_account, meeting_id="123", occurrence_id="1759")
     first, second = zm.calls_of(http_mock, "DELETE")
-    assert zm.query(first) == {"schedule_for_reminder": "false"}
-    assert zm.query(second) == {"schedule_for_reminder": "false", "occurrence_id": "1759"}
+    # Brief 011, criterion 11: Zoom's cancellation email is off too.
+    quiet = {"schedule_for_reminder": "false", "cancel_meeting_reminder": "false"}
+    assert zm.query(first) == quiet
+    assert zm.query(second) == {**quiet, "occurrence_id": "1759"}
 
 
 # --------------------------------------------------------------------------- 36 the check's calls

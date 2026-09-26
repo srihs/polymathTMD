@@ -1,4 +1,4 @@
-{# One Zoom link request for IT (brief 005, D.5), in the shell; only for zoom.review_linkrequest. Also re-rendered by approve and reject when they fail. One column of boxes in reading order: the failed-approve notice, the decided line, Request (facts, earlier requests), Classes, Which accounts are free, Also waiting at overlapping times, then Approve and send the link (or the no-approve-form warning) and Reject this request. Brief 006 (D.1): each availability row is zoom/partials/avail_item (the Zoom states and Zoom clash lines live there); the lead adds "Checked with Zoom at …" (zoom_checked_at) or, when all_unchecked, says none could be checked; with manual (not checks_zoom) the approve box opens with the Check Zoom for clashes first warning; the approve form carries the busy-button hooks (data-busy-form, data-busy-text, data-busy-status; docs/design/busy-button.md); with no approve form the one warning is, in order, has_started, then all_unchecked, then none free. approve_error is printed exactly as the backend builds it. Never shows a host key: only the "Host key saved" / "No host key saved" words beside each account. Context: link_request (LinkRequest: reference, class_name, notes, wants_recording, schedule_summary, requester_name, requester_email, requester_phone, requester_phone_display, status, get_status_display, created_at, verified_at, decided_by, decided_at, rejection_reason, host_account (label, email), join_url, meeting_id, passcode), occurrences (list of Occurrence), occurrence_count (int), can_decide (bool), has_started (bool), availability (list of dict: account, is_free (bool, offered), has_host_key, busy_count, clashes (list of dict: occurrence, other), zoom_clashes (list of dict: occurrence, busy (BusyTime: starts_at, ends_at, topic)), zoom_state ("checked", "off", "unavailable" or "not_connected"), zoom_problem (str sentence, or ""), account_edit_allowed (bool)), free_count (int, offered accounts), checks_zoom (bool; false for the manual provider), zoom_checked_at (aware datetime or None), all_unchecked (bool; approve_form is then None), overlapping_waiting (list of LinkRequest with first_overlap), earlier_requests (list of LinkRequest), approve_form (ApproveForm or None; each host_account radio carries its account as choice.data.value.instance), reject_form (RejectForm or None), needs_manual_details (bool), approve_error (str or None), can_add_account (bool, zoom.add_hostaccount; with no paid accounts, it links to zoom:account_add, brief 008), timetable_url (str or None; set only for an approved request, the month page at its first class filtered to its account, brief 009; shown as See it on the timetable under Booked on). The two no-approve-form notices live only here; the view signals which with has_started. Partials: partials/crumb, zoom/partials/status_tag, zoom/partials/recording_tag, zoom/partials/recording_answer.txt, zoom/partials/schedule, zoom/partials/when, zoom/partials/class_span, zoom/partials/occurrence_list, zoom/partials/avail_item, partials/error_summary, partials/choice_group_head, partials/field. Filters: zoom_format (class_time). #}{% extends "base.html" %}
+{# One Zoom link request for IT (brief 005, D.5), in the shell; only for zoom.review_linkrequest. Also re-rendered by approve and reject when they fail. One column of boxes in reading order: the failed-approve notice, the decided line, Request (facts, earlier requests), Classes, Which accounts are free, Also waiting at overlapping times, then Approve and send the link (or the no-approve-form warning) and Reject this request. Brief 006 (D.1): each availability row is zoom/partials/avail_item (the Zoom states and Zoom clash lines live there); the lead adds "Checked with Zoom at …" (zoom_checked_at) or, when all_unchecked, says none could be checked; with manual (not checks_zoom) the approve box opens with the Check Zoom for clashes first warning; the approve form carries the busy-button hooks (data-busy-form, data-busy-text, data-busy-status; docs/design/busy-button.md); with no approve form the one warning is, in order, has_started, then all_unchecked, then none free. approve_error is printed exactly as the backend builds it. Brief 011 (D.1): an approved booking shows the Start link row (start_link, under Passcode), the Classes list through zoom/partials/class_rows (per-class Cancel this class for cancellable_ids, the In progress tag for in_progress_id, the Cancelled tag and note), then the Cancel this booking box when can_cancel_booking, or cancel_blocked_message in a note when set; a cancelled booking shows the cancelled line (notice--note) and keeps only the Booked on, Zoom link (plain text, "For the record only.") and Meeting ID rows, with no actions. The approve radios no longer mention host keys (criterion 29). Never shows a host key or whether one is saved. Context: link_request (LinkRequest: reference, class_name, notes, wants_recording, schedule_summary, requester_name, requester_email, requester_phone, requester_phone_display, status ("cancelled" too, brief 011), get_status_display, created_at, verified_at, decided_by, decided_at, rejection_reason, cancelled_by, cancelled_at, host_account (label, email), join_url, meeting_id, passcode), occurrences (list of Occurrence: pk, starts_at, ends_at, cancelled_at, cancelled_by, cancel_reason), occurrence_count (int), can_decide (bool), has_started (bool), availability (list of dict: account, is_free (bool, offered), has_host_key, busy_count, clashes (list of dict: occurrence, other), zoom_clashes (list of dict: occurrence, busy (BusyTime: starts_at, ends_at, topic)), zoom_state ("checked", "off", "unavailable" or "not_connected"), zoom_problem (str sentence, or ""), account_edit_allowed (bool)), free_count (int, offered accounts), checks_zoom (bool; false for the manual provider), zoom_checked_at (aware datetime or None), all_unchecked (bool; approve_form is then None), overlapping_waiting (list of LinkRequest with first_overlap), earlier_requests (list of LinkRequest), approve_form (ApproveForm or None; each host_account radio carries its account as choice.data.value.instance), reject_form (RejectForm or None), needs_manual_details (bool), approve_error (str or None), can_add_account (bool, zoom.add_hostaccount; with no paid accounts, it links to zoom:account_add, brief 008), timetable_url (str or None; set only for an approved request, the month page at its first class filtered to its account, brief 009; shown as See it on the timetable under Booked on), can_cancel_booking (bool, brief 011), cancellable_ids (set of int; weekly bookings only, so empty means a one-off), in_progress_id (int or None, G1), cancel_blocked_message (str or None, G2; printed as given), start_link (str, absolute, or None; None when cancelled, waiting or the provider can't start). The two no-approve-form notices live only here; the view signals which with has_started. Partials: partials/crumb, zoom/partials/status_tag, zoom/partials/recording_tag, zoom/partials/recording_answer.txt, zoom/partials/schedule, zoom/partials/when, zoom/partials/class_span, zoom/partials/class_rows, zoom/partials/avail_item, partials/error_summary, partials/choice_group_head, partials/field. Filters: zoom_format (class_time). #}{% extends "base.html" %}
 {% load zoom_format %}
 
 {% block title %}{{ link_request.reference }}: {{ link_request.class_name }}{% endblock %}
@@ -23,6 +23,11 @@
   <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>
   <p>This request was approved by {{ link_request.decided_by }} on {% include "zoom/partials/when.html" with at=link_request.decided_at only %}.</p>
 </div>
+{% elif link_request.status == "cancelled" %}
+<div class="notice notice--note">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg>
+  <p>This booking was cancelled by {{ link_request.cancelled_by }} on {% include "zoom/partials/when.html" with at=link_request.cancelled_at only %}. It was approved by {{ link_request.decided_by }} on {% include "zoom/partials/when.html" with at=link_request.decided_at only %}.</p>
+</div>
 {% elif link_request.status == "rejected" %}
 <div class="notice notice--note">
   <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg>
@@ -45,15 +50,21 @@
         <dd>{% include "zoom/partials/recording_answer.txt" with wants_recording=link_request.wants_recording only %}</dd>
         <dt>Notes</dt>
         <dd>{% if link_request.notes %}{{ link_request.notes|linebreaksbr }}{% else %}<span class="text-muted">None</span>{% endif %}</dd>
-        {% if link_request.status == "approved" %}
+        {% if link_request.status == "approved" or link_request.status == "cancelled" %}
         <dt>Booked on</dt>
         <dd>{{ link_request.host_account.label }} <span class="text-muted">{{ link_request.host_account.email }}</span>{% if timetable_url %}<br><a class="tap-link" href="{{ timetable_url }}">See it on the timetable</a>{% endif %}</dd>
         <dt>Zoom link</dt>
-        <dd><a class="tap-link" href="{{ link_request.join_url }}">{{ link_request.join_url }}</a></dd>
+        <dd>{% if link_request.status == "cancelled" %}<span class="break-anywhere">{{ link_request.join_url }}</span><br><span class="text-muted">For the record only.</span>{% else %}<a class="tap-link" href="{{ link_request.join_url }}">{{ link_request.join_url }}</a>{% endif %}</dd>
         <dt>Meeting ID</dt>
         <dd>{{ link_request.meeting_id }}</dd>
+        {% if link_request.status == "approved" %}
         <dt>Passcode</dt>
         <dd>{% if link_request.passcode %}{{ link_request.passcode }}{% else %}<span class="text-muted">None</span>{% endif %}</dd>
+        {% if start_link %}
+        <dt>Start link</dt>
+        <dd><a class="tap-link break-anywhere" href="{{ start_link }}">{{ start_link }}</a><br><span class="text-muted">Send this to the teacher if the approval email went missing. It works from 30 minutes before each class until it ends.</span></dd>
+        {% endif %}
+        {% endif %}
         {% elif link_request.status == "rejected" %}
         <dt>Reason</dt>
         <dd>{{ link_request.rejection_reason|linebreaksbr }}</dd>
@@ -87,7 +98,7 @@
 <section class="box" aria-labelledby="classes-title">
   <div class="box__head"><h2 class="box__title" id="classes-title">Classes ({{ occurrence_count }})</h2></div>
   <div class="box__body">
-    {% include "zoom/partials/occurrence_list.html" with occurrences=occurrences only %}
+    {% include "zoom/partials/class_rows.html" with occurrences=occurrences cancellable_ids=cancellable_ids in_progress_id=in_progress_id link_request_pk=link_request.pk only %}
   </div>
 </section>
 
@@ -151,7 +162,7 @@
         {% with field=approve_form.host_account %}<fieldset class="options" aria-describedby="{% if field.errors %}{{ field.html_name }}-error {% endif %}{{ field.html_name }}-help">
           {% include "partials/choice_group_head.html" with field=field only %}
           <div class="options__list options__list--stack">
-            {% for choice in field %}{% with account=choice.data.value.instance %}<label class="choice choice--tall" for="{{ choice.id_for_label }}"><input type="radio" id="{{ choice.id_for_label }}" name="{{ field.html_name }}" value="{{ choice.data.value }}"{% if choice.data.selected %} checked{% endif %}{% if field.errors %} aria-invalid="true"{% endif %}><span class="choice__words"><span>{{ account.label }}</span><span class="choice__help">{{ account.email }}</span><span class="tags">{% if account.has_host_key %}<span class="tag tag--plain"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-key"></use></svg>Host key saved</span>{% else %}<span class="tag tag--warn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>No host key saved</span>{% endif %}</span>{% if not account.has_host_key %}<span class="choice__help">The email will ask the requester to get the host key from the IT desk.</span>{% endif %}</span></label>{% endwith %}
+            {% for choice in field %}{% with account=choice.data.value.instance %}<label class="choice choice--tall" for="{{ choice.id_for_label }}"><input type="radio" id="{{ choice.id_for_label }}" name="{{ field.html_name }}" value="{{ choice.data.value }}"{% if choice.data.selected %} checked{% endif %}{% if field.errors %} aria-invalid="true"{% endif %}><span class="choice__words"><span>{{ account.label }}</span><span class="choice__help">{{ account.email }}</span></span></label>{% endwith %}
             {% endfor %}
           </div>
         </fieldset>{% endwith %}
@@ -191,6 +202,23 @@
     </div>
   </div>
 </section>
+{% endif %}
+{% endif %}
+
+{% if link_request.status == "approved" %}
+{% if can_cancel_booking %}
+<section class="box" aria-labelledby="cancel-title">
+  <div class="box__head"><h2 class="box__title" id="cancel-title">Cancel this booking</h2></div>
+  <div class="box__body">
+    <p class="box__lead">{% if cancellable_ids %}Cancels every class that hasn't started yet{% if checks_zoom %}, removes them from Zoom{% endif %} and emails the requester. To cancel just one class, use Cancel this class in the list above.{% else %}Cancels the class{% if checks_zoom %}, removes it from Zoom{% endif %} and emails the requester.{% endif %}</p>
+    <a class="button button--secondary" href="{% url 'zoom:cancel' link_request.pk %}">Cancel this booking</a>
+  </div>
+</section>
+{% elif cancel_blocked_message %}
+<div class="notice notice--note">
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg>
+  <p>{{ cancel_blocked_message }}</p>
+</div>
 {% endif %}
 {% endif %}
 {% endblock %}

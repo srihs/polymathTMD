@@ -13,12 +13,17 @@ provider is in use:
   meetings overlapping ``[start, end)`` (criterion 12).
 - ``create_meeting(*, link_request, host_account, occurrences, manual=None) -> Meeting``.
 - ``delete_meeting(*, host_account, meeting_id, occurrence_id=None)``: for rollback, and for
-  brief 011's cancelling.
+  brief 011's cancelling. Zoom's "no such meeting" counts as done.
+- ``can_start`` (brief 011): the provider can hand out a fresh host start link, so approval
+  emails carry the app's start link. ``start_url(*, host_account, meeting_id) -> str`` asks
+  for one; ``occurrence_id_for(*, host_account, meeting_id, starts_at)`` finds a class's Zoom
+  occurrence ID when none was stored.
 - failures raise a ``ProviderError`` subclass (``errors.py``, re-exported here).
 
 ``Meeting`` never carries Zoom's ``start_url``: it would let anyone start the meeting as host
 without signing in, so it is dropped where Zoom's answer is read and never stored or passed on
-(brief 005, criterion 46).
+(brief 005, criterion 46). ``start_url()`` is the one exception, by design (brief 011, D4): it
+returns the URL to the start page's POST, which redirects to it at once, and nothing keeps it.
 
 Providers:
 
@@ -46,12 +51,14 @@ from .errors import (  # noqa: F401  (re-exported: callers import the error type
     ProviderError,
     ZoomAuthFailed,
     ZoomBusy,
+    ZoomMeetingNotFound,
     ZoomMissingScope,
     ZoomNotConnected,
     ZoomRejected,
     ZoomUnavailable,
     ZoomUserNotFound,
 )
+from .validators import is_zoom_https_url
 
 # ISO weekday (1 = Monday) to Zoom's ``weekly_days`` (1 = Sunday), criterion 14.
 ZOOM_WEEKDAYS = {1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 7, 7: 1}
@@ -159,6 +166,7 @@ def meeting_payload(link_request, occurrences) -> dict:
 class MeetingProvider:
     needs_manual_details = False
     checks_zoom = False
+    can_start = False
 
     def is_connected(self, host_account) -> bool:
         return True
@@ -171,6 +179,14 @@ class MeetingProvider:
 
     def delete_meeting(self, *, host_account, meeting_id, occurrence_id=None) -> None:
         """Nothing to delete for a provider that made nothing."""
+
+    def start_url(self, *, host_account, meeting_id) -> str:
+        """Only providers with ``can_start`` hand out start links."""
+        raise NotImplementedError
+
+    def occurrence_id_for(self, *, host_account, meeting_id, starts_at) -> str | None:
+        """A provider that can't see Zoom knows no occurrence IDs."""
+        return None
 
 
 class FakeProvider(MeetingProvider):
@@ -185,13 +201,17 @@ class FakeProvider(MeetingProvider):
       ``unavailable`` maps an account pk to the ``ProviderError`` its lookup raises;
       ``not_connected`` holds the pks of accounts treated as not connected; ``delay`` makes each
       lookup sleep, for the preview's deadline.
-    - ``busy_calls`` and ``deleted`` record lookups and deletes.
+    - ``busy_calls`` and ``deleted`` record lookups and deletes; ``delete_error`` makes the
+      next delete raise that ``ProviderError`` (brief 011's cancel tests).
+    - ``start_calls`` records each start-link request, and ``start_error`` makes the next one
+      raise that ``ProviderError`` (brief 011, criterion 36).
 
     ``reset()`` clears all of it. With nothing steered every account is connected and free, so
     brief 005's behaviour is unchanged (criterion 33).
     """
 
     checks_zoom = True
+    can_start = True
     calls: list = []
     next_error = None
     busy: dict = {}
@@ -200,6 +220,9 @@ class FakeProvider(MeetingProvider):
     delay: float = 0
     busy_calls: list = []
     deleted: list = []
+    delete_error = None
+    start_calls: list = []
+    start_error = None
     _lock = threading.Lock()
 
     @classmethod
@@ -213,6 +236,9 @@ class FakeProvider(MeetingProvider):
             cls.delay = 0
             cls.busy_calls = []
             cls.deleted = []
+            cls.delete_error = None
+            cls.start_calls = []
+            cls.start_error = None
 
     def is_connected(self, host_account) -> bool:
         return host_account.pk not in type(self).not_connected
@@ -252,7 +278,21 @@ class FakeProvider(MeetingProvider):
 
     def delete_meeting(self, *, host_account, meeting_id, occurrence_id=None) -> None:
         with self._lock:
+            error = type(self).delete_error
+            if error is not None:
+                type(self).delete_error = None
+                raise error
             type(self).deleted.append((host_account.pk, meeting_id, occurrence_id))
+
+    def start_url(self, *, host_account, meeting_id) -> str:
+        """A start link on the reserved ``.invalid`` TLD, so it can never start a real meeting."""
+        with self._lock:
+            error = type(self).start_error
+            if error is not None:
+                type(self).start_error = None
+                raise error
+            type(self).start_calls.append((host_account.pk, meeting_id))
+        return f"https://zoom.example.invalid/s/{meeting_id}"
 
 
 class ManualProvider(MeetingProvider):
@@ -282,6 +322,7 @@ class ZoomProvider(MeetingProvider):
     """
 
     checks_zoom = True
+    can_start = True
 
     def is_connected(self, host_account) -> bool:
         return host_account.is_zoom_connected()
@@ -371,12 +412,52 @@ class ZoomProvider(MeetingProvider):
         )
 
     def delete_meeting(self, *, host_account, meeting_id, occurrence_id=None) -> None:
-        """``DELETE /meetings/{id}``, without Zoom's cancellation email to the host (D1)."""
-        params = {"schedule_for_reminder": "false"}
+        """``DELETE /meetings/{id}[?occurrence_id=…]``, with none of Zoom's own emails.
+
+        Zoom's reminder and cancellation emails are both switched off (brief 006, D1; brief
+        011, criterion 11, D6): the app sends the requester its own email. A ``404`` with code
+        3001 (no such meeting) counts as done, so repeating a delete is always safe.
+        """
+        params = {"schedule_for_reminder": "false", "cancel_meeting_reminder": "false"}
         if occurrence_id:
             params["occurrence_id"] = occurrence_id
         with self._client(host_account) as client:
             client.delete(zoom_api.meeting_path(meeting_id), params)
+
+    # Zoom's answer carries the start_url and the join link: both masked in error reports.
+    @sensitive_variables("detail", "url")
+    def start_url(self, *, host_account, meeting_id) -> str:
+        """A fresh host start link from ``GET /meetings/{id}`` (brief 011, criterion 18).
+
+        It must be ``https`` on ``zoom.us`` or a subdomain of it, or it's ``ZoomUnavailable``:
+        the start page redirects to it, so a strange answer must never become an open redirect.
+        The URL is returned to the caller only; it's never stored, logged or put in an error.
+        """
+        with self._client(host_account) as client:
+            detail = client.get(zoom_api.meeting_path(meeting_id))
+        url = detail.get("start_url")
+        if not is_zoom_https_url(url):
+            raise ZoomUnavailable()
+        return url
+
+    @sensitive_variables("detail")
+    def occurrence_id_for(self, *, host_account, meeting_id, starts_at) -> str | None:
+        """Zoom's occurrence ID of the class starting at ``starts_at``, or ``None`` (criterion 11).
+
+        Only needed when none was stored (a booking made before the live connection). Deleted
+        occurrences are skipped, so ``None`` means Zoom has no such class any more.
+        """
+        with self._client(host_account) as client:
+            detail = client.get(zoom_api.meeting_path(meeting_id))
+        try:
+            for item in detail.get("occurrences") or []:
+                if item.get("status") == "deleted" or not item.get("start_time"):
+                    continue
+                if parse_zoom_time(item["start_time"]) == starts_at:
+                    return str(item["occurrence_id"])
+        except UNREADABLE_ANSWER:
+            raise ZoomUnavailable() from None
+        return None
 
     def check_connection(self, host_account):
         """Prove the token, the user and the list scope (criterion 36, D12).

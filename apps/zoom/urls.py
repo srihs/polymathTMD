@@ -15,6 +15,13 @@ urlpatterns = [
     path("requests/<int:pk>/", views.LinkRequestDetailView.as_view(), name="detail"),
     path("requests/<int:pk>/approve/", views.ApproveView.as_view(), name="approve"),
     path("requests/<int:pk>/reject/", views.RejectView.as_view(), name="reject"),
+    path("requests/<int:pk>/cancel/", views.CancelBookingView.as_view(), name="cancel"),
+    path(
+        "requests/<int:pk>/classes/<int:occurrence_pk>/cancel/",
+        views.CancelClassView.as_view(),
+        name="cancel_class",
+    ),
+    path("start/<str:token>/", views.StartClassView.as_view(), name="start"),
     path("timetable/", views.TimetableMonthView.as_view(), name="timetable"),
     path(
         "timetable/<int:year>/<int:month>/<int:day>/",
@@ -25,4 +32,5 @@ urlpatterns = [
     path("accounts/add/", views.HostAccountCreateView.as_view(), name="account_add"),
     path("accounts/<int:pk>/edit/", views.HostAccountUpdateView.as_view(), name="account_edit"),
     path("accounts/<int:pk>/check/", views.HostAccountCheckView.as_view(), name="account_check"),
+    path("accounts/<int:pk>/host-key/", views.HostKeyRevealView.as_view(), name="account_host_key"),
 ]

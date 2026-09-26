@@ -1,0 +1,11 @@
+{# The request detail's Classes list (brief 011, D.1.4; docs/design/class-rows.md): one numbered row per class, and each row shows at most one of: the Cancel this class link (weekly bookings only, when the class can still be cancelled; its accessible name ends with the class date), the In progress tag (clock), or the Cancelled tag (slash) with a second-line note "Cancelled by {name} on {when}: {reason}". Held classes and a waiting request's classes show the date only. More than 6 classes add classrows--cols (two columns from 1400px; presentation only). with: occurrences (list of Occurrence: pk, starts_at, ends_at, cancelled_at, cancelled_by, cancel_reason), cancellable_ids (set of int; empty for one-off bookings), in_progress_id (int or None), link_request_pk (int, for zoom:cancel_class). Partials: zoom/partials/class_span, zoom/partials/when. Filters: zoom_format (class_date). #}{% load zoom_format %}
+<ol class="classrows{% if occurrences|length > 6 %} classrows--cols{% endif %}">
+  {% for occurrence in occurrences %}<li class="classrows__item{% if occurrence.cancelled_at %} classrows__item--cancelled{% endif %}">
+    <div class="classrows__row">
+      <span class="classrows__when">{% include "zoom/partials/class_span.html" with start=occurrence.starts_at end=occurrence.ends_at only %}</span>
+      {% if occurrence.cancelled_at %}<span class="tag tag--plain"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-slash"></use></svg>Cancelled</span>{% elif in_progress_id and occurrence.pk == in_progress_id %}<span class="tag tag--note"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg>In progress</span>{% elif occurrence.pk in cancellable_ids %}<a class="classrows__action" href="{% url 'zoom:cancel_class' link_request_pk occurrence.pk %}">Cancel this class<span class="visually-hidden"> on {{ occurrence.starts_at|class_date }}</span></a>{% endif %}
+    </div>
+    {% if occurrence.cancelled_at %}<p class="classrows__note">Cancelled by {{ occurrence.cancelled_by }} on {% include "zoom/partials/when.html" with at=occurrence.cancelled_at only %}: {{ occurrence.cancel_reason|linebreaksbr }}</p>{% endif %}
+  </li>
+  {% endfor %}
+</ol>

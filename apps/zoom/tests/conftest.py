@@ -24,7 +24,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from apps.zoom import services, zoom_api
-from apps.zoom.models import HostAccount, LinkRequest
+from apps.zoom.models import HostAccount, HostSlot, LinkRequest
 from apps.zoom.providers import FakeProvider
 
 COLOMBO = ZoneInfo("Asia/Colombo")
@@ -52,6 +52,11 @@ STUB_TEMPLATES = {
         " {{ e.link_request.get_status_display }} {{ e.host_account.label }}]{% endfor %}"
         "{% endif %}{% endfor %}{% endfor %}"
     ),
+    # Brief 011. The reveal stub prints the key, so "the key is in the reveal page only" is
+    # tested against real output; the start stub prints the state and the error.
+    "zoom/cancel_confirm.html": "cancel {{ link_request.reference }} {{ cancel_error }}",
+    "zoom/start.html": "start state={{ state }} {{ start_error }}",
+    "zoom/host_key_reveal.html": "host key for {{ account.label }}: {{ host_key }}",
     "zoom/timetable_day.html": (
         "timetable day {{ day_label }} {% for e in entries %}[{{ e.link_request.reference }}"
         " {{ e.link_request.class_name }} {{ e.link_request.get_status_display }}"
@@ -150,6 +155,32 @@ def book(link_request, account, by=None):
     result = services.approve(link_request.pk, account_id=account.pk, by=by)
     assert result.outcome == services.Outcome.APPROVED, result.message
     link_request.refresh_from_db()
+    return link_request
+
+
+def booked_on(link_request, account, *, meeting_id="81234567890", occurrence_ids=True, by=None):
+    """Store ``link_request`` as approved on ``account`` with no provider call (brief 011).
+
+    What ``approve()`` leaves behind with the live provider: the request's link and meeting ID,
+    every class on the account with its 5-minute slots, and, for a weekly booking, a Zoom
+    occurrence ID per class (``occurrence_ids=False`` leaves them blank, as the manual provider
+    does). The cancel and start-link tests start from here, so they make no Zoom calls first.
+    """
+    link_request.status = LinkRequest.Status.APPROVED
+    link_request.host_account = account
+    link_request.decided_by = by
+    link_request.decided_at = timezone.now()
+    link_request.meeting_id = meeting_id
+    link_request.join_url = f"https://us02web.zoom.us/j/{meeting_id}?pwd=join-secret-4242"
+    link_request.passcode = "Pa55-7788"
+    link_request.save()
+    weekly = link_request.repeat == LinkRequest.Repeat.WEEKLY
+    for occurrence in link_request.occurrences.all():
+        occurrence.host_account = account
+        if weekly and occurrence_ids:
+            occurrence.zoom_occurrence_id = str(int(occurrence.starts_at.timestamp() * 1000))
+        occurrence.save(update_fields=["host_account", "zoom_occurrence_id"])
+        HostSlot.objects.bulk_create(HostSlot.covering(occurrence, account))
     return link_request
 
 

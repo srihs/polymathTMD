@@ -164,6 +164,11 @@ TRUSTED_PROXY_COUNT = env.int("TRUSTED_PROXY_COUNT", default=0)
 # rotating SECRET_KEY never makes stored host keys unreadable. Secret: never log or render.
 # No default: the zoom app's check zoom.E003 reports it when empty or invalid.
 HOST_KEY_ENCRYPTION_KEYS = env.list("HOST_KEY_ENCRYPTION_KEYS", default=[])
+# The IT desk's phone number, shown as a tap-to-call link on the public "start this class"
+# page so a teacher whose link fails can reach someone (brief 011, criterion 47). Not a secret.
+# Empty means the page says "contact the IT desk" with no number. A non-empty value must be
+# a number the zoom app's phone rules can read (check zoom.E006), e.g. 011 234 5678.
+IT_DESK_PHONE = env("IT_DESK_PHONE", default="")
 
 
 # --------------------------------------------------------------------------- Zoom connection
@@ -240,11 +245,39 @@ LOGGING = {
     "formatters": {
         "simple": {"format": "{asctime} {levelname} {name}: {message}", "style": "{"},
     },
+    "filters": {
+        # A class start link (/zoom/start/<token>/) is a working host link, and several Django
+        # loggers write request paths. The filter goes on every handler, not on loggers,
+        # because logger filters miss records that propagate from child loggers
+        # (django.security.<Name>). See log_filters.py (brief 011, review round 1).
+        "hide_start_token": {"()": "config.log_filters.HideStartTokenFilter"},
+        "require_debug_false": {"()": "django.utils.log.RequireDebugFalse"},
+    },
     "handlers": {
-        "console": {"class": "logging.StreamHandler", "formatter": "simple"},
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+            "filters": ["hide_start_token"],
+        },
+        # Django's default, re-declared only to add the filter. It sends nothing while
+        # ADMINS is unset. Don't set ADMINS without first revisiting the start-token
+        # redaction of email bodies. The filter hides the subject, but the 500 email's
+        # body (the request and the view's local variables, built by ExceptionReporter) can
+        # still hold a working /zoom/start/<token>/ link (brief 011, review round 2).
+        "mail_admins": {
+            "class": "django.utils.log.AdminEmailHandler",
+            "level": "ERROR",
+            "filters": ["require_debug_false", "hide_start_token"],
+        },
     },
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", default="INFO")},
     "loggers": {
+        # These replace Django's default handlers for these two loggers, which have no token
+        # filter. Records now reach the filtered root console instead. A side effect: the
+        # duplicate django.* lines that DEBUG runs used to print are gone.
+        "django": {"handlers": ["mail_admins"], "level": "INFO"},
+        # propagate must be explicit here, because dictConfig otherwise keeps Django's False.
+        "django.server": {"handlers": [], "level": "INFO", "propagate": True},
         # urllib3 logs every request line at DEBUG, and Zoom's paths carry the host account's
         # email and meeting IDs. Pinned so LOG_LEVEL=DEBUG never writes them (brief 006, R3).
         "urllib3": {"level": "WARNING"},

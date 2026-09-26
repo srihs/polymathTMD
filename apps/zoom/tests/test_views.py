@@ -368,8 +368,9 @@ def test_it_desk_group_holds_exactly_the_review_and_host_account_permissions():
         "zoom.review_linkrequest",
         "zoom.view_hostaccount",
     ]
+    # Renamed by migration 0007 (brief 011, criterion 32).
     assert group.permissions.get(codename="review_linkrequest").name == (
-        "Can approve or reject Zoom link requests"
+        "Can approve, reject, reschedule or cancel Zoom link requests"
     )
     assert not Group.objects.filter(name="Zoom account managers").exists()
 
@@ -446,6 +447,7 @@ def test_queue_defaults_to_waiting_with_tabs_counts_and_share_link(it_client, ac
             {"value": "waiting", "label": "Waiting", "count": 1, "current": True},
             {"value": "approved", "label": "Link sent", "count": 1, "current": False},
             {"value": "rejected", "label": "Not approved", "count": 0, "current": False},
+            {"value": "cancelled", "label": "Cancelled", "count": 0, "current": False},
             {"value": "all", "label": "All", "count": 2, "current": False},
         ]
         assert context["public_form_url"] == "http://testserver/zoom/request/"
@@ -586,7 +588,8 @@ def test_approve_view_books_emails_and_redirects(it_client, account):
     assert HostSlot.objects.count() == 288
     [message] = mail.outbox
     assert message.to == ["nimali@example.com"]
-    assert HOST_KEY in message.body
+    # Brief 011, criterion 28 (amends 005 criterion 61): no email carries a host key any more.
+    assert HOST_KEY not in message.body
 
 
 def test_approve_view_runs_outside_the_request_transaction():
@@ -714,8 +717,8 @@ def test_email_failure_keeps_the_approval_and_warns(it_client, account, caplog):
         )
     assert response.status_code == 302
     assert _messages(response) == [
-        "Approved, but the email to nimali@example.com didn't send. Copy the link below and send "
-        "it to them yourself. The host key is in the Zoom account's profile in Zoom."
+        "Approved, but the email to nimali@example.com didn't send. Copy the Zoom link and the "
+        "start link below and send them to them yourself."
     ]
     link_request.refresh_from_db()
     assert link_request.status == LinkRequest.Status.APPROVED
@@ -725,17 +728,19 @@ def test_email_failure_keeps_the_approval_and_warns(it_client, account, caplog):
         assert secret not in record.getMessage()
 
 
-def test_unreadable_host_key_rerenders_with_the_message(it_client, account, settings):
+def test_an_unreadable_host_key_no_longer_blocks_an_approval(it_client, account, settings):
+    """Brief 011, criterion 27 (amends 005 criterion 64 and 008 criterion 25 on purpose)."""
     from cryptography.fernet import Fernet
 
     settings.HOST_KEY_ENCRYPTION_KEYS = [Fernet.generate_key().decode()]
+    link_request = make_request()
     response = it_client.post(
-        reverse("zoom:approve", args=[make_request().pk]), {"host_account": account.pk}
+        reverse("zoom:approve", args=[link_request.pk]), {"host_account": account.pk}
     )
-    assert response.status_code == 200
-    assert response.context["approve_error"].startswith(
-        "The host key saved for Zoom 01 can't be read."
-    )
+    assert response.status_code == 302
+    assert _messages(response) == ["Approved. The link was emailed to nimali@example.com."]
+    link_request.refresh_from_db()
+    assert link_request.status == LinkRequest.Status.APPROVED
 
 
 # --------------------------------------------------------------------------- reject (42-43)
@@ -835,7 +840,7 @@ def test_full_flow_never_logs_the_host_key_or_encryption_keys(
     # Unread messages pile up in storage, so each response lists every one stored so far.
     assert {
         "Added Zoom 02.",
-        "Saved Zoom 01. The new host key goes out with the next approved link.",
+        "Saved Zoom 01 and its new host key.",
         "Saved Zoom 02. Its host key was removed.",
     } <= set(flashes)
     logged = "\n".join(record.getMessage() for record in caplog.records)

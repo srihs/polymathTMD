@@ -1,4 +1,4 @@
-{# Body of the "link approved" message, to the verified requester only (brief 005, D.8). Plain text. Context: link_request (LinkRequest with join_url, meeting_id, passcode, wants_recording), occurrences (list of Occurrence), host_key (str, decrypted by services.approve; "" prints the ask-the-IT-desk line). The only template that ever receives a host key. #}{% autoescape off %}Hello {{ link_request.requester_name }},
+{# Body of the "link approved" message, to the verified requester only (brief 005, D.8; brief 011, D.8.1 and criterion 28). Plain text. The host key is never emailed any more: with a start link (the zoom and fake providers) the email carries the "Starting the class as host" block, the "share the join link, keep the start link" line (P7) and the don't-forward sentence; with start_url "" (the manual provider, G5, P3) it says to ask the IT desk and never mentions a start link. Context: link_request (LinkRequest with requester_name, reference, join_url, meeting_id, passcode, wants_recording, schedule_summary), occurrences (list of Occurrence), start_url (str, absolute zoom:start URL, or "" for the manual provider). #}{% autoescape off %}Hello {{ link_request.requester_name }},
 
 The IT desk has approved your request {{ link_request.reference }}. Here is your Zoom link.
 
@@ -6,11 +6,11 @@ Join link: {{ link_request.join_url }}
 Meeting ID: {{ link_request.meeting_id }}
 Passcode: {{ link_request.passcode|default:"none" }}
 
-Use the same link for every class below.
+Use the same link for every class below.{% if start_url %} Share the join link with your students. Keep the start link to yourself.{% endif %}
 
-{% if host_key %}Starting the class as host
-Host key: {{ host_key }}
-To start the class as host, join, choose "Claim host" and type this host key. Keep it private: anyone who has it can take control of meetings on this Zoom account.{% else %}Ask the IT desk for the host key to start the class as host.{% endif %}
+{% if start_url %}Starting the class as host
+Start link: {{ start_url }}
+Open this link from 30 minutes before each class until it ends, then press Start this class. It starts the meeting as host, with no Zoom sign-in. Keep it private: anyone who has it can start these classes as host.{% else %}Ask the IT desk how to start the class as host.{% endif %}
 
 {% if link_request.wants_recording %}You asked for this class to be recorded to the Zoom cloud.
 
@@ -18,7 +18,7 @@ To start the class as host, join, choose "Claim host" and type this host key. Ke
 Your classes ({{ occurrences|length }}):
 {% for occurrence in occurrences %}- {{ occurrence }}
 {% endfor %}
-To change the times, send a new request. Please don't forward this email{% if host_key %}, because it has the host key in it{% endif %}.
+To change the times, reply to the IT desk.{% if start_url %} Please don't forward this email, because the start link in it lets anyone start your classes as host.{% endif %}
 
 Polymath College IT desk
 {% endautoescape %}

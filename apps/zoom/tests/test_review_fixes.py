@@ -13,7 +13,6 @@ from django.views.debug import ExceptionReporter
 
 from apps.zoom import models, services
 from apps.zoom.forms import JOIN_URL_INVALID, ApproveForm
-from apps.zoom.providers import FakeProvider
 
 from .conftest import make_account, make_request
 
@@ -30,15 +29,32 @@ def _frame_vars(reporter, function):
     return dict(frame["vars"])
 
 
+def test_approving_never_decrypts_a_host_key(account, it_user):
+    """Brief 011, criterion 27: ``approve()`` doesn't call ``get_host_key()`` at all."""
+    with mock.patch.object(
+        models.HostAccount, "get_host_key", side_effect=AssertionError("decrypted")
+    ):
+        result = services.approve(make_request().pk, account_id=account.pk, by=it_user)
+    assert result.outcome == services.Outcome.APPROVED
+    assert not hasattr(result, "host_key")
+    assert not hasattr(services.Outcome, "HOST_KEY_UNREADABLE")
+    assert not hasattr(services, "HOST_KEY_UNREADABLE")
+
+
 def test_error_report_after_decryption_masks_the_host_key(account, it_user):
+    """Brief 011, criterion 43: the key is decrypted only in ``reveal_host_key``, masked there.
+
+    The reveal's record is made to fail after decryption, so the traceback runs through the
+    frame that holds the key; the view's own frame is checked in ``test_host_key_reveal.py``.
+    """
     with (
-        mock.patch.object(FakeProvider, "create_meeting", side_effect=RuntimeError("boom")),
+        mock.patch.object(models.HostKeyReveal.objects, "create", side_effect=RuntimeError("boom")),
         pytest.raises(RuntimeError) as caught,
     ):
-        services.approve(make_request().pk, account_id=account.pk, by=it_user)
+        services.reveal_host_key(account, by=it_user)
     reporter = ExceptionReporter(None, caught.type, caught.value, caught.tb)
 
-    assert "*****" in _frame_vars(reporter, "_approve_once")["host_key"]
+    assert "*****" in _frame_vars(reporter, "reveal_host_key")["plain"]
     assert HOST_KEY not in reporter.get_traceback_html()
     assert HOST_KEY not in reporter.get_traceback_text()
 

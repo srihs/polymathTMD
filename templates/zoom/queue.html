@@ -1,4 +1,4 @@
-{# IT's Zoom link request queue (brief 005, D.4), in the shell; only for zoom.review_linkrequest. The share line with the public form's address, then one box: status tabs (links carrying only ?status, so each count matches its list), the search form (GET, within the current tab), the result line, the table (a card per row below 768px, explicit table roles), the pager, or an empty state. Never shows a host key or whether one is saved. Context: link_requests (page of LinkRequest: pk, reference, class_name, wants_recording, requester_name, requester_email, requester_phone_display, status, get_status_display, first_start, occurrence_count), page_obj / paginator / is_paginated (Django's), tabs (list of dict: value, label, count, current), status (str, the current tab), q (str, "" if none), public_form_url (str, absolute). Partials: partials/crumb, zoom/partials/status_tag, zoom/partials/recording_tag. Filters: zoom_format (class_date, class_time). #}{% extends "base.html" %}
+{# IT's Zoom link request queue (brief 005, D.4), in the shell; only for zoom.review_linkrequest. The share line with the public form's address, then one box: status tabs (links carrying only ?status, so each count matches its list), the search form (GET, within the current tab), the result line, the table (a card per row below 768px, explicit table roles), the pager, or an empty state. Never shows a host key or whether one is saved. Context: link_requests (page of LinkRequest: pk, reference, class_name, wants_recording, requester_name, requester_email, requester_phone_display, status, get_status_display, first_start, occurrence_count), page_obj / paginator / is_paginated (Django's), tabs (list of dict: value, label, count, current; brief 011 adds cancelled, between rejected and all), status (str, the current tab; "cancelled" has its own result line, caption and empty state, D.3.2), q (str, "" if none), public_form_url (str, absolute). Partials: partials/crumb, zoom/partials/status_tag, zoom/partials/recording_tag. Filters: zoom_format (class_date, class_time). #}{% extends "base.html" %}
 {% load zoom_format %}
 
 {% block title %}Zoom link requests{% endblock %}
@@ -42,10 +42,10 @@
     </form>
 
     {% if link_requests %}
-    {% with n=paginator.count %}<p class="result-line">{% if q %}{{ n }} request{{ n|pluralize }} match{{ n|pluralize:"es," }} "{{ q }}"{% elif status == "waiting" %}{{ n }} request{{ n|pluralize }} waiting for IT{% elif status == "approved" %}{{ n }} request{{ n|pluralize }} with a link sent{% elif status == "rejected" %}{{ n }} request{{ n|pluralize }} not approved{% else %}{{ n }} request{{ n|pluralize }} in total{% endif %}{% if is_paginated %}. Showing {{ page_obj.start_index }} to {{ page_obj.end_index }}{% endif %}.</p>{% endwith %}
+    {% with n=paginator.count %}<p class="result-line">{% if q %}{{ n }} request{{ n|pluralize }} match{{ n|pluralize:"es," }} "{{ q }}"{% elif status == "waiting" %}{{ n }} request{{ n|pluralize }} waiting for IT{% elif status == "approved" %}{{ n }} request{{ n|pluralize }} with a link sent{% elif status == "rejected" %}{{ n }} request{{ n|pluralize }} not approved{% elif status == "cancelled" %}{{ n }} cancelled booking{{ n|pluralize }}{% else %}{{ n }} request{{ n|pluralize }} in total{% endif %}{% if is_paginated %}. Showing {{ page_obj.start_index }} to {{ page_obj.end_index }}{% endif %}.</p>{% endwith %}
     <div class="datagrid-wrap">
       <table class="datagrid" role="table">
-        <caption class="visually-hidden">{% if status == "waiting" %}Requests waiting for IT, soonest first class first{% elif status == "approved" %}Requests with a link sent, most recently decided first{% elif status == "rejected" %}Requests not approved, most recently decided first{% else %}All requests, newest first{% endif %}</caption>
+        <caption class="visually-hidden">{% if status == "waiting" %}Requests waiting for IT, soonest first class first{% elif status == "approved" %}Requests with a link sent, most recently decided first{% elif status == "rejected" %}Requests not approved, most recently decided first{% elif status == "cancelled" %}Cancelled bookings, most recently cancelled first{% else %}All requests, newest first{% endif %}</caption>
         <thead role="rowgroup">
           <tr role="row"><th scope="col" role="columnheader">Reference</th><th scope="col" role="columnheader">Class</th><th scope="col" role="columnheader">Requested by</th><th scope="col" role="columnheader">First class</th><th scope="col" role="columnheader">Classes</th><th scope="col" role="columnheader">Status</th></tr>
         </thead>
@@ -80,6 +80,12 @@
       <h2>No requests match "{{ q }}".</h2>
       <p>Check the spelling{% if status != "all" %}, or <a href="{{ queue_url }}?status=all&amp;q={{ q|urlencode }}">search in All</a>{% endif %}.</p>
       <a class="button button--secondary" href="{{ queue_url }}?status={{ status }}">Clear the search</a>
+    </div>
+    {% elif status == "cancelled" %}
+    <div class="empty">
+      <span class="disc disc--64"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-slash"></use></svg></span>
+      <h2>No cancelled bookings.</h2>
+      <p>Bookings show here when the IT desk cancels them.</p>
     </div>
     {% else %}
     <div class="empty">

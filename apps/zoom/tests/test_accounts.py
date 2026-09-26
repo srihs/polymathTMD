@@ -473,7 +473,15 @@ def test_change_form_context_and_host_key_copy(it_client, it_user, zoom03):
     assert form["label"].value() == "Zoom 03"
     assert form["host_key"].value() is None
     assert form.fields["host_key"].label == "New host key"
-    assert form.fields["host_key"].help_text == "Leave it empty to keep the saved key."
+    # Brief 011, criterion 30: keys aren't emailed any more, and the field help says so.
+    assert form.fields["host_key"].help_text == (
+        "Leave it empty to keep the saved key. Host keys aren't emailed. Teachers start classes "
+        "with the start link in their approval email. If that link fails, the IT desk can show "
+        "the key on this page."
+    )
+    assert form.fields["remove_host_key"].help_text == (
+        "Tick this if the saved key is wrong and you don't have the new one yet."
+    )
     assert form.fields["remove_host_key"].label == "Remove the saved host key"
     assert list(form.fields)[-2:] == ["host_key", "remove_host_key"]
     assert HOST_KEY not in response.content.decode()
@@ -484,7 +492,9 @@ def test_change_form_without_a_key_has_no_remove_box(it_client):
     form = it_client.get(_edit(account)).context["form"]
     assert "remove_host_key" not in form.fields
     assert form.fields["host_key"].help_text == (
-        "Type the 6 to 10 digits from the account's Zoom profile."
+        "Type the 6 to 10 digits from the account's Zoom profile. Host keys aren't emailed. "
+        "Teachers start classes with the start link in their approval email. If that link "
+        "fails, the IT desk can show the key on this page."
     )
 
 
@@ -539,7 +549,7 @@ def test_saving_a_new_key_replaces_it_and_records_who(it_client, it_user, zoom03
     response = it_client.post(_edit(zoom03), _data(zoom03, host_key="7654321"))
     assert response.status_code == 302
     assert _messages(response) == [
-        "Saved Zoom 03. The new host key goes out with the next approved link."
+        "Saved Zoom 03 and its new host key."  # brief 011, criterion 30
     ]
     zoom03.refresh_from_db()
     assert zoom03.get_host_key() == "7654321"
@@ -608,11 +618,11 @@ def test_upcoming_classes_are_booked_not_ended_and_soonest_first(account):
 
 MANY_ACTIVE = (
     "Zoom 03 still has 12 booked classes, from Mon 28 Sep 2026 to Wed 28 Oct 2026. It can be "
-    "taken out of use once the last one has finished."
+    "taken out of use once the last one has finished or been cancelled."
 )
 MANY_PAID = (
     "Zoom 03 still has 12 booked classes, from Mon 28 Sep 2026 to Wed 28 Oct 2026. It can be "
-    "marked as free once the last one has finished."
+    "marked as free once the last one has finished or been cancelled."
 )
 
 
@@ -655,11 +665,11 @@ def test_one_upcoming_class_is_worded_in_the_singular(it_client, zoom03):
     assert response.context["form"].errors == {
         "is_paid": [
             "Zoom 03 still has 1 booked class, on Mon 5 Oct 2026. It can be marked as free "
-            "once it has finished."
+            "once it has finished or been cancelled."
         ],
         "is_active": [
             "Zoom 03 still has 1 booked class, on Mon 5 Oct 2026. It can be taken out of use "
-            "once it has finished."
+            "once it has finished or been cancelled."
         ],
     }
 

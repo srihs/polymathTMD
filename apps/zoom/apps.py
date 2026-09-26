@@ -19,6 +19,7 @@ class ZoomConfig(AppConfig):
         checks.register(zoom_checks.check_provider_setting)
         checks.register(zoom_checks.check_host_key_encryption_keys)
         checks.register(zoom_checks.check_credential_sets)
+        checks.register(zoom_checks.check_it_desk_phone)
         checks.register(
             zoom_checks.check_fake_provider_not_deployed, checks.Tags.security, deploy=True
         )

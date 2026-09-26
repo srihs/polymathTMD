@@ -1,0 +1,54 @@
+{# One Zoom account's host key, shown once as the IT desk's fallback (brief 011, D11, criterion 42; Design D.7), in the shell; only for zoom.change_hostaccount, and only ever the answer to the Show host key POST (never_cache and no-referrer are the view's). The only template that ever receives a plaintext host key: it's printed exactly once, as plain text in .secret (docs/design/secret-value.md), never in an input, a title, an aria-label or an include. Then the pinned guidance (P2): When to use it, How the teacher uses it (three numbered steps and the waiting-room warning, R7), Keep it safe, and Back to Change {label}. No form: a reload re-sends the POST, which is a new, recorded reveal. Context: account (HostAccount: pk, label), host_key (str, the plaintext key). Partials: partials/crumb. #}{% extends "base.html" %}
+
+{% block title %}Host key for {{ account.label }}{% endblock %}
+
+{% block heading %}<span class="break-anywhere">Host key for {{ account.label }}</span>{% endblock %}
+
+{% block breadcrumb %}{% url 'zoom:accounts' as accounts_url %}{% url 'zoom:account_edit' account.pk as edit_url %}{% include "partials/crumb.html" with url=accounts_url text="Zoom accounts" current=False only %}{% include "partials/crumb.html" with url=edit_url text=account.label current=False only %}{% include "partials/crumb.html" with url="" text="Host key" current=True only %}{% endblock %}
+
+{% block content %}
+<div class="box">
+  <div class="box__body">
+    <div class="box__form">
+      <div class="secret">
+        <p class="secret__label">Host key</p>
+        <p class="secret__value" translate="no">{{ host_key }}</p>
+      </div>
+      <p class="text-muted">We've recorded that you were shown this key. Reloading this page shows it again and records it again.</p>
+
+      <div class="box__section">
+        <h2 class="box__subtitle">When to use it</h2>
+        <p>Only when the start link in the approval email doesn't work. Read the key to the teacher over the phone. Don't email it or send it in a message.</p>
+      </div>
+
+      <div class="box__section">
+        <h2 class="box__subtitle">How the teacher uses it</h2>
+        <div class="stack">
+          <ol class="occurrences">
+            <li>Join the class with its Zoom link.</li>
+            <li>Open Participants and choose <strong>Claim host</strong>.</li>
+            <li>Type the host key.</li>
+          </ol>
+          <div class="notice notice--warn">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+            <div class="notice__body">
+              <p class="notice__title">The waiting room can stop this</p>
+              <p>If this Zoom account keeps its waiting room on, the teacher waits there first. They can claim host only after someone already in the meeting lets them in. If nobody is in the meeting yet, the teacher can't get in this way. Instead, open the start link on the class's request page, start the class yourself, then let the teacher in and make them host.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="box__section">
+        <h2 class="box__subtitle">Keep it safe</h2>
+        <div class="stack">
+          <p>This key lets anyone take host control of every meeting on {{ account.label }}, not just this class. If it may have spread, change the key in Zoom, then type the new one on this account's page.</p>
+          <div class="form-actions">
+            <a class="button button--secondary" href="{% url 'zoom:account_edit' account.pk %}">Back to Change {{ account.label }}</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

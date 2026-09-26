@@ -1,0 +1,17 @@
+{# Body of the "booking cancelled" message, to requester_email only, sent after the commit (brief 011, criterion 17; D.8.3). Plain text. The classes cancelled (one per line, as Occurrence.__str__), the reason, the "still on" line only when classes remain (with "and start link" only when can_start, G5, P3), the "let your students know" line every time (P5), and how to book again. Holds no join link, passcode, start link or host key: "start link" appears only as words. Context: link_request (LinkRequest: requester_name, reference, class_name), cancelled (list of Occurrence), remaining (list of Occurrence; empty when the whole booking is cancelled), reason (str), request_url (str, absolute, zoom:request), can_start (bool; false for the manual provider). #}{% autoescape off %}Hello {{ link_request.requester_name }},
+
+{% if remaining %}{% with n=cancelled|length %}The IT desk has cancelled {{ n }} class{{ n|pluralize:"es" }} of your Zoom booking {{ link_request.reference }} for {{ link_request.class_name }}.{% endwith %}{% else %}The IT desk has cancelled your Zoom booking {{ link_request.reference }} for {{ link_request.class_name }}.{% endif %}
+
+Classes cancelled ({{ cancelled|length }}):
+{% for occurrence in cancelled %}- {{ occurrence }}
+{% endfor %}
+Reason: {{ reason }}
+
+{% if remaining %}{% if can_start %}Your other classes are still on, with the same link and start link.{% else %}Your other classes are still on, with the same link.{% endif %}
+
+{% endif %}Zoom doesn't tell the people you shared the link with. Please let your students know.
+
+To book again, send a new request: {{ request_url }}
+
+Polymath College IT desk
+{% endautoescape %}

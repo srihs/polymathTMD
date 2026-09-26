@@ -70,8 +70,7 @@ def test_approve_books_every_class_and_slot_and_stores_the_fake_meeting(account,
     result = services.approve(link_request.pk, account_id=account.pk, by=it_user)
 
     assert result.outcome == Outcome.APPROVED
-    assert result.host_key == HOST_KEY
-    assert HOST_KEY not in repr(result)
+    assert HOST_KEY not in repr(result)  # brief 011: the result carries no key at all
     link_request.refresh_from_db()
     assert link_request.status == LinkRequest.Status.APPROVED
     assert link_request.host_account == account
@@ -160,20 +159,16 @@ def test_provider_failure_books_nothing(account, it_user):
     assert not link_request.occurrences.filter(host_account__isnull=False).exists()
 
 
-def test_unreadable_host_key_books_nothing_and_logs_only_label(account, it_user, settings, caplog):
+def test_an_unreadable_host_key_is_approved_normally(account, it_user, settings, caplog):
+    """Brief 011, criterion 27 (amends 005 criterion 64): the key isn't read when approving."""
     settings.HOST_KEY_ENCRYPTION_KEYS = [Fernet.generate_key().decode()]
     link_request = make_request()
     with caplog.at_level(logging.DEBUG):
         result = services.approve(link_request.pk, account_id=account.pk, by=it_user)
-    assert result.outcome == Outcome.HOST_KEY_UNREADABLE
-    assert result.message == (
-        "The host key saved for Zoom 01 can't be read. Ask someone in the IT desk to type it "
-        "again on the Zoom accounts page, then approve."
-    )
-    assert FakeProvider.calls == []
-    assert HostSlot.objects.count() == 0
-    [record] = [r for r in caplog.records if r.name == "apps.zoom.services"]
-    assert record.getMessage() == "Host key for Zoom 01 can't be read: InvalidToken"
+    assert result.outcome == Outcome.APPROVED
+    assert len(FakeProvider.calls) == 1
+    assert HostSlot.objects.count() == 36
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
 SAME_MOMENT = "Someone else was approving at the same moment. Nothing was booked. Try again."
@@ -253,8 +248,18 @@ def _only_message():
     return message
 
 
+START_BLOCK = (
+    "Starting the class as host\n"
+    "Start link: {start_url}\n"
+    "Open this link from 30 minutes before each class until it ends, then press Start this "
+    "class. It starts the meeting as host, with no Zoom sign-in. Keep it private: anyone who "
+    "has it can start these classes as host."
+)
+
+
 @override_settings(DEFAULT_FROM_EMAIL="it-desk@polymath.example")
-def test_approval_email_carries_link_host_key_classes_and_recording(account, it_user):
+def test_approval_email_carries_link_start_link_classes_and_recording(account, it_user):
+    """Brief 011, criterion 28: the start link replaces the host key (fake provider)."""
     link_request = book(
         make_request(
             class_name="<b>Maths & Science</b>",
@@ -265,19 +270,22 @@ def test_approval_email_carries_link_host_key_classes_and_recording(account, it_
         account,
         it_user,
     )
-    assert services.send_approved_email(_request(), link_request, HOST_KEY)
+    assert services.send_approved_email(_request(), link_request)
     message = _only_message()
     assert message.to == ["nimali@example.com"]
     assert message.from_email == "it-desk@polymath.example"
     assert message.subject == "Your Zoom link for <b>Maths & Science</b>"
     body = message.body
+    start_url = f"http://testserver/zoom/start/{services.start_token(link_request)}/"
     for expected in (
         link_request.join_url,
         link_request.meeting_id,
         link_request.passcode,
-        f"Host key: {HOST_KEY}",
-        'To start the class as host, join, choose "Claim host" and type this host key. Keep it '
-        "private: anyone who has it can take control of meetings on this Zoom account.",
+        START_BLOCK.format(start_url=start_url),
+        "Use the same link for every class below. Share the join link with your students. "
+        "Keep the start link to yourself.",
+        "To change the times, reply to the IT desk. Please don't forward this email, because "
+        "the start link in it lets anyone start your classes as host.",
         "You asked for this class to be recorded to the Zoom cloud.",
         link_request.reference,
         "Mon 5 Oct 2026, 8:30 am to 11:30 am",
@@ -285,15 +293,24 @@ def test_approval_email_carries_link_host_key_classes_and_recording(account, it_
         f"When: {link_request.schedule_summary}",
     ):
         assert expected in body
+    assert HOST_KEY not in body and "host key" not in body.lower()
     assert "&amp;" not in body
 
 
-def test_approval_email_without_a_host_key_says_ask_the_it_desk(it_user):
-    link_request = book(make_request(), make_account("Zoom 05"), it_user)
-    services.send_approved_email(_request(), link_request, "")
+def test_approval_email_with_the_manual_provider_never_mentions_a_start_link(
+    account, it_user, settings
+):
+    """Criteria 26 and 28 (P3): no start link was made, so the email doesn't mention one."""
+    link_request = book(make_request(), account, it_user)
+    settings.ZOOM_PROVIDER = "manual"
+    services.send_approved_email(_request(), link_request)
     body = _only_message().body
-    assert "Ask the IT desk for the host key to start the class as host." in body
-    assert "Host key:" not in body
+    assert "start link" not in body.lower()
+    assert "/zoom/start/" not in body
+    assert "Ask the IT desk how to start the class as host." in body
+    assert "To change the times, reply to the IT desk.\n" in body
+    assert "Share the join link" not in body
+    assert HOST_KEY not in body
     assert "recorded to the Zoom cloud" not in body
 
 
@@ -349,7 +366,7 @@ def test_send_failure_is_logged_without_secrets(account, it_user, caplog):
         ),
         caplog.at_level(logging.DEBUG),
     ):
-        assert not services.send_approved_email(_request(), link_request, HOST_KEY)
+        assert not services.send_approved_email(_request(), link_request)
     [record] = [r for r in caplog.records if r.levelno == logging.ERROR]
     text = record.getMessage()
     assert link_request.reference in text and "ConnectionRefusedError" in text

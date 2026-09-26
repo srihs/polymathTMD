@@ -273,6 +273,11 @@ This brief adds or changes:
     With exactly one upcoming class, on Mon 5 Oct 2026, the words become `still has 1 booked class, on Mon 5 Oct 2026. It can be taken out of use once it has finished.`, and the same pattern applies to `marked as free`.
 
     When brief 011 adds cancelling, it amends this copy to add "or cancel them" (D11).
+
+    *Amended by 011 (2026-09-26): done, with slightly different final wording than sketched above —
+    011 criterion 33 ends both sentences `once the last one has finished or been cancelled.` and
+    `once it has finished or been cancelled.` (not "or cancel them"), so a class that's been
+    cancelled no longer counts toward this block, the same as one that's simply finished.*
 18. **What doesn't block.**
     - **Ended classes don't block.** An account whose only approved classes have ended (the test's class on 27 Sep 09:00–11:00, as of 28 Sep 10:00) can be taken out of use, or marked free, in one POST.
     - **Waiting requests don't block.** A waiting or rejected request's classes never block.
@@ -323,6 +328,13 @@ This brief adds or changes:
     - The add and change views wrap `dispatch` in `sensitive_post_parameters("host_key")`. The rewritten error-report test makes the change view's save raise. It asserts that the `ExceptionReporter` HTML and text mask the typed key (`*****`) and never contain it.
     - `set_host_key` keeps `@sensitive_variables("plain")`. `__str__` and `__repr__` still leave the key out.
     - Every accounts page (list, add, change, every error state including criterion 17's) renders without the plaintext key and without `gAAAAA`.
+
+    *Amended by 011 (2026-09-26, deliberately): this now holds for every accounts page **except
+    one** — 011's new host-key reveal page (`zoom/host_key_reveal.html`), which is built to be the
+    single, recorded place a plaintext key is ever allowed to show (011 criterion 43). Every page
+    this criterion originally covered — the list, add, change (before and after a reveal) and every
+    error state — still renders with no plaintext key and no `gAAAAA`; the reveal page is a
+    deliberate, separately-tested exception, not a gap in this one.*
 25. **The "in the admin" copy is gone.** Pinned:
 
     | Where | New text | Amends |
@@ -334,6 +346,15 @@ This brief adds or changes:
 
     - The tests that pinned the old texts are updated deliberately.
     - A pytest check finds no case-insensitive `\bin the admin\b` or `admin change form` in `apps/zoom/**/*.py` (outside `migrations/`) or in `templates/zoom/**`.
+
+    *Amended by 011 (2026-09-26, deliberately): two of this criterion's rows change again.
+    "Approval email failed" drops the host-key sentence — the approval email no longer carries a
+    host key to mention — and becomes `Approved, but the email to {email} didn't send. Copy the
+    Zoom link and the start link below and send them to them yourself.` (011 criterion 30). "Host
+    key unreadable at approval" is removed outright: `approve()` no longer decrypts the host key at
+    all (011 criterion 27), so that outcome, and its error text, no longer exist. The other two rows
+    ("No paid Zoom accounts are set up yet" and `rotate_host_keys`'s unreadable-keys text) are
+    untouched.*
 
 ### Front end, templates, accessibility
 
@@ -403,6 +424,13 @@ This brief adds or changes:
   - **Amends:** brief 005's criterion 18 ("`IT desk` holds exactly one permission").
   - **Risk the owner accepts:** every desk member can replace a host key, and a wrong key goes out in later approval emails. D3's "saved on … by …" line shows who changed it.
 - **D3: No partial key hints.** Two visible digits of a 6-digit key cut the guesses from 1,000,000 to 10,000. The page shows **when and by whom** a key was last set instead (`host_key_changed_at` and `host_key_changed_by`). After the admin is gone, no `LogEntry` exists, so these fields are the only record of a key change.
+
+  *Amended by 011 (2026-09-26): the account's own pages still show only when and by whom a key was
+  **set**, unchanged. Separately, 011 adds a way to read the key itself back — not a hint, the whole
+  key — on its own page, as a deliberate IT-only fallback, with every reveal recorded in a new
+  `HostKeyReveal` row and summarised on the change page as "Last shown to … Shown n time(s) in all."
+  (011 D11, criteria 40–44). The two records answer different questions: this one, "when did the key
+  last change", and 011's, "who has been shown it and when."*
 - **D4: No hard delete in the app.** `PROTECT` already refuses accounts with bookings. Once the admin is gone, nothing deletes accounts. That's intended.
 - **D5: `credential_set` isn't on the form in 008.** It's blank for every account, and nothing reads it until brief 006, which adds it to this screen along with its check `zoom.E004`. *Amended by 006 (2026-09-25): done — `credential_set` is now on the form (006 criterion 34), and this brief's own test asserting `"credential_set" not in form.fields` is amended deliberately.*
 - **D6: One form class, `HostAccountForm`,** serves both add and change, so the host-key rules are defined once. The two 005 admin form classes are deleted along with `admin.py`.
@@ -416,6 +444,14 @@ This brief adds or changes:
   - *This replaces the earlier draft's warn-and-confirm step. The `confirm_stop` field and `stop_warning` context are dropped.*
 - **D9: The sidebar marks the current item by view name, not by namespace.** Brief 005 used `current_ns == "zoom"`, which would mark `Link requests` on the accounts pages too. The sidebar now compares `current` against explicit view names. `current_ns` stays as a parameter.
 - **D10: Host keys can't be read anywhere any more.** Brief 005 let superusers read them in the admin (criterion 62). Now a key leaves the system only in the approval email. If that email failed, the key is in the account's Zoom profile, as criterion 25's copy says. "Send the approval email again" is a follow-up for the changelog.
+
+  *Amended by 011 (2026-09-26, deliberately, owner's Q1: "Keep as IT-only fallback"): this is
+  reversed. The key no longer leaves the system through email at all (011 criteria 27–28 remove it
+  from the approval email too), but it can be read back again — deliberately, as a recorded,
+  IT-only fallback for when a start link doesn't work: `zoom.change_hostaccount` holders can show it
+  once, on its own reveal page, and every reveal is logged and shown on the change page (011 D11,
+  criteria 40–44). "Send the approval email again" is no longer the only recovery path for a failed
+  email; `Show host key` is the other one.*
 - **D11: Brief 011, "Cancel this booking", is a go-live prerequisite (owner, Q3).** It adds an in-app way to cancel an approved request, or one of its classes, with a `cancelled` status. Cancelling frees the account's slots, emails the requester and, after brief 006, deletes the Zoom meeting. It also amends criterion 17's copy to add "or cancel them". The README's go-live gate lists it alongside brief 007. Until then, there's no replacement for the admin's "delete a request", and production isn't taking real bookings anyway (brief 005's gate). *Amended by 006 (2026-09-25): 007 dropped; gate = 006 + 011.*
 
 ## MVT plan

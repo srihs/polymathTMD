@@ -18,7 +18,7 @@ owner's own wording into them matters more than getting the commit made fast.
 **This file is the normative spec for the mechanics of an episode:** the
 `Oversight-Type` enum, what counts as Durable, the shape of the commit message,
 the parse check, the two-commit order, the log row format, and when to stop.
-`CLAUDE.md` defines what an episode *is*, names the four trailers, and restates
+`CLAUDE.md` defines what an episode *is*, names the six trailers, and restates
 the never-rewrite / never-delete rules; it does not repeat the mechanics. If the
 two ever disagree about mechanics, this file wins and `CLAUDE.md` gets fixed.
 
@@ -45,15 +45,16 @@ already supplies; only ask for what is genuinely missing.
   including a trailer block that failed to parse - add a **new** commit that
   carries the trailers and names the broken SHA; do not rewrite the old one.
 - **The trailer block is the last block of the message, and every line in it is
-  a trailer.** The four `Oversight-` trailers come first, in order, then the
-  `Co-Authored-By:` line. Nothing after the block - no sign-off, no body text,
-  no blank-line-separated afterthought. `Co-Authored-By:` is itself a trailer
-  and parses fine alongside the four; it must stay, because which commits were
+  a trailer.** The six `Oversight-` trailers come first, in order - Type,
+  Trigger, Action, Durable, Stage, Source - then the `Co-Authored-By:` line.
+  Nothing after the block - no sign-off, no body text, no blank-line-separated
+  afterthought. `Co-Authored-By:` is itself a trailer and parses fine alongside
+  the six; it must stay, because which commits were
   co-authored by a model is part of what this repository measures (see
   `.mailmap`).
 - **Every trailer value is a single line.** Git only treats the last paragraph
   as trailers if *every* line in it parses as `Key: value`. A wrapped sentence
-  breaks the block either way: a continuation at column zero voids **all four**
+  breaks the block either way: a continuation at column zero voids **all six**
   trailers at once - `%(trailers)` returns nothing for the whole block - while
   an *indented* continuation is folded into the preceding trailer's value, so
   the parse check still prints the type but the recorded value carries an
@@ -83,22 +84,25 @@ correction (for example an unrelated experiment in another app), say so and ask
 whether to stage everything or only the related paths. Do not decide this
 silently: an episode commit that sweeps in unrelated work is unusable as data.
 
-## Step 2 - collect the four trailer values
+## Step 2 - collect the six trailer values
 
 Fill in from `<owner_input>` first. For each value still missing, ask with
-**AskUserQuestion**. Ask for everything missing in one call where the tool
-allows it, so the owner answers once.
+**AskUserQuestion**. The tool takes at most four questions per call, so ask for
+everything missing in as few calls as the tool allows - with all six missing,
+that is two calls - so the owner answers as few times as possible. Durable
+counts as one of those questions: it is still worked out from the paths and
+confirmed (see below), never asked blind.
 
-### Oversight-Type (one of eight, exactly)
+### Oversight-Type (one of nine, exactly)
 
 `architecture`, `business-rule`, `correctness`, `security`, `scope`,
-`data-model`, `performance`, `dependency`
+`data-model`, `performance`, `dependency`, `critique-override`
 
-List all eight in the question text. If the tool caps you at four options,
+List all nine in the question text. If the tool caps you at four options,
 offer the four that best fit what the diff touches and tell the owner to choose
-"Other" and type one of the remaining four exactly. Validate the answer against
-the list above. If it does not match one of the eight, **ask again once**,
-quoting the eight; if the second answer is still outside the list, stop and
+"Other" and type one of the remaining five exactly. Validate the answer against
+the list above. If it does not match one of the nine, **ask again once**,
+quoting the nine; if the second answer is still outside the list, stop and
 report. Never map it to the nearest value yourself, and never commit a partial
 trailer block.
 
@@ -136,14 +140,42 @@ ask blind - then **confirm it** with a two-option question that says which
 files led you to it, for example: "I see CLAUDE.md changed, so I would record
 Oversight-Durable: yes. Correct?" The owner's answer wins.
 
+### Oversight-Stage - when it was caught (one of three, exactly)
+
+- `in-loop` - caught during the build, before handover
+- `acceptance` - caught by a stakeholder reviewing the delivered output
+- `production` - caught after go-live
+
+These are enum values, not the owner's account, so offering them as options is
+fine - the rule against offering your own wording applies only to Trigger and
+Action. All three fit as options; give each its definition above. Validate the
+answer the same way as Oversight-Type: if it does not match one of the three,
+**ask again once**, quoting the three; if the second answer is still outside
+the list, stop and report. Never map it to the nearest value yourself.
+
+### Oversight-Source - who caught it (one of five, exactly)
+
+- `self` - the owner spotted it unaided
+- `agent-critique` - an agent review surfaced it
+- `client`, `stakeholder` or `colleague` - a person other than the owner did;
+  record which of the three
+
+Enum values again, so offering them as options is fine. List all five, with
+their definitions, in the question text. If the tool caps you at four options,
+offer four and tell the owner to choose "Other" and type the fifth exactly.
+Validate the same way as Oversight-Type: if the answer does not match one of
+the five, **ask again once**, quoting the five; if the second answer is still
+outside the list, stop and report. Never map it to the nearest value yourself -
+"a teacher" or "the reviewer agent" is not a value until the owner picks one.
+
 ## Step 3 - commit the episode
 
 Stage the change (`git add -A`, or the agreed subset of paths).
 
 Write the message: a short imperative subject line (72 characters or fewer)
-that says what was corrected, a blank line, then the trailer block - the four
-`Oversight-` trailers in this exact order, then the `Co-Authored-By:` line, and
-nothing after it. The 72-character guidance applies **to the subject line
+that says what was corrected, a blank line, then the trailer block - the six
+`Oversight-` trailers in this exact order (Type, Trigger, Action, Durable,
+Stage, Source), then the `Co-Authored-By:` line, and nothing after it. The 72-character guidance applies **to the subject line
 only**; trailer values are never wrapped (see "Hard rules").
 
 Commit with a quoted heredoc so nothing in the owner's wording gets expanded by
@@ -157,6 +189,8 @@ Oversight-Type: data-model
 Oversight-Trigger: <owner's sentence, verbatim, on one line>
 Oversight-Action: <owner's sentence, verbatim, on one line>
 Oversight-Durable: yes
+Oversight-Stage: in-loop
+Oversight-Source: self
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 MSG
 ```
@@ -171,10 +205,12 @@ Then print the SHA so the owner can see it worked, capture it for the log, and
 ```bash
 git log -1 --format='%h  %cs  %s'
 git log -1 --format='%(trailers:key=Oversight-Type,valueonly)'
+git log -1 --format='%(trailers:key=Oversight-Stage,valueonly)'
+git log -1 --format='%(trailers:key=Oversight-Source,valueonly)'
 ```
 
-The second command must print the type you committed. **Empty output means the
-block did not parse** - almost always a wrapped value or a stray line inside the
+The last three commands must print the type, stage and source you committed.
+**Empty output from any of them means the block did not parse** - almost always a wrapped value or a stray line inside the
 block - and the episode is not recorded, however right the message looks. Do
 not amend. Stop and report; see "When to refuse".
 
@@ -207,12 +243,12 @@ Append one row to the table in `OVERSIGHT_LOG.md` (repository root), matching
 its existing columns:
 
 ```
-| Date | Commit | Type | What looked right but was not | What I did | Durable |
+| Date | Commit | Type | What looked right but was not | What I did | Durable | Stage | Source |
 ```
 
 - **Date:** `%cs` from the episode commit, `YYYY-MM-DD`.
 - **Commit:** the short SHA, as plain text.
-- **Type** and **Durable:** exactly the trailer values.
+- **Type**, **Durable**, **Stage** and **Source:** exactly the trailer values.
 - **What looked right but was not** and **What I did:** the Trigger and Action
   sentences verbatim, one line each - the same single-line values that went
   into the trailers. Escape any literal pipe character in the owner's wording
@@ -253,10 +289,16 @@ Every SHA it prints should appear in the **Commit** column of
 block failed to parse - which is exactly the commit you want to notice. Report
 any mismatch to the owner; never rewrite history to make the two line up.
 
+Episode commits made before 2026-09-27 carry only the first four trailers
+(Type, Trigger, Action, Durable). That is expected, not an error: do not report
+it as a mismatch, and do not add a commit to "fix" it. Their Stage and Source
+appear only in the log's "Reconstructed fields" note.
+
 Then tell the owner, in a few lines:
 
 - the episode commit SHA and subject,
-- the four trailer values as committed, and that the parse check passed,
+- the six trailer values as committed, and that the parse check passed (Type,
+  Stage and Source all printed),
 - the log commit SHA,
 - any mismatch the reconciliation found,
 - anything you refused to decide for them.
@@ -281,24 +323,26 @@ Say plainly that you are stopping, and why. Do not work around any of these:
   Oversight-Trigger: <owner's sentence, verbatim, on one line>
   Oversight-Action: <owner's sentence, verbatim, on one line>
   Oversight-Durable: <yes|no>
+  Oversight-Stage: <in-loop|acceptance|production>
+  Oversight-Source: <self|agent-critique|client|stakeholder|colleague>
   Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
   MSG
   ```
 
-  Collect the four values through step 2 first, verify the parse as in step 3,
+  Collect the six values through step 2 first, verify the parse as in step 3,
   and log it as in step 4 using the empty commit's own SHA. If the owner
   declines, stop and say plainly that the episode cannot be recorded.
 - **Nothing to commit, and nothing was corrected either.** If the correction
   was never made, there is no episode; ask the owner whether they meant to make
   it first.
 - **A trailer value is missing.** The owner skipped or dismissed a question, or
-  gave an Oversight-Type outside the eight twice. Do not fill it in from the
-  diff, do not use a placeholder, do not commit a partial trailer block.
+  gave an Oversight-Type outside the nine, or an Oversight-Stage or
+  Oversight-Source outside its list, twice. Do not fill it in from the diff, do not use a placeholder, do not commit a partial trailer block.
 - **Trigger or Action would have to be your words.** If the owner has not given
   their account, there is nothing to quote. Ask again once, then stop.
-- **The trailer block did not parse.** The check in step 3 printed nothing.
+- **The trailer block did not parse.** A check in step 3 printed nothing.
   Report the SHA and say that the episode is not recorded. Do **not** amend or
-  rewrite it. Recovery is a **new** commit carrying the four trailers plus a
+  rewrite it. Recovery is a **new** commit carrying the six trailers plus a
   line naming the broken SHA (the `--allow-empty` shape above, when the tree is
   clean), and the log row points at the new commit, not the broken one.
 - **The log-row commit failed or was skipped.** An episode commit with no

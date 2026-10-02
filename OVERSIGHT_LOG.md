@@ -41,6 +41,7 @@ raw, unescaped text — the log's escaping is a table-formatting concern only.
 | 2026-09-24 | 7256e9d | correctness | login page design is different than the concept | Match the concept exactly | no |
 | 2026-09-25 | fc78691 | business-rule | We dont use django admin as per the client requirement. | a project rule, we dont use Djangoadmin. we should have our own screens and datamodels to handle the requirements | yes |
 | 2026-10-02 | e4a773b | correctness | failed series move | Undo fully | yes | acceptance | agent-critique |
+| 2026-10-02 | 00f01da | correctness | daily-limit wording | Yes, read it | yes | acceptance | agent-critique |
 
 Example row (illustration only — not real data, never a table row; the
 placeholders below are deliberately not a plausible date or SHA so a script

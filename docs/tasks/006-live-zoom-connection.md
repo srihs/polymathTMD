@@ -57,6 +57,8 @@ Credentials come only from the server's environment, never from the database or 
 2. Every active paid account has a working Zoom connection. That means `check_zoom_connections` passes and `manage.py check --database default` reports no `zoom.E004`.
 3. **011 "Cancel this booking" is done** (brief 008, D11).
 
+*Amended 2026-09-26 (owner: "we go live after all build"): the gate also needs briefs **012** (move a class), **013** (webhook sync) and **014** (recording links) to be done, each with its owner live check. See brief 012, D12.*
+
 With `manual`, the app can't see meetings made in Zoom. That is why `manual` now raises the deploy warning `zoom.W001` (criterion 5).
 
 **In scope (006)**
@@ -188,10 +190,19 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
     | API 404 with Zoom code 1001 (no such user) | `ZoomUserNotFound` | `Zoom has no user with this account's sign-in email` | **`True`** |
     | any other 4xx | `ZoomRejected` | `Zoom error {code}` (Zoom's numeric `code`, or the HTTP status if none) | **`True`** |
 
+    *Amended by 012 (2026-10-02, D19/D22): for an HTTP 429 only, a daily-limit signal (Zoom's
+    rate-limit header, or `daily` in Zoom's own message) now raises a new error kind,
+    `ZoomDailyLimit` (lasting), instead of `ZoomBusy`. Zoom's own wording is read only to make that
+    choice; it's never shown or logged. See `docs/tasks/012-move-a-class.md` criterion 34.*
+
     - **`lasting`** (D23) is a class attribute on `ProviderError`, `False` by default. It tells the message builders whether "try again in a few minutes" is honest advice. Waiting fixes only the two temporary kinds. A unit test pins the flag for all six kinds, and for plain `ProviderError` (the fake's), which is temporary.
     - **`ZoomRejected` counts as lasting.** The main session's list named only three lasting kinds, but a 4xx that isn't auth, scope or user (a refused field, say) doesn't fix itself with time either (D23).
     - Only a `401` gets a retry (criterion 9). There's no automatic retry on 429, 5xx or timeouts.
     - A `POST` that creates a meeting is **never** repeated by the client.
+    - *Amended 2026-10-02 by brief 012 (owner: "Yes, read it"; 012 D19):* the rule is now **"Zoom's text is never shown or logged."**
+      - One reading of it is allowed: for an HTTP 429 only, `zoom_api._api_error` checks Zoom's rate-limit header and message for a daily limit. It uses that only to choose between two of our own fixed errors, `ZoomDailyLimit` (012 criterion 14) and `ZoomBusy`.
+      - Zoom's text still never reaches a `user_message`, a page, a message, an email or a log record.
+      - The table's `HTTP 429` row is otherwise unchanged.
 11. **Nothing secret is logged.** A test captures logging at `DEBUG` for `apps.zoom`, `django`, `urllib3` and `requests` through:
     - a token fetch;
     - a list;
@@ -315,12 +326,24 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
     - **lasting:** `Choose another free account, and ask whoever manages the Zoom accounts to press Check connection for {label}.`
 
     A test pins one message for each of the six kinds.
+
+    *Amended by 012 (2026-10-02, D22): a `ZoomDailyLimit` error (a daily-limit 429) is now checked
+    for before the `lasting` case above, and gets its own next step, `Choose another free account,
+    or wait for this one. Try again after {time} on {date}.`, instead of the "press Check
+    connection" text. Every other lasting kind keeps the text above unchanged. See
+    `docs/tasks/012-move-a-class.md` criterion 34, row 1b.*
 29. **Not connected.** Choosing an account that isn't Zoom-connected makes no HTTP call and books nothing. The response is 409, with `{label} isn't connected to Zoom yet, so it can't be booked. Choose another free account, or set up its Zoom connection on the Zoom accounts page.`
 30. **The create fails** (mocked connection error, 5xx, 429, 401 after the retry, a 4xx with a code, or a read timeout). Everything is rolled back: status `waiting`, no slots, no occurrence host, no email. The message depends on whether Zoom can have made the meeting anyway (D25):
 
     - **(a) Zoom certainly made nothing.** This covers a connection error or connect timeout (nothing reached Zoom), a 429, and any 4xx. The message (D25, P3; this replaces 005's `Zoom didn't create the meeting: …`) is:
       - temporary: `We couldn't make the meeting in Zoom: {phrase}. Nothing was booked. Try again in a few minutes.`
       - lasting: `We couldn't make the meeting in Zoom: {phrase}. Nothing was booked. Choose another free account, and ask whoever manages the Zoom accounts to press Check connection for {label}.`
+
+      *Amended by 012 (2026-10-02, D22): a `ZoomDailyLimit` error is now checked for before the
+      `lasting` case above, giving `We couldn't make the meeting in Zoom: Zoom's daily limit for
+      this account is used up. Nothing was booked. Choose another free account, or wait for this
+      one. Try again after {time} on {date}.` Every other lasting kind in this row keeps the text
+      above unchanged. See `docs/tasks/012-move-a-class.md` criterion 34, row 1a.*
     - **(b) Zoom may have made it** (a **read timeout** or an **HTTP 5xx** on the create `POST`: the request reached Zoom, and the answer never came back or came back as an error). After the rollback, the app makes **one** best-effort clean-up: one list call for the chosen account, then `DELETE` for every meeting whose `agenda` carries this request's `zoom_marker` (D6, criterion 13). The message always starts `We couldn't make the meeting in Zoom: no answer from Zoom, so Zoom may have made it anyway. Nothing was booked here.` It then ends with exactly one of these, matching what the clean-up actually did:
 
       | Clean-up result | Ending |
@@ -386,6 +409,13 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
     | `ZoomUserNotFound` | error | `The connection works, but that Zoom account has no user {email}. Check the Zoom sign-in email.` |
     | `ZoomUnavailable` / `ZoomBusy` (temporary) | error | `Couldn't check {label} with Zoom: {phrase}. Try again in a few minutes.` |
     | `ZoomRejected` (lasting; D23) | error | `Couldn't check {label} with Zoom: {phrase}. Waiting won't fix this. Tell whoever looks after the server, and give them the Zoom error number.` |
+
+    *Amended by 012 (2026-10-02, D22): a `ZoomDailyLimit` error is now checked for before the
+    `lasting` row above, giving its own `CHECK_DAILY_LIMIT` text at the same `error` level:
+    `Couldn't check {label} with Zoom: Zoom's daily limit for this account is used up. Try again
+    after {time} on {date}.` It never shows `Waiting won't fix this` or "the Zoom error number",
+    since neither applies to a daily limit. Every other row above is unchanged. See
+    `docs/tasks/012-move-a-class.md` criterion 34, row 4.*
 
     - Nothing is stored about the result.
     - **G5 (D22):** on the change page, `account` is present whenever `can_check_connection` is true, because the check form's action uses `account.pk`. `can_check_connection` is always false on the add page.

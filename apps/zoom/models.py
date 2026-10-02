@@ -28,6 +28,11 @@ Why the data is shaped like this (brief 005):
   window and the start page's state are methods here, so the views and ``services`` only ask.
 - ``HostKeyReveal`` (brief 011, D11) records each time the IT desk was shown a host key, and
   never the key itself.
+- Moving (brief 012) changes a class's times in place, on the same account and the same Zoom
+  meeting, and records who moved it and when (``moved_at`` / ``moved_by``: there's no admin
+  log). "Remaining classes" (booked, not started) has one definition, ``remaining_classes``,
+  which cancelling and moving both use. The time rules of a move reuse 005's copy and live
+  here (``move_errors``, ``series_move_errors``), so the forms and ``services`` agree.
 """
 
 import re
@@ -35,7 +40,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from django.conf import settings
-from django.core.exceptions import ValidationError
+from django.core import signing
+from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 from django.db import models
 from django.db.models import (
     Case,
@@ -129,6 +135,31 @@ CLASS_STARTED = "That class has already started, so it can't be cancelled."
 CLASS_ALREADY_CANCELLED = "That class was already cancelled."
 CANCEL_REASON_REQUIRED = "Tell the requester why it's cancelled."
 
+# Brief 012, criterion 2: why a class or the remaining classes can't be moved, beside the rules
+# that raise them (``Occurrence.move_errors``, ``LinkRequest.series_move_errors``).
+MOVE_STARTED = "That class has already started, so it can't be moved."
+MOVE_UNCHANGED = "That's the time it's already booked for. Choose a different time."
+MOVE_IN_PROGRESS = (
+    "{occurrence} is in progress. Change the time of the remaining classes after it ends at {end}."
+)
+NOTHING_LEFT_TO_MOVE = "There are no classes left to change in this booking."
+# Criterion 17c: a move that lost a race to a cancel of the same class.
+MOVE_CLASS_CANCELLED = "That class was cancelled."
+# Criterion 29 (message 4; D.12, approved as written). No form can send it, because both times
+# share one date; it exists so the model's "same day" rule has words if a later caller breaks it.
+END_SAME_DAY = "The class must end on the same day it starts. Check the end time."
+# Criterion 29 (message 2; D.12's replacement). A class of the booking was moved to a day off
+# the weekly pattern, so Zoom's series can't hold the remaining classes any more (see
+# ``series_move_blocked_message``). ``{occurrence}`` is the class at its new time, so the text
+# names it by where it is now. Also the detail's ``move_series_blocked`` (criterion 31).
+MOVE_SERIES_OFF_PATTERN = (
+    "The class now on {occurrence} was moved to a different day, so the remaining classes "
+    "can't be changed together. Move each class on its own instead, with Move this class."
+)
+# Criterion 30: the salt of the move forms' signed ``shown`` field, used for nothing else, so a
+# token signed for another purpose (a start link, a confirm link) never reads as one.
+MOVE_SHOWN_SALT = "apps.zoom.move-shown"
+
 
 class InvalidTransition(Exception):
     """A status change was asked for from a status that doesn't allow it.
@@ -163,6 +194,14 @@ def class_date(value, *, year=True) -> str:
     if isinstance(value, datetime) and timezone.is_aware(value):
         value = timezone.localtime(value)
     return dateformat.format(value, "D j M Y" if year else "D j M")
+
+
+def is_on_slot_step(value) -> bool:
+    """True when a time (or datetime) sits on the 5-minute grid ``HostSlot`` cuts classes into.
+
+    The one test behind 005's ``TIME_STEP`` rule, for requests and moves alike (brief 012).
+    """
+    return not (value.minute % SLOT_MINUTES or value.second or value.microsecond)
 
 
 def _join_words(words) -> str:
@@ -1013,15 +1052,19 @@ class LinkRequest(models.Model):
                 return occurrence
         return None
 
-    def cancellable_classes(self, now=None, *, occurrences=None) -> list["Occurrence"]:
-        """Booked classes that haven't started, soonest first (criterion 3)."""
+    def remaining_classes(self, now=None, *, occurrences=None) -> list["Occurrence"]:
+        """Booked classes that haven't started, soonest first: the ones a cancel or a move acts on.
+
+        Brief 011 called this ``cancellable_classes``; brief 012 renamed it, because moving
+        works on exactly the same classes and "remaining classes" must have one definition.
+        """
         now = now or timezone.now()
-        return [o for o in self._classes(occurrences) if o.can_be_cancelled(now)]
+        return [o for o in self._classes(occurrences) if o.is_remaining(now)]
 
     def kept_classes(self, now=None, *, occurrences=None) -> list["Occurrence"]:
         """Booked classes that have started (in progress or over), soonest first.
 
-        The other half of ``cancellable_classes``: cancelling the whole booking leaves these as
+        The other half of ``remaining_classes``: cancelling the whole booking leaves these as
         they were (criterion 4), and the confirm page lists them under "Classes that stay". Kept
         here, next to its complement, so the two can't drift apart (review round 1, SF2).
         """
@@ -1037,7 +1080,7 @@ class LinkRequest(models.Model):
         if self.status != self.Status.APPROVED:
             return False
         classes = self._classes(occurrences)
-        return bool(self.cancellable_classes(now, occurrences=classes)) and (
+        return bool(self.remaining_classes(now, occurrences=classes)) and (
             self.class_in_progress(now, occurrences=classes) is None
         )
 
@@ -1069,6 +1112,139 @@ class LinkRequest(models.Model):
             for occurrence in self._classes(occurrences)
         )
         return self.Status.APPROVED if still_on else self.Status.CANCELLED
+
+    # ----------------------------------------------------------------------- moving (012)
+    #
+    # Same conventions as the cancel rules above: ``now`` and the classes already in memory are
+    # passed in, so ``services`` checks exactly the rows it has locked.
+
+    def series_move_blocked_message(self, now=None, *, occurrences=None):
+        """Why the remaining classes can't be changed together now (criterion 2), else ``None``.
+
+        Only an approved weekly booking has a series. A class in progress blocks it, as it
+        blocks a whole cancel: Zoom's series would be re-anchored under a running class. A
+        remaining class that a one-class move put on a day outside the weekly pattern (or on a
+        day another remaining class already has) blocks it too: a Zoom series can only hold
+        the pattern's days, so the read-back of criterion 11 could never match, and refusing
+        here spends none of Zoom's 100 daily updates on a move that must be undone.
+        """
+        classes = self._classes(occurrences)
+        if self.status != self.Status.APPROVED or self.repeat != self.Repeat.WEEKLY:
+            return NOTHING_LEFT_TO_MOVE
+        running = self.class_in_progress(now, occurrences=classes)
+        if running is not None:
+            return MOVE_IN_PROGRESS.format(occurrence=running, end=class_time(running.ends_at))
+        remaining = self.remaining_classes(now, occurrences=classes)
+        if not remaining:
+            return NOTHING_LEFT_TO_MOVE
+        pattern, seen = set(self.occurrence_dates()), set()
+        for occurrence in remaining:
+            day = timezone.localdate(occurrence.starts_at)
+            if day not in pattern or day in seen:
+                return MOVE_SERIES_OFF_PATTERN.format(occurrence=occurrence)
+            seen.add(day)
+        return None
+
+    def can_move_series(self, now=None, *, occurrences=None) -> bool:
+        """The detail page's ``can_move_series``: the series form would open (criterion 6)."""
+        return self.series_move_blocked_message(now, occurrences=occurrences) is None
+
+    def series_move_blocked_note(self, now=None, *, occurrences=None):
+        """The detail's ``move_series_blocked`` (criterion 31): message 2, or ``None``.
+
+        Set only when the series box would otherwise be offered (an approved weekly booking
+        with remaining classes and none in progress) and yet can't be, because a class was
+        moved to a different day. The other reasons stay silent here on purpose: a class in
+        progress hides the box (criterion 6), and with nothing left there's no box to explain.
+        Built on ``series_move_blocked_message``, so the sentence exists in one place.
+        """
+        classes = self._classes(occurrences)
+        if (
+            self.status != self.Status.APPROVED
+            or self.repeat != self.Repeat.WEEKLY
+            or self.class_in_progress(now, occurrences=classes) is not None
+            or not self.remaining_classes(now, occurrences=classes)
+        ):
+            return None
+        return self.series_move_blocked_message(now, occurrences=classes)
+
+    @staticmethod
+    def move_fingerprint(classes) -> str:
+        """The move forms' signed ``shown`` value: the classes as the page showed them (c. 30).
+
+        ``[[pk, starts_at, ends_at], ...]`` with the times as epoch seconds, signed with
+        ``MOVE_SHOWN_SALT``. One class for ``zoom:move_class``; every remaining class the page
+        lists for ``zoom:move_series``. ``services.read_move_shown`` reads it back, and the
+        locked re-check refuses a move if a listed class has changed time since, so a form left
+        open never silently undoes someone else's move (D17). A signed list rather than a
+        version column: no migration, one mechanism for both moves, and a class cancelled
+        meanwhile can simply be left out instead of refusing the move.
+        """
+        return signing.dumps(
+            [[o.pk, int(o.starts_at.timestamp()), int(o.ends_at.timestamp())] for o in classes],
+            salt=MOVE_SHOWN_SALT,
+        )
+
+    def series_new_times(self, start_time, end_time, now=None, *, occurrences=None):
+        """``[(occurrence, new start, new end)]``: each remaining class at the new time of day.
+
+        Each class keeps its own date (D10: the time of day only).
+        """
+        zone = timezone.get_default_timezone()
+        moves = []
+        for occurrence in self.remaining_classes(now, occurrences=occurrences):
+            day = timezone.localdate(occurrence.starts_at)
+            moves.append(
+                (
+                    occurrence,
+                    datetime.combine(day, start_time, tzinfo=zone),
+                    datetime.combine(day, end_time, tzinfo=zone),
+                )
+            )
+        return moves
+
+    def series_span_dates(self, remaining) -> list:
+        """The weekly pattern's dates from the first to the last of ``remaining`` (D3).
+
+        A series move re-anchors Zoom's series at the first remaining class and asks for
+        exactly this many classes, so these are the dates Zoom makes. Any of them without a
+        remaining class (one cancelled earlier, brief 011) is deleted in Zoom again straight
+        after (criterion 10). ``remaining`` is soonest first and never empty.
+        """
+        first = timezone.localdate(remaining[0].starts_at)
+        last = timezone.localdate(remaining[-1].starts_at)
+        return [day for day in self.occurrence_dates() if first <= day <= last]
+
+    def series_move_errors(self, *, start_time, end_time, now=None, occurrences=None) -> dict:
+        """Criterion 2's errors for moving every remaining class to ``start_time``–``end_time``.
+
+        ``{field or NON_FIELD_ERRORS: message}``, empty when the move may go ahead. The fields
+        are ``MoveSeriesForm``'s (``start_time``, ``end_time``). 005's time rules apply to every
+        remaining class: only the first can have passed, and only the last can be too far.
+        A reason the series can't move at all comes back alone, as a non-field error.
+        """
+        now = now or timezone.now()
+        classes = self._classes(occurrences)
+        blocked = self.series_move_blocked_message(now, occurrences=classes)
+        if blocked:
+            return {NON_FIELD_ERRORS: blocked}
+        errors = {}
+        for name, value in (("start_time", start_time), ("end_time", end_time)):
+            if not is_on_slot_step(value):
+                errors[name] = TIME_STEP
+        if "end_time" not in errors and end_time <= start_time:
+            errors["end_time"] = END_BEFORE_START
+        if errors:
+            return errors
+        moves = self.series_new_times(start_time, end_time, now, occurrences=classes)
+        latest = timezone.localdate(now) + timedelta(days=self.MAX_DAYS_AHEAD)
+        if moves[0][1] <= now:
+            errors["start_time"] = DATE_PASSED
+        elif timezone.localdate(moves[-1][1]) > latest:
+            errors["start_time"] = DATE_TOO_FAR
+        elif all(o.starts_at == start and o.ends_at == end for o, start, end in moves):
+            errors[NON_FIELD_ERRORS] = MOVE_UNCHANGED
+        return errors
 
     def start_state(self, now=None, *, occurrences=None):
         """``(state, occurrence)`` for the public start page (criterion 21).
@@ -1119,9 +1295,7 @@ class LinkRequest(models.Model):
 
         for name in ("start_time", "end_time"):
             value = getattr(self, name)
-            if value is not None and (
-                value.minute % SLOT_MINUTES or value.second or value.microsecond
-            ):
+            if value is not None and not is_on_slot_step(value):
                 errors[name] = TIME_STEP
         if (
             self.start_time is not None
@@ -1236,6 +1410,35 @@ class OccurrenceQuerySet(models.QuerySet):
         """Classes that haven't ended by ``now``; one in progress still counts (brief 008)."""
         return self.filter(ends_at__gt=now or timezone.now())
 
+    def clashing(self, account, spans, *, exclude_ids=(), lock=False) -> list["Occurrence"]:
+        """Booked classes on ``account`` overlapping any ``(start, end)`` of ``spans`` (brief 012).
+
+        The database side of a move's clash check (criterion 7): every booked class on the
+        booking's account counts, this booking's own other classes included, except the
+        classes being moved (``exclude_ids``). One query, soonest first, each with its request
+        joined in for the message. ``lock=True`` is the move transaction's locking re-check:
+        like ``availability_for(lock=True)``, it's ``SELECT … FOR UPDATE`` over the classes and
+        their requests, so it reads the latest committed bookings, not a snapshot.
+        """
+        spans = list(spans)
+        if not spans:
+            return []
+        found = (
+            self.booked()
+            .filter(host_account=account)
+            .exclude(pk__in=list(exclude_ids))
+            .overlapping(min(start for start, _ in spans), max(end for _, end in spans))
+            .select_related("link_request")
+            .order_by("starts_at", "pk")
+        )
+        if lock:
+            found = found.select_for_update()
+        return [
+            other
+            for other in found
+            if any(other.starts_at < end and start < other.ends_at for start, end in spans)
+        ]
+
     def in_period(self, start, end):
         """Classes *starting* in ``[start, end)``.
 
@@ -1271,7 +1474,9 @@ class Occurrence(models.Model):
     A class is *booked* while its request is approved, it has an account and it isn't
     cancelled; *started* once ``starts_at <= now``; *in progress* while ``starts_at <= now <
     ends_at`` (brief 011). Cancelling sets ``cancelled_at``, ``cancelled_by`` and
-    ``cancel_reason`` and deletes its slots; the account stays recorded, as history.
+    ``cancel_reason`` and deletes its slots; the account stays recorded, as history. Moving
+    (brief 012) changes ``starts_at`` / ``ends_at`` in place, rewrites the slots and sets
+    ``moved_at`` / ``moved_by``; the account, the meeting and the Zoom occurrence ID stay.
     """
 
     # Brief 011, D4: the start link opens this many minutes before the class.
@@ -1323,6 +1528,21 @@ class Occurrence(models.Model):
         blank=True,
         help_text="Why the class was cancelled. It's emailed to the requester.",
     )
+    # Brief 012 (D5): set together by ``services.move_class()`` / ``move_series()`` on every
+    # class a move changes. The only record of who moved it, since there's no admin log. Brief
+    # 013 leaves ``moved_by`` empty for a move made in Zoom itself.
+    moved_at = models.DateTimeField(
+        "moved", null=True, blank=True, help_text="When the IT desk last moved this class."
+    )
+    moved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="moved by",
+        help_text="Who in the IT desk last moved this class to a new time.",
+    )
 
     objects = OccurrenceQuerySet.as_manager()
 
@@ -1367,9 +1587,19 @@ class Occurrence(models.Model):
             and self.link_request.status == LinkRequest.Status.APPROVED
         )
 
-    def can_be_cancelled(self, now=None) -> bool:
-        """Booked and not started (criterion 3): a class that has begun keeps its history."""
+    def is_remaining(self, now=None) -> bool:
+        """Booked and not started: a *remaining* class (011 criterion 3, 012 Terms).
+
+        The one rule behind "can be cancelled" and "can be moved": a class that has begun
+        keeps its history, and a cancelled one holds nothing to move.
+        """
         return self.is_booked() and self.starts_at > (now or timezone.now())
+
+    def can_be_cancelled(self, now=None) -> bool:
+        return self.is_remaining(now)
+
+    def can_be_moved(self, now=None) -> bool:
+        return self.is_remaining(now)
 
     def cancel_blocked_message(self, now=None):
         """Criterion 6's one-class message when this class can't be cancelled, else ``None``."""
@@ -1378,6 +1608,59 @@ class Occurrence(models.Model):
         if self.can_be_cancelled(now):
             return None
         return CLASS_STARTED
+
+    # ----------------------------------------------------------------------- brief 012
+
+    def move_blocked_message(self, now=None):
+        """Why this class can't be moved at all (criteria 2, 4 and 17c), else ``None``."""
+        if self.cancelled_at is not None or (
+            self.link_request.status == LinkRequest.Status.CANCELLED
+        ):
+            return MOVE_CLASS_CANCELLED
+        if self.can_be_moved(now):
+            return None
+        return MOVE_STARTED
+
+    def move_errors(self, *, starts_at, ends_at, now=None) -> dict:
+        """Criterion 2's errors for moving this class to ``[starts_at, ends_at)``.
+
+        ``{field or NON_FIELD_ERRORS: message}``, empty when the move may go ahead. The fields
+        are ``MoveClassForm``'s (``date``, ``start_time``, ``end_time``), so the form attaches
+        each error where the user typed the value. 005's rules and copy apply: the 5-minute
+        step, the end after the start, and a date that hasn't passed and is within a year; the
+        end must also be on the start's day. A class that can't be moved at all, or a time
+        that's the one already booked, is a non-field error, because no single field is wrong.
+        """
+        now = now or timezone.now()
+        blocked = self.move_blocked_message(now)
+        if blocked:
+            return {NON_FIELD_ERRORS: blocked}
+        errors = {}
+        start, end = timezone.localtime(starts_at), timezone.localtime(ends_at)
+        if not is_on_slot_step(start):
+            errors["start_time"] = TIME_STEP
+        if not is_on_slot_step(end):
+            errors["end_time"] = TIME_STEP
+        elif end <= start:
+            errors["end_time"] = END_BEFORE_START
+        elif end.date() != start.date():
+            errors["end_time"] = END_SAME_DAY
+        latest = timezone.localdate(now) + timedelta(days=LinkRequest.MAX_DAYS_AHEAD)
+        if starts_at <= now:
+            errors["date"] = DATE_PASSED
+        elif start.date() > latest:
+            errors["date"] = DATE_TOO_FAR
+        if not errors and starts_at == self.starts_at and ends_at == self.ends_at:
+            errors[NON_FIELD_ERRORS] = MOVE_UNCHANGED
+        return errors
+
+    def new_slots(self) -> list["HostSlot"]:
+        """Unsaved 5-minute slots for this class's current times on its account.
+
+        A move sets the new times on the instance first, then writes these in place of the old
+        slots; the unique slot index stays the backstop (brief 012, D2).
+        """
+        return HostSlot.covering(self, self.host_account)
 
     def start_window(self):
         """``(opens_at, closes_at)``: when the booking's start link works for this class (D4).
@@ -1416,9 +1699,10 @@ class Occurrence(models.Model):
 class HostSlot(models.Model):
     """One booked 5-minute slot of one account: the database backstop against double booking.
 
-    Written only by ``services.approve()``, and deleted by ``services.cancel()`` for each class
-    it cancels (brief 011), which frees the account at those times. Deleting a request cascades
-    to its occurrences and from them to these rows too.
+    Written by ``services.approve()``, deleted by ``services.cancel()`` for each class it
+    cancels (brief 011), which frees the account at those times, and replaced by a move (brief
+    012: the old times' rows deleted, the new times' rows inserted, in one transaction).
+    Deleting a request cascades to its occurrences and from them to these rows too.
     """
 
     host_account = models.ForeignKey(

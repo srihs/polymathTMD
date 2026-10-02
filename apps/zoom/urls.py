@@ -21,6 +21,12 @@ urlpatterns = [
         views.CancelClassView.as_view(),
         name="cancel_class",
     ),
+    path(
+        "requests/<int:pk>/classes/<int:occurrence_pk>/move/",
+        views.MoveClassView.as_view(),
+        name="move_class",
+    ),
+    path("requests/<int:pk>/move/", views.MoveSeriesView.as_view(), name="move_series"),
     path("start/<str:token>/", views.StartClassView.as_view(), name="start"),
     path("timetable/", views.TimetableMonthView.as_view(), name="timetable"),
     path(

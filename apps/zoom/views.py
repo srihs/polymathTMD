@@ -27,6 +27,9 @@ Five areas:
   redirects); and ``Show host key`` (``zoom.change_hostaccount``, POST only). The start page
   and the reveal send ``Cache-Control: no-store`` and ``Referrer-Policy: no-referrer`` on
   every response, because both carry something that lets its holder act as host.
+- **Brief 012**: moving one class or changing the time of a booking's remaining classes
+  (``zoom.review_linkrequest``, a form page then a POST, ``non_atomic_requests`` because the
+  move services own their transaction and call Zoom).
 
 The views stay thin: rules are on the models and QuerySets, and anything spanning several
 models, the provider or email is in ``services.py``. Every context variable here is in the
@@ -61,7 +64,15 @@ from django.views.generic.detail import SingleObjectMixin
 from apps.core.mixins import SignedInPermissionMixin
 
 from . import services, timetable
-from .forms import ApproveForm, CancelForm, HostAccountForm, LinkRequestForm, RejectForm
+from .forms import (
+    ApproveForm,
+    CancelForm,
+    HostAccountForm,
+    LinkRequestForm,
+    MoveClassForm,
+    MoveSeriesForm,
+    RejectForm,
+)
 from .models import (
     QUEUE_TABS,
     WEEKDAY_NAMES,
@@ -307,9 +318,9 @@ class ReviewContextMixin:
         reject_form=None,
         approve_error=None,
     ):
-        # Each cancelled class's row says who cancelled it; joining the user here keeps that to
-        # no extra query per class (brief 011, review round 1, SF1).
-        occurrences = list(link_request.occurrences.select_related("cancelled_by"))
+        # Each cancelled or moved class's row says who did it; joining the users here keeps that
+        # to no extra query per class (brief 011, review round 1, SF1; brief 012).
+        occurrences = list(link_request.occurrences.select_related("cancelled_by", "moved_by"))
         can_decide = link_request.can_be_decided()
         has_started = link_request.has_started()
         provider = get_provider()
@@ -343,6 +354,7 @@ class ReviewContextMixin:
         approved = link_request.status == LinkRequest.Status.APPROVED
         now = timezone.now()
         in_progress = link_request.class_in_progress(now, occurrences=occurrences)
+        remaining_ids = {o.pk for o in link_request.remaining_classes(now, occurrences=occurrences)}
 
         return {
             "object": link_request,
@@ -371,9 +383,18 @@ class ReviewContextMixin:
             # Brief 011 (criteria 8 and 31; G1, G2).
             "can_cancel_booking": link_request.can_cancel_booking(now, occurrences=occurrences),
             "cancellable_ids": (
-                {o.pk for o in link_request.cancellable_classes(now, occurrences=occurrences)}
-                if link_request.repeat == LinkRequest.Repeat.WEEKLY
-                else set()
+                remaining_ids if link_request.repeat == LinkRequest.Repeat.WEEKLY else set()
+            ),
+            # Brief 012 (criterion 6): any booking's remaining classes can be moved one by one;
+            # only a weekly one has the series box, and only when a series move could open.
+            "movable_ids": remaining_ids,
+            "can_move_series": approved
+            and link_request.repeat == LinkRequest.Repeat.WEEKLY
+            and link_request.can_move_series(now, occurrences=occurrences),
+            # Criterion 31: why the series box has no button, when it's the "moved to a
+            # different day" case; ``None`` otherwise (``can_move_series`` is then false).
+            "move_series_blocked": link_request.series_move_blocked_note(
+                now, occurrences=occurrences
             ),
             "in_progress_id": in_progress.pk if in_progress else None,
             "cancel_blocked_message": (
@@ -588,7 +609,7 @@ class CancelBookingView(ReviewerRequiredMixin, SingleObjectMixin, FormView):
         if self.occurrence is not None:
             to_cancel, kept = [self.occurrence], []
         else:
-            to_cancel = self.object.cancellable_classes(now, occurrences=self.occurrences)
+            to_cancel = self.object.remaining_classes(now, occurrences=self.occurrences)
             kept = self.object.kept_classes(now, occurrences=self.occurrences)
         context.update(
             link_request=self.object,
@@ -640,6 +661,205 @@ class CancelClassView(CancelBookingView):
             Occurrence.objects.select_related("host_account"),
             pk=self.kwargs["occurrence_pk"],
             link_request=self.object,
+        )
+
+
+# --------------------------------------------------------------------------- Moving (012)
+
+
+# Not inside the request-wide transaction (ATOMIC_REQUESTS): services.move_class() and
+# move_series() own theirs, ask Zoom before any lock, update Zoom with the locks held and retry
+# a deadlock, which rolls back the whole transaction (brief 012, D2; as for approve and cancel).
+@method_decorator(transaction.non_atomic_requests, name="dispatch")
+class _MoveView(ReviewerRequiredMixin, SingleObjectMixin, FormView):
+    """What the two move pages share: GET shows the form, POST moves (brief 012, 4, 5, 9-16).
+
+    Only an approved booking has these pages; any other request is a 404. When there's nothing
+    to move (criterion 2's reasons), GET and POST both go back to the detail with the message
+    as an error and no Zoom call. Everything else is ``services``: this view parses the form,
+    calls the service with the form's signed ``shown`` (what the page showed, so a move made
+    while it was open isn't overwritten; criteria 17a and 30), and picks a response: a
+    redirect with a flash on success, or the form again, with what was typed kept, and the
+    service's message as ``move_error`` (409 for a clash, 200 otherwise). A missing or
+    unreadable ``shown`` is a 400 with the form's out-of-date error, and no service call.
+
+    ``shown`` is signed afresh, from the same rows as the page's facts (``Current time`` /
+    ``Current times``), only where the person is told what those rows are now (criterion 33,
+    D20): on GET, on the 409 stale refusal (1a / 1b) and on the 400 out-of-date page. Every
+    other re-render (a form error, a clash, a Zoom failure) keeps the posted ``shown`` exactly
+    as it was sent. Refreshing it there would quietly accept a move someone else made meanwhile
+    as "seen", and the next, valid post would undo it (review round 1, B1).
+    """
+
+    template_name = "zoom/move_form.html"
+    context_object_name = "link_request"
+
+    def get_queryset(self):
+        return LinkRequest.objects.filter(status=LinkRequest.Status.APPROVED).select_related(
+            "host_account"
+        )
+
+    def setup_objects(self):
+        self.object = self.get_object()
+        self.occurrences = list(self.object.occurrences.order_by("starts_at", "pk"))
+        self.occurrence = self.get_occurrence()
+
+    def get_occurrence(self):
+        """The class being moved, or ``None`` for the remaining classes."""
+        raise NotImplementedError
+
+    def blocked_message(self):
+        """Criterion 2's reason there's nothing to move, else ``None`` (from the models)."""
+        raise NotImplementedError
+
+    def remaining(self):
+        """The context's ``remaining``: the classes a series move will change."""
+        return []
+
+    def shown_classes(self, remaining):
+        """The classes this page shows and signs into ``shown`` (criterion 30)."""
+        return remaining
+
+    def move(self, form):
+        """Call the service for a valid form; returns its ``MoveResult``."""
+        raise NotImplementedError
+
+    def nothing_to_do(self, message):
+        messages.error(self.request, message)
+        return redirect("zoom:detail", pk=self.object.pk)
+
+    def get(self, request, *args, **kwargs):
+        self.setup_objects()
+        blocked = self.blocked_message()
+        if blocked:
+            return self.nothing_to_do(blocked)
+        return super().get(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        self.setup_objects()
+        blocked = self.blocked_message()
+        if blocked:
+            return self.nothing_to_do(blocked)
+        return super().post(request, *args, **kwargs)
+
+    def timetable_url(self, remaining):
+        """G1: the month of the class (or the first remaining class), on the booking's account."""
+        anchor = self.occurrence if self.occurrence is not None else remaining[0]
+        month = timetable.Month.for_date(timezone.localdate(anchor.starts_at))
+        return month_page_url(month, self.object.host_account_id)
+
+    def get_context_data(self, *, refresh_shown=False, **kwargs):
+        context = super().get_context_data(**kwargs)
+        remaining = self.remaining()
+        form = context["form"]
+        if refresh_shown or not form.is_bound:
+            form.set_shown(LinkRequest.move_fingerprint(self.shown_classes(remaining)))
+        context.update(
+            link_request=self.object,
+            occurrence=self.occurrence,
+            remaining=remaining,
+            move_error=kwargs.get("move_error"),
+            checks_zoom=get_provider().checks_zoom,
+            timetable_url=self.timetable_url(remaining),
+        )
+        return context
+
+    def form_invalid(self, form):
+        # Only the out-of-date page signs the current rows: it tells the person to check them.
+        status = 400 if form.out_of_date else 200
+        return self.render_to_response(
+            self.get_context_data(form=form, refresh_shown=form.out_of_date), status=status
+        )
+
+    def form_valid(self, form):
+        result = self.move(form)
+        if result.outcome == Outcome.MOVED:
+            emailed = services.send_moved_email(self.request, result.link_request, result.moves)
+            level, text = services.moved_message(
+                result, emailed=emailed, checks_zoom=get_provider().checks_zoom
+            )
+            messages.add_message(self.request, level, text)
+            return redirect("zoom:detail", pk=self.object.pk)
+        if result.outcome == Outcome.NOTHING_TO_DO:
+            return self.nothing_to_do(result.message)
+        # Nothing was moved here: show the page again, with fresh facts and what was typed
+        # kept. Only the stale refusal (1a / 1b) names the current time, so only it re-signs.
+        self.setup_objects()
+        status = 409 if result.outcome == Outcome.CONFLICT else 200
+        return self.render_to_response(
+            self.get_context_data(form=form, move_error=result.message, refresh_shown=result.stale),
+            status=status,
+        )
+
+
+class MoveClassView(_MoveView):
+    """Move one class of an approved booking, weekly or one-off (``zoom:move_class``).
+
+    A class of another request is a 404.
+    """
+
+    form_class = MoveClassForm
+
+    def get_occurrence(self):
+        found = next((o for o in self.occurrences if o.pk == self.kwargs["occurrence_pk"]), None)
+        if found is None:
+            raise Http404("No such class in this booking.")
+        return found
+
+    def blocked_message(self):
+        return self.occurrence.move_blocked_message()
+
+    def shown_classes(self, remaining):
+        return [self.occurrence]
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["occurrence"] = self.occurrence
+        return kwargs
+
+    def move(self, form):
+        return services.move_class(
+            self.object.pk,
+            self.occurrence.pk,
+            starts_at=form.cleaned_data["starts_at"],
+            ends_at=form.cleaned_data["ends_at"],
+            by=self.request.user,
+            shown=form.cleaned_data["shown"],
+        )
+
+
+class MoveSeriesView(_MoveView):
+    """Change the time of day of a weekly booking's remaining classes (``zoom:move_series``).
+
+    A one-off booking has no series, so it's a 404: its one class is moved with
+    ``zoom:move_class``.
+    """
+
+    form_class = MoveSeriesForm
+
+    def get_occurrence(self):
+        if self.object.repeat != LinkRequest.Repeat.WEEKLY:
+            raise Http404("A one-off booking has no remaining classes to change together.")
+        return None
+
+    def blocked_message(self):
+        return self.object.series_move_blocked_message(occurrences=self.occurrences)
+
+    def remaining(self):
+        return self.object.remaining_classes(occurrences=self.occurrences)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs.update(link_request=self.object, occurrences=self.occurrences)
+        return kwargs
+
+    def move(self, form):
+        return services.move_series(
+            self.object.pk,
+            start_time=form.cleaned_data["start_time"],
+            end_time=form.cleaned_data["end_time"],
+            by=self.request.user,
+            shown=form.cleaned_data["shown"],
         )
 
 

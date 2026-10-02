@@ -2073,6 +2073,12 @@ textarea.input {
   margin-left: auto;
 }
 
+/* A second action sits beside the first, not pushed apart (brief 012). The
+   row's column gap keeps their 44px hit areas apart. */
+.classrows__action ~ .classrows__action {
+  margin-left: 0;
+}
+
 .classrows__note {
   margin: 0 0 var(--space-2);
   color: var(--c-text);

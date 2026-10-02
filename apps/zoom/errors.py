@@ -13,6 +13,7 @@ Two class attributes steer the wording of the messages built from these errors:
 - ``lasting`` (D23): ``False`` when waiting a few minutes can fix it (Zoom unreachable or busy),
   ``True`` when it can't (bad credentials, a missing permission, an unknown user, any other
   refusal). The message builders offer "try again in a few minutes" only when it's honest.
+  ``ZoomDailyLimit`` is lasting too, but its builders check for it first and name the reset.
 - ``maybe_done`` (D25): set only on ``ZoomUnavailable`` raised by an API call whose request
   reached Zoom (a read timeout, a dropped connection mid-request or an HTTP 5xx). For a create
   call it means Zoom may have made the meeting anyway, so the app looks for it before saying so.
@@ -107,6 +108,29 @@ class ZoomNotConnected(ProviderError):
 
     def __init__(self):
         super().__init__("this account isn't connected to Zoom")
+
+
+class ZoomDailyLimit(ProviderError):
+    """Zoom's daily limit for this account is used up (brief 012, criteria 14 and 34). Lasting.
+
+    Zoom allows 100 updates per meeting per day, and 100 creates or updates per user per day,
+    reset at 00:00 UTC. Waiting a few minutes won't help, so it's ``lasting``. But neither
+    will the usual lasting next step (Check connection), so every caller checks for this
+    error *before* ``lasting`` and names the day of the reset instead, through
+    ``services.daily_reset_sentence`` (criterion 34, D22).
+
+    ``zoom_api._api_error`` raises it for any API call's ``429`` whose ``X-RateLimit-Type``
+    header or error message says ``daily`` (brief 012, criterion 14, owner's ruling D19); any
+    other ``429`` stays ``ZoomBusy``. So it can reach a list, a create, a delete and Check
+    connection, not only a move: the phrase names the account, not a kind of call, so it's
+    true for all of them (D.14). Zoom's wording only picks between the two fixed phrases
+    here; it's never shown or logged.
+    """
+
+    lasting = True
+
+    def __init__(self):
+        super().__init__("Zoom's daily limit for this account is used up")
 
 
 class ZoomMeetingNotFound(ZoomRejected):

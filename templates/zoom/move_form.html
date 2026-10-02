@@ -1,0 +1,87 @@
+{# Move one class, or change the time of a booking's remaining classes (brief 012, D.2; criteria 5, 9, 11-16 and 22), in the shell; only for zoom.review_linkrequest. One template for both kinds: occurrence set means one class, None means the remaining classes. Reached from the detail's Move this class / Change the time of the remaining classes links; a successful POST redirects to the detail with the backend's flash, so this page never shows success. After a failed POST the move_error notice (printed exactly as the backend builds it, auto-escaped, no title, D.2.1) or the error summary is the first thing after the title row and is focused by app.js (data-error-summary). One box with the readable form width: the lead (pinned series lead, one-class lead picked by checks_zoom), what stays the same ("and start link" only when checks_zoom: the manual provider has no start link, main-session ruling on D.2.2), the manual provider's Check Zoom for clashes first warning (not checks_zoom only), the facts (the stored current time, not the typed one), See it on the timetable (timetable_url, G1) with its help, then the form: Date of the class (one class only; min/max come from MoveClassForm's widget, G2), Starts at and Ends at in a field pair (the request form's widgets and help), the primary button with the busy-button hooks (docs/design/busy-button.md; busy text picked by checks_zoom), and the safe way out, Keep the current time(s). Series only: the classes that will change, after the form, at their current times. Works with no JS. Context: link_request (LinkRequest: pk, reference, class_name, requester_name, requester_email, schedule_summary, host_account (label); G4), occurrence (Occurrence or None; starts_at, ends_at, pk), remaining (list of Occurrence; series only, soonest first), form (MoveClassForm: date, start_time, end_time, shown; or MoveSeriesForm: start_time, end_time, shown; shown is the hidden signed list of the times this page showed, rendered by Django as a hidden input straight after the CSRF token, fix cycle 1 criterion 30; its out-of-date error is a non-field error, so the error summary shows it), move_error (str or None), checks_zoom (bool; false for the manual provider), timetable_url (str). Partials: partials/crumb, partials/error_summary, partials/field, zoom/partials/class_span, zoom/partials/schedule, zoom/partials/occurrence_list. Filters: zoom_format (class_date). #}{% extends "base.html" %}
+{% load zoom_format %}
+
+{% block title %}{% if occurrence %}Move this class{% else %}Change the time{% endif %}: {{ link_request.reference }}{% endblock %}
+
+{% block heading %}{% if occurrence %}Move this class{% else %}Change the time of the remaining classes{% endif %}{% endblock %}
+
+{% block breadcrumb %}{% url 'zoom:queue' as queue_url %}{% url 'zoom:detail' link_request.pk as detail_url %}{% include "partials/crumb.html" with url=queue_url text="Zoom link requests" current=False only %}{% include "partials/crumb.html" with url=detail_url text=link_request.reference current=False only %}{% if occurrence %}{% include "partials/crumb.html" with url="" text="Move" current=True only %}{% else %}{% include "partials/crumb.html" with url="" text="Change the time" current=True only %}{% endif %}{% endblock %}
+
+{% block content %}
+{% if move_error %}
+<div class="notice notice--bad" role="alert" tabindex="-1" data-error-summary>
+  <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg>
+  <div class="notice__body">
+    <p>{{ move_error }}</p>
+  </div>
+</div>
+{% endif %}
+{% if occurrence %}{% include "partials/error_summary.html" with form=form lead="We couldn't move it yet." only %}{% else %}{% include "partials/error_summary.html" with form=form lead="We couldn't change the times yet." only %}{% endif %}
+<div class="box">
+  <div class="box__body">
+    <div class="box__form">
+      {% with label=link_request.host_account.label name=link_request.requester_name %}
+      {% if occurrence %}
+      <p class="box__lead">Choose a new date and time for this class. {% if checks_zoom %}We change it in Zoom and email {{ name }} the old and new times.{% else %}We email {{ name }} the old and new times.{% endif %}</p>
+      <p>It stays on {{ label }}, with the same Zoom link{% if checks_zoom %} and start link{% endif %}. If {{ label }} already has something at the new time, you'll be asked to choose another time. The class can't move to another Zoom account.</p>
+      {% else %}{% with n=remaining|length %}
+      <p class="box__lead">{% if n == 1 %}The new time applies to the one class still to come, on {{ remaining.0.starts_at|class_date }}. The day stays the same.{% else %}The new time applies to every class still to come: {{ n }} classes, from {{ remaining.0.starts_at|class_date }} to {% with last=remaining|last %}{{ last.starts_at|class_date }}{% endwith %}. The days stay the same.{% endif %}</p>
+      {% endwith %}
+      <p>They stay on {{ label }}, with the same Zoom link{% if checks_zoom %} and start link{% endif %}. Classes that have already happened keep their times, and cancelled classes stay cancelled. If {{ label }} already has something at the new time, you'll be asked to choose another time. To change the days or the dates, cancel the rest of this booking and ask the requester to send a new request.</p>
+      {% endif %}
+      {% if not checks_zoom %}
+      <div class="notice notice--warn">
+        <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+        <div class="notice__body">
+          <p class="notice__title">Check Zoom for clashes first</p>
+          <p>This system can't see meetings made directly in Zoom. {% if occurrence %}Before you move it, check {{ label }}'s meetings in Zoom at the new time. After you move it here, change it in Zoom too.{% else %}Before you change the times, check {{ label }}'s meetings in Zoom at the new time. After you change the times here, change them in Zoom too.{% endif %}</p>
+        </div>
+      </div>
+      {% endif %}
+      <dl class="facts">
+        <dt>Request</dt>
+        <dd class="break-anywhere">{{ link_request.reference }}: {{ link_request.class_name }}</dd>
+        <dt>Booked on</dt>
+        <dd>{{ label }}</dd>
+        <dt>Requester</dt>
+        <dd>{{ name }}<br><span class="text-muted break-anywhere">{{ link_request.requester_email }}</span></dd>
+        {% if occurrence %}
+        <dt>Current time</dt>
+        <dd>{% include "zoom/partials/class_span.html" with start=occurrence.starts_at end=occurrence.ends_at only %}</dd>
+        {% else %}
+        <dt>Current times</dt>
+        <dd>{% include "zoom/partials/schedule.html" with summary=link_request.schedule_summary only %}</dd>
+        {% endif %}
+      </dl>
+      {% endwith %}
+      <p><a class="tap-link" href="{{ timetable_url }}">See it on the timetable</a></p>
+      <p class="field__help">Meetings made directly in Zoom aren't on the timetable.{% if checks_zoom %} We check those when you press the button below.{% endif %}</p>
+
+      <div class="box__section">
+        <form method="post" action="{% if occurrence %}{% url 'zoom:move_class' link_request.pk occurrence.pk %}{% else %}{% url 'zoom:move_series' link_request.pk %}{% endif %}" novalidate data-busy-form>
+          {% csrf_token %}
+          {{ form.shown }}
+          {% if occurrence %}{% include "partials/field.html" with field=form.date narrow=True only %}{% endif %}
+          <div class="field-pair">
+            {% include "partials/field.html" with field=form.start_time only %}
+            {% include "partials/field.html" with field=form.end_time only %}
+          </div>
+          <div class="form-actions">
+            {% if occurrence %}<button class="button button--primary" type="submit" data-busy-text="{% if checks_zoom %}Moving the class in Zoom…{% else %}Moving the class…{% endif %}">Move the class and email the requester</button>
+            <a class="button button--quiet" href="{% url 'zoom:detail' link_request.pk %}">Keep the current time</a>{% else %}<button class="button button--primary" type="submit" data-busy-text="{% if checks_zoom %}Changing the times in Zoom…{% else %}Changing the times…{% endif %}">Change the times and email the requester</button>
+            <a class="button button--quiet" href="{% url 'zoom:detail' link_request.pk %}">Keep the current times</a>{% endif %}
+            <p class="visually-hidden" role="status" data-busy-status></p>
+          </div>
+        </form>
+      </div>
+
+      {% if not occurrence %}
+      <div class="box__section">
+        <h2 class="box__subtitle">Classes that will change ({{ remaining|length }})</h2>
+        {% include "zoom/partials/occurrence_list.html" with occurrences=remaining only %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

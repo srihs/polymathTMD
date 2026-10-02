@@ -29,6 +29,8 @@ It keeps a small record that a recording was sent, never the link itself. IT see
 
 **Place in the split** (brief 011, Scope): last. It depends on 013's endpoint (signature, replay window, account check, idempotency).
 
+**It's a go-live gate item** (owner, 2026-09-26: "we go live after all build"; brief 012, D12). Production takes no real requests until 006, 011, 012, 013 and 014 are all done, each with its owner live check. This brief's close is therefore the last step before go-live: its docs writer confirms that the README's gate lists all five as done.
+
 **In scope**
 
 - **Model** (migration `0010`): `RecordingNotice`.
@@ -229,3 +231,18 @@ The public address is 013's (owner, Q6: "Production domain"; 013 D9).
 3. **`tmd-test-verifier`:** criteria 1–17, then the owner's live check (criterion 18).
 4. **`tmd-code-reviewer`:** nothing stored or logged (criterion 10), the https-on-zoom.us check, idempotency by uuid, and thin views.
 5. **`tmd-docs-writer`:** the README (recording links, D5's setup, Q7's settings, the scope), `docs/CHANGELOG.md`, and closes the brief.
+
+## Design
+<!-- owner: tmd-ui-designer — layout + wireframes, components (existing classes), states, copy, accessibility, progressive enhancement -->
+
+## Implementation notes
+<!-- owners: tmd-devops, tmd-django-backend, tmd-frontend — one sub-heading each: files changed, contract deviations, migrations, new deps (with reason), self-check output -->
+
+## Verification
+<!-- owner: tmd-test-verifier — verdict, criteria → tests table, checklist results, failures -->
+
+## Review
+<!-- owner: tmd-code-reviewer (written by the main session) — verdict, blockers, should-fix, nits -->
+
+## Docs
+<!-- owner: tmd-docs-writer — files updated; closes Status -->

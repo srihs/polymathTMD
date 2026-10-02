@@ -57,6 +57,8 @@ STUB_TEMPLATES = {
     "zoom/cancel_confirm.html": "cancel {{ link_request.reference }} {{ cancel_error }}",
     "zoom/start.html": "start state={{ state }} {{ start_error }}",
     "zoom/host_key_reveal.html": "host key for {{ account.label }}: {{ host_key }}",
+    # Brief 012: the move form stub prints the one value tests search the page for.
+    "zoom/move_form.html": "move {{ link_request.reference }} {{ move_error }}",
     "zoom/timetable_day.html": (
         "timetable day {{ day_label }} {% for e in entries %}[{{ e.link_request.reference }}"
         " {{ e.link_request.class_name }} {{ e.link_request.get_status_display }}"

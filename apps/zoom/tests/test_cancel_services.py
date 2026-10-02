@@ -579,7 +579,12 @@ def test_a_start_token_names_its_booking(zoom02):
     token = services.start_token(booking)
     assert signing.loads(token, salt="apps.zoom.start-class") == {"r": booking.pk, "m": MEETING}
     assert services.link_request_from_start_token(token) == booking
-    assert services.start_link(_request(), booking) == f"http://testserver/zoom/start/{token}/"
+    # The link's own token, decoded: a second ``start_token()`` carries the real clock's
+    # second, so comparing the two strings is flaky (review round 1, 011 flake).
+    link = services.start_link(_request(), booking)
+    prefix = "http://testserver/zoom/start/"
+    assert link.startswith(prefix) and link.endswith("/")
+    assert services.link_request_from_start_token(link.removeprefix(prefix)[:-1]) == booking
 
 
 def test_a_cancelled_bookings_token_still_opens_its_page(zoom02, it_user):

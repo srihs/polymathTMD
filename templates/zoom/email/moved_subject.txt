@@ -1,0 +1,1 @@
+{# Subject of the "class times changed" message to the requester (brief 012, criterion 18, pinned; D.5.1). One line. Context: link_request (LinkRequest: reference, class_name). #}{% autoescape off %}Class times changed: {{ link_request.reference }} {{ link_request.class_name }}{% endautoescape %}

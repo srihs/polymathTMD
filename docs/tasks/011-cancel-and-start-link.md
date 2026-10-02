@@ -37,13 +37,14 @@ The owner's answers to this brief's questions (2026-09-26, relayed):
 | Order | Brief | What | Depends on | Go-live gate? |
 |---|---|---|---|---|
 | 1 | **011 (this)** | Cancel a booking or one class; the start link replaces the emailed host key | 006 (`delete_meeting`, `zoom_occurrence_id`) | **Yes** (006's D14) |
-| 2 | 012 | Move one class, or change the time of a booking's remaining classes | 011 (cancelled classes must be skipped; the booking lock pattern) | No |
-| 3 | 013 | Webhooks: the app updates itself when a meeting is changed or deleted directly in Zoom | 011 (cancel a class), 012 (move a class) — the webhook reuses both | No |
-| 4 | 014 | Email the recording link to the requester when Zoom finishes a recording | 013 (the verified webhook endpoint) | No |
+| 2 | 012 | Move one class, or change the time of a booking's remaining classes | 011 (cancelled classes must be skipped; the booking lock pattern) | ~~No~~ **Yes** (amended 2026-09-26, owner: "we go live after all build") |
+| 3 | 013 | Webhooks: the app updates itself when a meeting is changed or deleted directly in Zoom | 011 (cancel a class), 012 (move a class) — the webhook reuses both | ~~No~~ **Yes** (amended 2026-09-26) |
+| 4 | 014 | Email the recording link to the requester when Zoom finishes a recording | 013 (the verified webhook endpoint) | ~~No~~ **Yes** (amended 2026-09-26) |
 
 - **Why four briefs.** Each is about one model group plus its screens. 011 adds a status and a public page, 012 adds a clash-checked write to Zoom, 013 adds a public inbound endpoint with its own secrets, and 014 adds a new record type and a new scope. Together they'd be too big to review in one pass.
 - **Why this order.** 013 has to handle cancels and moves made in Zoom, so it reuses the model operations 011 and 012 build. 014 needs 013's verified endpoint. 012 must know about cancelled classes, so it comes after 011.
 - **The go-live gate is unchanged:** 006 plus 011 (006's D14). 012–014 can follow after go-live. Until 012, a class is moved by cancelling it and asking for a new request. Until 013, changes made directly in Zoom aren't seen (006's D15).
+  - ***Amended 2026-09-26 (owner: "we go live after all build"):*** *the gate is now 006, 011, 012, 013 and 014, each **Done**, including each brief's owner live check. The table's "Go-live gate?" column above now reads **Yes** for all four. Production takes no real requests until all five are done. This brief's own text above is kept as it was written. The docs writer updates the README's gate at the next close (see 012, D12).*
 
 **In scope (011)**
 
@@ -114,6 +115,11 @@ The owner's answers to this brief's questions (2026-09-26, relayed):
    - `LinkRequest.can_cancel_booking(now=None)`: approved, at least one cancellable class, and no class in progress.
    - `LinkRequest.status_after_cancel(now=None)`: `cancelled` when none of its classes is both not cancelled and not ended; otherwise `approved`.
 
+   *Amended by 012 (2026-10-02): `cancellable_classes()` is renamed `remaining_classes()`, since
+   "remaining classes" is now the one definition both cancelling and moving share. Every caller
+   (views, services, templates) was updated; no template referenced the old name. See
+   `docs/tasks/012-move-a-class.md`'s MVT plan.*
+
    Table test at the frozen now, for ZL-0042 in these cases:
    - untouched → `can_cancel_booking` true, 8 cancellable;
    - the frozen now moved to Mon 5 Oct 9:00 → class in progress, `can_cancel_booking` false, 7 cancellable;
@@ -180,6 +186,13 @@ The owner's answers to this brief's questions (2026-09-26, relayed):
 12. **Zoom said no, for certain** (a connection error, a connect timeout, a 429, or any 4xx other than 3001). Everything is rolled back: no class cancelled, slots unchanged, no email. The confirm page re-renders (200), keeping the reason, with the notice `We couldn't cancel it in Zoom: {phrase}. Nothing was cancelled. {next step}`. The next step:
     - temporary: `Try again in a few minutes.`
     - lasting: `Ask whoever manages the Zoom accounts to press Check connection for {label}, then try again.`
+
+    *Amended by 012 (2026-10-02, D22): a `ZoomDailyLimit` error is now checked for before the
+    `lasting` case above, giving its own next step, the reset sentence alone (no "press Check
+    connection", since there's nothing to fix by checking): `We couldn't cancel it in Zoom: Zoom's
+    daily limit for this account is used up. Nothing was cancelled. Try again after {time} on
+    {date}.` Every other lasting kind keeps the text above unchanged. See
+    `docs/tasks/012-move-a-class.md` criterion 34, row 2.*
 
     A test pins one message per 006 error kind.
 13. **Zoom may have done it** (`maybe_done`: a read timeout, a dropped connection, a 5xx). The same rollback happens, and the notice reads `We couldn't tell whether Zoom removed it: no answer from Zoom. Nothing was cancelled here. Try again in a few minutes. Trying again is safe.` It's safe because criterion 11's 3001 rule makes a repeated delete succeed.

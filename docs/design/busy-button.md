@@ -59,3 +59,5 @@ The busy text says what the system is doing, in the user's words, as a present-t
 | `zoom/account_form.html` | `Check connection` | `Checking with Zoom…` |
 | `zoom/cancel_confirm.html` (brief 011) | `Cancel and email the requester` (`.button--danger`) | `Removing it from Zoom…` when `checks_zoom`; `Cancelling…` otherwise |
 | `zoom/start.html` (brief 011) | `Start this class` | `Opening Zoom…` |
+| `zoom/move_form.html`, one class (brief 012) | `Move the class and email the requester` | `Moving the class in Zoom…` when `checks_zoom`; `Moving the class…` otherwise |
+| `zoom/move_form.html`, the remaining classes (brief 012) | `Change the times and email the requester` | `Changing the times in Zoom…` when `checks_zoom` (P1); `Changing the times…` otherwise |

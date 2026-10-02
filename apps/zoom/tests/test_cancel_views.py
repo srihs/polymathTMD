@@ -328,8 +328,10 @@ def test_the_detail_of_an_approved_weekly_booking(it_client, zoom02):
     assert context["cancellable_ids"] == set(booking.occurrences.values_list("pk", flat=True))
     assert context["in_progress_id"] is None
     assert context["cancel_blocked_message"] is None
-    token = services.start_token(booking)
-    assert context["start_link"] == f"http://testserver/zoom/start/{token}/"
+    # Decoded, not compared with a second ``start_token()``, whose clock stamp can differ.
+    path = context["start_link"].removeprefix("http://testserver")
+    assert resolve(path).url_name == "start"
+    assert services.link_request_from_start_token(resolve(path).kwargs["token"]) == booking
 
 
 def test_the_detail_while_a_class_is_in_progress(it_client, zoom02, now_is):
@@ -470,14 +472,17 @@ def test_the_start_page_shows_each_state_without_asking_zoom(
     settings.IT_DESK_PHONE = "011 234 5678"
     booking = zl42(zoom02)
     now_is(moment)
-    response = client.get(start_url(booking))
+    url = start_url(booking)
+    response = client.get(url)
     assert response.status_code == 200
     _assert_private(response)
     context = response.context
     assert START_KEYS <= _keys(response)
     assert context["state"] == state and context["link_request"] == booking
     assert context["occurrence"].starts_at == class_start
-    assert context["token"] == services.start_token(booking)
+    # The token the page was opened with. Not a second ``start_token()``: ``signing.dumps``
+    # embeds the real clock's second, so two calls can differ (review round 1, 011 flake).
+    assert context["token"] == resolve(url).kwargs["token"]
     assert context["it_desk_phone"] == {"display": "+94 11 234 5678", "tel": "+94112345678"}
     assert (context["start_error"], context["start_error_still"]) == (None, False)
     if state == "too_early":
@@ -572,14 +577,16 @@ def test_the_manual_provider_is_not_set_up(client, zoom02, now_is, settings):
     settings.ZOOM_PROVIDER = "manual"
     booking = zl42(zoom02)
     now_is(at(5, 8, 10))
-    for response in (client.get(start_url(booking)), client.post(start_url(booking))):
+    url = start_url(booking)
+    for response in (client.get(url), client.post(url)):
         assert response.status_code == 200
         _assert_private(response)
         context = response.context
         assert context["state"] == "not_set_up"
         assert context["link_request"] == booking
         assert context["occurrence"].starts_at == at(5, 8, 30)
-        assert context["token"] == services.start_token(booking)
+        # The requested token, not a second (clock-stamped) ``start_token()`` (011 flake).
+        assert context["token"] == resolve(url).kwargs["token"]
 
 
 def test_the_start_url_is_never_kept_anywhere(client, zoom02, now_is, settings, http_mock, caplog):

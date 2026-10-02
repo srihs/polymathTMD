@@ -23,6 +23,14 @@
 - ``reveal_host_key()`` (brief 011, D11): the one place a host key is decrypted for showing,
   recorded every time. ``approve()`` no longer decrypts keys at all.
 - ``it_desk_phone()`` (brief 011, criterion 47): the start page's tap-to-call number.
+- ``move_class()`` / ``move_series()`` (brief 012, D2): move one class, or change the time of
+  a booking's remaining classes, on the same account and the same Zoom meeting. The same
+  safety as ``approve()``: a fresh Zoom lookup with no locks, then one transaction that locks
+  request → account → classes, re-checks, rewrites the slots and updates Zoom, then commits.
+  Whenever Zoom may have changed and the move didn't commit, ``_put_zoom_back`` puts Zoom
+  back to the times the database holds, under the same locks: one ``PATCH`` for one class;
+  for a series, the restoring ``PATCH``, the forward path's read-back-and-delete, a ``PATCH``
+  per flattened class and a final check (brief 012, criterion 32).
 - The emails. They're sent after the model change, synchronously, and a send failure is
   logged and reported but never undoes a decision (D9).
 
@@ -35,10 +43,10 @@ Zoom ``start_url``, credential or exception text.
 import hashlib
 import ipaddress
 import logging
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from enum import StrEnum
 
 from django.conf import settings
@@ -48,7 +56,7 @@ from django.core import signing
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.mail import EmailMessage, get_connection
-from django.db import IntegrityError, OperationalError, transaction
+from django.db import DatabaseError, IntegrityError, OperationalError, transaction
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -57,7 +65,10 @@ from django.views.decorators.debug import sensitive_variables
 from .models import (
     CANCEL_REASON_REQUIRED,
     CLASS_ALREADY_CANCELLED,
+    MOVE_CLASS_CANCELLED,
+    MOVE_SHOWN_SALT,
     NOTHING_LEFT_TO_CANCEL,
+    NOTHING_LEFT_TO_MOVE,
     HostAccount,
     HostKeyReveal,
     HostKeyUnreadable,
@@ -70,6 +81,7 @@ from .models import (
 from .providers import (
     ProviderError,
     ZoomAuthFailed,
+    ZoomDailyLimit,
     ZoomMeetingNotFound,
     ZoomMissingScope,
     ZoomProvider,
@@ -124,6 +136,11 @@ NEXT_STEP_LASTING = (
     "Choose another free account, and ask whoever manages the Zoom accounts to press Check "
     "connection for {label}."
 )
+# Brief 012, criterion 34 (D22): Zoom's daily limit is lasting, but Check connection can't
+# help with it. P5's reset sentence is built in one place (``daily_reset_sentence``); every
+# daily message ends with it. Approve alone offers another account, which has its own quota.
+DAILY_RESET = "Try again after {time} on {date}."
+NEXT_STEP_DAILY = "Choose another free account, or wait for this one. {reset}"
 ZOOM_CLASH = (
     "{label} has a meeting in Zoom at an overlapping time: {topic}, {date} at {time}. "
     "Choose another free account."
@@ -188,11 +205,36 @@ CHECK_LASTING = (
     "Couldn't check {label} with Zoom: {phrase}. Waiting won't fix this. Tell whoever looks "
     "after the server, and give them the Zoom error number."
 )
+# Criterion 34, row 4: ``{reset}`` is ``daily_reset_sentence()``, so this renders exactly as
+# pinned, "… {phrase}. Try again after {time} on {date}.", without a second copy of P5.
+CHECK_DAILY_LIMIT = "Couldn't check {label} with Zoom: {phrase}. {reset}"
 ZOOM_BASIC_USER = 1  # Zoom's user type for a Basic (free) user
 
 
+def zoom_daily_reset(now=None) -> datetime:
+    """When Zoom's daily limits reset next: the next 00:00 UTC (criterion 14, P5)."""
+    today = (now or timezone.now()).astimezone(UTC).date()
+    return datetime.combine(today + timedelta(days=1), time(0), tzinfo=UTC)
+
+
+def daily_reset_sentence(now=None) -> str:
+    """P5's ``Try again after 5:30 am on Tue 29 Sep 2026.`` (criterion 34, D22).
+
+    The only place it's built, so every daily-limit message names the same reset in the same
+    words: in Colombo time and as a day, never "UTC", "today" or "tomorrow".
+    """
+    reset = zoom_daily_reset(now)
+    return DAILY_RESET.format(time=class_time(reset), date=class_date(reset))
+
+
 def next_step(error, label) -> str:
-    """ "Try again in a few minutes." only when waiting can help (D23)."""
+    """ "Try again in a few minutes." only when waiting can help (D23).
+
+    A daily limit is checked first (criterion 34): it's lasting, but Check connection can't
+    help, so approve offers another account (its own quota) or the reset.
+    """
+    if isinstance(error, ZoomDailyLimit):
+        return NEXT_STEP_DAILY.format(reset=daily_reset_sentence())
     return NEXT_STEP_LASTING.format(label=label) if error.lasting else NEXT_STEP_TEMPORARY
 
 
@@ -217,6 +259,10 @@ class Outcome(StrEnum):
     # Brief 011: cancelling.
     CANCELLED = "cancelled"
     NOTHING_TO_DO = "nothing_to_do"
+    # Brief 012: moving. ``INVALID``: the locked re-check found the typed time breaks a rule
+    # (it's the time already booked, or it has passed while the form was open).
+    MOVED = "moved"
+    INVALID = "invalid"
 
 
 @dataclass(frozen=True)
@@ -847,8 +893,17 @@ CANCEL_ATTEMPTS = 2
 
 
 def cancel_failed_message(error, label) -> str:
-    """Criterion 12: Zoom certainly removed nothing. The next step depends on ``lasting``."""
-    step = CANCEL_NEXT_STEP_LASTING.format(label=label) if error.lasting else NEXT_STEP_TEMPORARY
+    """Criterion 12: Zoom certainly removed nothing. The next step depends on ``lasting``.
+
+    A daily limit is checked first (brief 012, criterion 34): the reset sentence alone, since
+    a cancel can't change account and Check connection can't help.
+    """
+    if isinstance(error, ZoomDailyLimit):
+        step = daily_reset_sentence()
+    elif error.lasting:
+        step = CANCEL_NEXT_STEP_LASTING.format(label=label)
+    else:
+        step = NEXT_STEP_TEMPORARY
     return CANCEL_FAILED.format(phrase=error.user_message, next_step=step)
 
 
@@ -976,7 +1031,7 @@ def _cancel_once(link_request_id, occurrence_id, *, by, reason, provider, progre
             whole = occurrence_id is None
             if whole:
                 blocked = link_request.cancel_booking_blocked_message(now, occurrences=occurrences)
-                targets = link_request.cancellable_classes(now, occurrences=occurrences)
+                targets = link_request.remaining_classes(now, occurrences=occurrences)
             else:
                 target = next((o for o in occurrences if o.pk == occurrence_id), None)
                 if target is None:
@@ -1073,6 +1128,916 @@ def cancelled_message(result, *, emailed, checks_zoom) -> tuple[int, str]:
         level, text = message_levels.SUCCESS, CANCELLED_CLASS.format(date=date, email=email)
     if not checks_zoom:
         text += CANCELLED_NOT_IN_ZOOM
+    return level, text
+
+
+# --------------------------------------------------------------------------- Moving (012)
+
+# Criterion 9: the new time clashes, or Zoom couldn't be asked. None of them offers another
+# account: a move never changes account (D11).
+MOVE_ZOOM_CLASH = (
+    "{label} has a meeting in Zoom at that time: {topic}, {date} at {time}. Choose another time."
+)
+MOVE_BOOKED_CLASH = "{label} already has {booking} at that time. Choose another time."
+MOVE_BOOKED_A_MOMENT_AGO = "{label} was booked at that time a moment ago. Choose another time."
+MOVE_NOT_CONNECTED = (
+    "{label} isn't connected to Zoom, so this class can't be moved here. Set up its Zoom "
+    "connection on the Zoom accounts page."
+)
+MOVE_LOOKUP_FAILED = (
+    "We couldn't check {label}'s meetings in Zoom, so nothing was changed. {reason} {next_step}"
+)
+MOVE_LOOKUP_NEXT_STEP_LASTING = (
+    "Ask whoever manages the Zoom accounts to press Check connection for {label}."
+)
+# Criteria 11-15: what Zoom did, and what's true here. The lasting next step is 011's (P6).
+MOVE_FAILED = "We couldn't move it in Zoom: {phrase}. Nothing was changed. {next_step}"
+MOVE_MISSING_SCOPE = (
+    "The Zoom app for {label} is missing the permission to change meetings. Nothing was "
+    "changed. Ask whoever looks after the server to add the scopes listed in the README."
+)
+# ``{reset}`` is ``daily_reset_sentence()`` (criterion 34); the rendered text is criterion 14's.
+MOVE_DAILY_LIMIT = (
+    "Zoom's daily limit for changing {label}'s meetings is used up. Nothing was changed. {reset}"
+)
+MOVE_MAYBE_RESTORED = (
+    "No answer from Zoom, so we put the class back to its old time there to be safe. Nothing "
+    "was changed. Try again in a few minutes."
+)
+MOVE_MAYBE_NOT_RESTORED = (
+    "No answer from Zoom, and we couldn't check what it did. Nothing was changed here. Try "
+    "again in a few minutes. If the class shows the new time in Zoom, trying again finishes "
+    "the move."
+)
+MOVE_DATES_DIFFER = (
+    "Zoom scheduled different dates from these classes, so nothing was changed. Tell whoever "
+    "looks after the system."
+)
+# Criterion 32 (D21, the designer's D.13): the move couldn't be saved and Zoom couldn't be
+# made to match. Which one is chosen by ``_PutBack.landed``, because each claim must be true:
+# with no restoring PATCH answered, Zoom *may* still be at the new time; once one was
+# answered, Zoom has the saved times again, but the later steps (cancelled dates deleted,
+# classes moved on their own put back) may not have happened.
+MOVE_NOT_PUT_BACK = (
+    "We couldn't save the new time here, or undo it in Zoom. {label}'s meeting {meeting_id} "
+    "may still be at the new time in Zoom. Check that meeting in Zoom against this booking's "
+    "Classes list, then tell whoever looks after the system."
+)
+MOVE_PARTLY_PUT_BACK = (
+    "We couldn't save the new time here. We put {label}'s meeting {meeting_id} back to the "
+    "times saved here, but some classes in Zoom may not match this booking. A cancelled class "
+    "may have come back, or a class moved on its own may be at the usual time. Check that "
+    "meeting in Zoom against this booking's Classes list, then tell whoever looks after the "
+    "system."
+)
+# Criterion 29 (D.12): the "already moved" state of criteria 17a and 30. The page's signed
+# ``shown`` no longer matches the locked rows, so the form showed a time that changed since.
+# 1a names the class's time now (``str(occurrence)``); 1b the booking's times now.
+MOVED_A_MOMENT_AGO = (
+    "Someone else moved this class a moment ago. It's now {when}. We didn't make your change. "
+    "If it still needs to move, check the time in the form and press the button again."
+)
+TIMES_CHANGED_A_MOMENT_AGO = (
+    "Someone else changed the time of the remaining classes a moment ago. They're now {times}. "
+    "We didn't make your change. If they still need a different time, check the times in the "
+    "form and press the button again."
+)
+# Criterion 29, message 3 (approved as written): a lock-wait timeout or a second deadlock.
+MOVING_AT_THE_SAME_MOMENT = (
+    "Someone else was changing this booking at the same moment. Nothing was changed. Try again."
+)
+# Criterion 30 (main-session ruling): the form's ``shown`` is missing or doesn't read back (a
+# page from before the fix, or an edited one), so there's no telling what the person saw.
+MOVE_PAGE_OUT_OF_DATE = "This page is out of date. Reload it, check the times, then try again."
+# Criterion 16: the flashes on the detail page.
+MOVED_CLASS = "Moved the class to {when}. We emailed {email}."
+MOVED_SERIES = "Changed the time of {n} {classes} to {times}. We emailed {email}."
+MOVED_EMAIL_FAILED = (
+    "Moved, but the email to {email} didn't send. Tell them the new times yourself."
+)
+MOVED_NOT_IN_ZOOM = " This system can't reach Zoom: change it in Zoom too."
+MOVE_ATTEMPTS = 2
+
+# Every message a move can show IT, for the scan that none offers another account (P6, D11).
+MOVE_MESSAGES = (
+    MOVE_ZOOM_CLASH,
+    MOVE_BOOKED_CLASH,
+    MOVE_BOOKED_A_MOMENT_AGO,
+    MOVE_NOT_CONNECTED,
+    MOVE_LOOKUP_FAILED,
+    MOVE_LOOKUP_NEXT_STEP_LASTING,
+    MOVE_FAILED,
+    MOVE_MISSING_SCOPE,
+    MOVE_DAILY_LIMIT,
+    MOVE_MAYBE_RESTORED,
+    MOVE_MAYBE_NOT_RESTORED,
+    MOVE_DATES_DIFFER,
+    MOVE_NOT_PUT_BACK,
+    MOVE_PARTLY_PUT_BACK,
+    MOVED_A_MOMENT_AGO,
+    TIMES_CHANGED_A_MOMENT_AGO,
+    MOVING_AT_THE_SAME_MOMENT,
+    MOVE_PAGE_OUT_OF_DATE,
+    MOVED_CLASS,
+    MOVED_SERIES,
+    MOVED_EMAIL_FAILED,
+    MOVED_NOT_IN_ZOOM,
+)
+
+# A new time to check against Zoom's busy times (``zoom_clashes`` reads these two names).
+_Span = namedtuple("_Span", "starts_at ends_at")
+
+
+def move_next_step(error, label) -> str:
+    """Criterion 12's next step (P6): wait, or ask for Check connection. Never "another account"."""
+    return CANCEL_NEXT_STEP_LASTING.format(label=label) if error.lasting else NEXT_STEP_TEMPORARY
+
+
+def move_failed_message(error, label, now=None) -> str:
+    """Criteria 12 and 14: Zoom certainly changed nothing. Two kinds have their own text."""
+    if isinstance(error, ZoomMissingScope):
+        return MOVE_MISSING_SCOPE.format(label=label)
+    if isinstance(error, ZoomDailyLimit):
+        return MOVE_DAILY_LIMIT.format(label=label, reset=daily_reset_sentence(now))
+    return MOVE_FAILED.format(phrase=error.user_message, next_step=move_next_step(error, label))
+
+
+def move_lookup_failed_message(error, label) -> str:
+    """Criterion 9's "couldn't be asked" row, with its own lasting next step.
+
+    A daily limit is checked first (criterion 34): the reset sentence alone, since a move
+    can't change account (D11) and Check connection can't help.
+    """
+    if isinstance(error, ZoomDailyLimit):
+        step = daily_reset_sentence()
+    elif error.lasting:
+        step = MOVE_LOOKUP_NEXT_STEP_LASTING.format(label=label)
+    else:
+        step = NEXT_STEP_TEMPORARY
+    return MOVE_LOOKUP_FAILED.format(label=label, reason=error.reason_sentence, next_step=step)
+
+
+def read_move_shown(token) -> dict:
+    """``{pk: (starts_at, ends_at)}`` in epoch seconds, from a move form's ``shown`` (c. 30).
+
+    The other half of ``LinkRequest.move_fingerprint``. Raises ``signing.BadSignature`` for a
+    missing, edited or malformed value (the view shows ``MOVE_PAGE_OUT_OF_DATE``). No
+    ``max_age``: an old page is fine as long as nothing it shows has changed, which the locked
+    re-check decides.
+    """
+    if not token:
+        raise signing.BadSignature("No shown value.")
+    rows = signing.loads(token, salt=MOVE_SHOWN_SALT)
+    try:
+        return {int(pk): (int(start), int(end)) for pk, start, end in rows}
+    except (TypeError, ValueError) as exc:
+        raise signing.BadSignature("Unexpected payload.") from exc
+
+
+def _as_shown(occurrence) -> tuple:
+    """A class's times in ``read_move_shown``'s form, to compare with what the page showed."""
+    return int(occurrence.starts_at.timestamp()), int(occurrence.ends_at.timestamp())
+
+
+@dataclass(frozen=True)
+class MovedClass:
+    """One class a move changed: its old times and the class, now at its new times.
+
+    Named fields, because ``zoom/email/moved_body.txt`` reads ``old_start``, ``old_end`` and
+    ``occurrence`` by name (the context contract's ``moves``).
+    """
+
+    old_start: datetime
+    old_end: datetime
+    occurrence: Occurrence
+
+
+@dataclass(frozen=True)
+class MoveResult:
+    """What ``move_class()`` / ``move_series()`` did.
+
+    ``moves`` is empty unless the outcome is ``MOVED``; ``series`` says which kind of move it
+    was, for the flash. ``message`` is ``move_error`` in final form (criteria 9, 11-15), or a
+    blocked rule's message for the redirect (``NOTHING_TO_DO``). ``stale`` marks criterion
+    30's refusal (1a / 1b): the one ``CONFLICT`` whose re-render signs a fresh ``shown``,
+    because its message names the current time (criterion 33).
+    """
+
+    outcome: Outcome
+    message: str = ""
+    link_request: LinkRequest | None = None
+    moves: list = field(default_factory=list)
+    series: bool = False
+    stale: bool = False
+
+
+@dataclass
+class _MoveProgress:
+    """What has reached Zoom so far, across attempts, so every message stays honest.
+
+    ``changed``: an update was sent that may have gone through (answered, or unanswered with
+    ``maybe_done``). ``certain``: one was answered, so Zoom certainly has a new time.
+    """
+
+    label: str = ""
+    meeting_id: str = ""
+    zoom_occurrence_id: str = ""
+    changed: bool = False
+    certain: bool = False
+
+
+def move_class(
+    link_request_id, occurrence_id, *, starts_at, ends_at, by, shown=None, provider=None
+) -> MoveResult:
+    """Move one class of an approved booking to ``[starts_at, ends_at)`` (brief 012).
+
+    ``shown`` is ``read_move_shown()`` of the form the person pressed (criterion 30): if the
+    class's times differ from what that page showed, this stops with ``MOVED_A_MOMENT_AGO``
+    rather than undoing someone else's move (criteria 17a and 30). The move views always pass
+    it; ``None`` skips the check, for a caller that acts on the stored rows by design. See
+    ``_move`` for the order of work.
+    """
+    return _move(
+        link_request_id,
+        occurrence_id,
+        (starts_at, ends_at),
+        shown=shown,
+        by=by,
+        provider=provider,
+    )
+
+
+def move_series(
+    link_request_id, *, start_time, end_time, by, shown=None, provider=None
+) -> MoveResult:
+    """Change the time of day of every remaining class of a weekly booking (brief 012, D10).
+
+    ``shown`` as for ``move_class``, listing every remaining class the page showed; a change to
+    any of them stops this with ``TIMES_CHANGED_A_MOMENT_AGO``. Also sets the request's
+    ``start_time`` / ``end_time``, so ``schedule_summary`` stays true (D4).
+    """
+    return _move(
+        link_request_id,
+        None,
+        (start_time, end_time),
+        shown=shown,
+        by=by,
+        provider=provider,
+    )
+
+
+def _move(link_request_id, occurrence_id, times, *, shown, by, provider) -> MoveResult:
+    """The one move procedure behind both services (D2), with 006's structure.
+
+    Per attempt:
+
+    1. **No locks, no transaction** (``_move_check_first``): the rules on the stored rows, the
+       account's connection, a database clash preview, then a **fresh** Zoom lookup of the
+       account's meetings across the new times. A clash or a failed lookup stops here, before
+       anything is locked or sent to Zoom.
+    2. **One transaction** (``_move_once``): lock the request, its account, its classes;
+       re-check the rules and the database clashes with a locking read; replace the slots (the
+       unique slot index is the backstop) and update the classes (and, for a series, the
+       request's times); then, still inside it, update Zoom (``PATCH``; for a series also the
+       read-back and the deletes of criterion 10); commit.
+
+    Why Zoom is changed with the locks held: brief 013's ``meeting.updated`` webhook waits for
+    this commit and then finds the database already matching (D2).
+
+    After a failure: a deadlock is retried once (repeating the ``PATCH`` is harmless). If Zoom
+    may hold the new time and the move didn't commit, ``_put_zoom_back`` sets Zoom to the
+    times the database holds, and the message says what's true afterwards (criteria 11-15
+    and 32): "nothing was changed" only once it's been checked; otherwise, whenever Zoom has
+    certainly changed and couldn't be made to match, one neutral ``ERROR`` line and
+    ``MOVE_NOT_PUT_BACK`` (no restoring ``PATCH`` answered) or ``MOVE_PARTLY_PUT_BACK`` (one
+    answered, then a later step failed), D21.
+    Call it outside an open transaction: the move views are ``non_atomic_requests``.
+    """
+    provider = provider or get_provider()
+    reference = LinkRequest(pk=link_request_id).reference
+    progress = _MoveProgress()
+    result, cause = None, None
+    for attempt in range(1, MOVE_ATTEMPTS + 1):
+        try:
+            stop, window = _move_check_first(
+                link_request_id, occurrence_id, times, shown, provider, progress
+            )
+            result = stop or _move_once(
+                link_request_id,
+                occurrence_id,
+                times,
+                shown,
+                window,
+                by=by,
+                provider=provider,
+                progress=progress,
+            )
+            break
+        except OperationalError as exc:
+            code = _mysql_code(exc)
+            if code == MYSQL_DEADLOCK and attempt < MOVE_ATTEMPTS:
+                logger.warning("Moving %s hit a deadlock; trying once more.", reference)
+                continue
+            cause = exc
+            if code in (MYSQL_DEADLOCK, MYSQL_LOCK_WAIT_TIMEOUT):
+                logger.warning("Moving %s lost a lock race (MySQL %s).", reference, code)
+                result = MoveResult(Outcome.CONFLICT, MOVING_AT_THE_SAME_MOMENT)
+            break
+        except IntegrityError as exc:
+            cause = exc
+            if _mysql_code(exc) == MYSQL_DUPLICATE_ENTRY:
+                logger.warning("Moving %s hit the slot backstop; another booking won.", reference)
+                result = MoveResult(
+                    Outcome.CONFLICT, MOVE_BOOKED_A_MOMENT_AGO.format(label=progress.label)
+                )
+            break
+        except _DatesDiffer as exc:
+            cause = exc
+            logger.warning("Zoom's dates for %s differed after changing its times.", reference)
+            result = MoveResult(Outcome.PROVIDER_ERROR, MOVE_DATES_DIFFER)
+            break
+        except ProviderError as exc:
+            cause = exc
+            logger.warning(
+                "Couldn't move %s in Zoom on %s: %s", reference, progress.label, type(exc).__name__
+            )
+            result = MoveResult(Outcome.PROVIDER_ERROR, move_failed_message(exc, progress.label))
+            break
+        except Exception as exc:  # re-raised below, once Zoom is put back if it needs to be
+            cause = exc
+            break
+
+    if result is not None and result.outcome == Outcome.MOVED:
+        return result
+    if progress.changed:
+        back = _put_zoom_back(provider, link_request_id, occurrence_id, progress, reference)
+        if back.done:
+            if not progress.certain:
+                return MoveResult(Outcome.PROVIDER_ERROR, MOVE_MAYBE_RESTORED)
+        elif not progress.certain and not back.landed:
+            # Criterion 13: neither the move nor its undo was answered, so Zoom may never
+            # have changed at all.
+            return MoveResult(Outcome.PROVIDER_ERROR, MOVE_MAYBE_NOT_RESTORED)
+        else:
+            # Zoom has certainly changed (the move or the undo was answered) and doesn't match
+            # this database: criteria 11, 15 and 32. The line is worded to be true whatever
+            # Zoom now holds (D21), so it claims no time; class names only, never Zoom's text
+            # or links. A one-class undo that was answered never gets here: it's done.
+            logger.error(
+                "Moving %s: Zoom meeting %s doesn't match this database: %s "
+                "(putting it back: %s, restoring update answered: %s)",
+                reference,
+                progress.meeting_id,
+                type(cause).__name__ if cause is not None else "unknown",
+                back.failure,
+                "yes" if back.landed else "no",
+            )
+            message = MOVE_PARTLY_PUT_BACK if back.landed else MOVE_NOT_PUT_BACK
+            return MoveResult(
+                Outcome.PROVIDER_ERROR,
+                message.format(label=progress.label, meeting_id=progress.meeting_id),
+            )
+    if result is None:
+        raise cause
+    return result
+
+
+def _plan_move(link_request, classes, occurrence_id, times, shown, now):
+    """``(stop, moves)``: a ``MoveResult`` that ends the attempt, or the classes to move.
+
+    ``moves`` is ``[(occurrence, new start, new end)]``. The rules are the models'
+    (criterion 2); this only turns their answers into outcomes. Used by both steps, on the
+    plain rows first and on the locked rows again, so a stale form (criterion 30) is refused
+    before the Zoom lookup and, authoritatively, under the locks before any ``PATCH``.
+
+    The stale check compares only classes that are still remaining: a class cancelled or
+    started since the page was shown is left out by the rules, not refused. A remaining class
+    the page didn't list (or a one-class page for another class) counts as changed.
+    """
+    if occurrence_id is not None:
+        target = next((o for o in classes if o.pk == occurrence_id), None)
+        blocked = target.move_blocked_message(now) if target else MOVE_CLASS_CANCELLED
+        if blocked:
+            return MoveResult(Outcome.NOTHING_TO_DO, blocked, link_request), []
+        if shown is not None and shown.get(target.pk) != _as_shown(target):
+            return MoveResult(
+                Outcome.CONFLICT,
+                MOVED_A_MOMENT_AGO.format(when=target),
+                link_request,
+                stale=True,
+            ), []
+        starts_at, ends_at = times
+        errors = target.move_errors(starts_at=starts_at, ends_at=ends_at, now=now)
+        if errors:
+            return MoveResult(Outcome.INVALID, next(iter(errors.values())), link_request), []
+        return None, [(target, starts_at, ends_at)]
+
+    blocked = link_request.series_move_blocked_message(now, occurrences=classes)
+    if blocked:
+        return MoveResult(Outcome.NOTHING_TO_DO, blocked, link_request), []
+    remaining = link_request.remaining_classes(now, occurrences=classes)
+    if shown is not None and any(shown.get(o.pk) != _as_shown(o) for o in remaining):
+        times_now = f"{class_time(link_request.start_time)} to {class_time(link_request.end_time)}"
+        return MoveResult(
+            Outcome.CONFLICT,
+            TIMES_CHANGED_A_MOMENT_AGO.format(times=times_now),
+            link_request,
+            stale=True,
+        ), []
+    start_time, end_time = times
+    errors = link_request.series_move_errors(
+        start_time=start_time, end_time=end_time, now=now, occurrences=classes
+    )
+    if errors:
+        return MoveResult(Outcome.INVALID, next(iter(errors.values())), link_request), []
+    return None, link_request.series_new_times(start_time, end_time, now, occurrences=classes)
+
+
+def _move_check_first(link_request_id, occurrence_id, times, shown, provider, progress):
+    """Step 1 of a move, with no locks and no transaction: ``(stop or None, window)``.
+
+    ``window`` is ``(first new start, last new end)``: the span Zoom was asked about. Step 2
+    refuses to go on if the locked rows would move a class outside it (criterion 8: the
+    lookup spans the new times). Nothing is sent to Zoom unless every check before it passed,
+    so a class that can't be moved makes no Zoom call (criterion 4).
+    """
+    link_request = (
+        LinkRequest.objects.select_related("host_account").filter(pk=link_request_id).first()
+    )
+    if link_request is None or link_request.status != LinkRequest.Status.APPROVED:
+        message = MOVE_CLASS_CANCELLED if occurrence_id is not None else NOTHING_LEFT_TO_MOVE
+        return MoveResult(Outcome.NOTHING_TO_DO, message, link_request), None
+    account = link_request.host_account
+    label = progress.label = account.label
+    progress.meeting_id = link_request.meeting_id
+    classes = list(link_request.occurrences.all())
+    stop, moves = _plan_move(link_request, classes, occurrence_id, times, shown, timezone.now())
+    if stop is not None:
+        return stop, None
+    spans = [_Span(start, end) for _, start, end in moves]
+    window = class_window(spans)
+
+    if not provider.is_connected(account):
+        return MoveResult(
+            Outcome.CONFLICT, MOVE_NOT_CONNECTED.format(label=label), link_request
+        ), None
+    booked = Occurrence.objects.clashing(
+        account, [tuple(span) for span in spans], exclude_ids=[o.pk for o, _, _ in moves]
+    )
+    if booked:
+        return _booked_clash(label, booked[0], link_request), None
+    if not provider.checks_zoom:
+        return None, window
+
+    try:
+        busy_times = provider.busy_times(host_account=account, start=window[0], end=window[1])
+    except ProviderError as exc:
+        forget_preview(account, window)
+        logger.warning(
+            "Couldn't check %s in Zoom before moving %s: %s",
+            label,
+            link_request.reference,
+            type(exc).__name__,
+        )
+        return MoveResult(
+            Outcome.PROVIDER_ERROR, move_lookup_failed_message(exc, label), link_request
+        ), None
+    # The booking's own meeting is covered by the database check (criterion 7).
+    known = known_meeting_ids([account], window).get(account.pk, set()) | {link_request.meeting_id}
+    clashes = zoom_clashes(link_request, spans, busy_times, known)
+    if clashes:
+        busy = clashes[0]["busy"]
+        return MoveResult(
+            Outcome.CONFLICT,
+            MOVE_ZOOM_CLASH.format(
+                label=label,
+                topic=busy.display_topic,
+                date=class_date(busy.starts_at),
+                time=class_time(busy.starts_at),
+            ),
+            link_request,
+        ), None
+    return None, window
+
+
+def _booked_clash(label, other, link_request) -> MoveResult:
+    """Criterion 9's "booked class at the new time", for the preview and the locked re-check."""
+    return MoveResult(
+        Outcome.CONFLICT,
+        MOVE_BOOKED_CLASH.format(label=label, booking=other.link_request),
+        link_request,
+    )
+
+
+def _move_once(
+    link_request_id, occurrence_id, times, shown, window, *, by, provider, progress
+) -> MoveResult:
+    """Step 2 of a move: one transaction, Zoom updated inside it (criterion 8's order).
+
+    MySQL lock errors, the slot backstop, ``_DatesDiffer`` and ``ProviderError`` propagate,
+    after the rollback, so ``_move`` can retry, put Zoom back and pick the message.
+    """
+    series = occurrence_id is None
+    with transaction.atomic():
+        link_request = LinkRequest.objects.select_for_update().get(pk=link_request_id)
+        if link_request.status != LinkRequest.Status.APPROVED:
+            message = NOTHING_LEFT_TO_MOVE if series else MOVE_CLASS_CANCELLED
+            return MoveResult(Outcome.NOTHING_TO_DO, message, link_request)
+        account = HostAccount.objects.select_for_update().get(pk=link_request.host_account_id)
+        label = progress.label = account.label
+        classes = list(link_request.occurrences.select_for_update().order_by("starts_at", "pk"))
+        now = timezone.now()
+        stop, moves = _plan_move(link_request, classes, occurrence_id, times, shown, now)
+        if stop is not None:
+            return stop
+        spans = [(start, end) for _, start, end in moves]
+        first, last = class_window([_Span(*span) for span in spans])
+        if window is None or first < window[0] or last > window[1]:
+            # The classes changed between the lookup and the lock (a race): Zoom wasn't asked
+            # about these times, so nothing goes ahead.
+            return MoveResult(Outcome.CONFLICT, MOVING_AT_THE_SAME_MOMENT, link_request)
+        if not provider.is_connected(account):
+            return MoveResult(
+                Outcome.CONFLICT, MOVE_NOT_CONNECTED.format(label=label), link_request
+            )
+        moving = [occurrence for occurrence, _, _ in moves]
+        booked = Occurrence.objects.clashing(
+            account, spans, exclude_ids=[o.pk for o in moving], lock=True
+        )
+        if booked:
+            return _booked_clash(label, booked[0], link_request)
+
+        zoom_occurrence_id = None
+        if not series and provider.checks_zoom:
+            zoom_occurrence_id = _zoom_occurrence_id(provider, link_request, account, moving[0])
+            progress.zoom_occurrence_id = zoom_occurrence_id or ""
+
+        done = []
+        HostSlot.objects.filter(occurrence_id__in=[o.pk for o in moving]).delete()
+        for occurrence, start, end in moves:
+            done.append(MovedClass(occurrence.starts_at, occurrence.ends_at, occurrence))
+            occurrence.starts_at, occurrence.ends_at = start, end
+            occurrence.moved_at, occurrence.moved_by = now, by
+            # Not a change of account (D1: a move never changes it; ``host_account`` isn't in
+            # the ``bulk_update`` below). ``new_slots()`` reads ``host_account``: handing it the
+            # account row locked above saves a query per class and builds the slots on exactly
+            # the row this transaction holds.
+            occurrence.host_account = account
+        HostSlot.objects.bulk_create(slot for o in moving for slot in o.new_slots())
+        Occurrence.objects.bulk_update(
+            moving, ["starts_at", "ends_at", "moved_at", "moved_by", "zoom_occurrence_id"]
+        )
+        if series:
+            link_request.start_time, link_request.end_time = times
+            link_request.save(update_fields=["start_time", "end_time"])
+
+        if provider.checks_zoom:
+            if series:
+                _move_series_in_zoom(provider, link_request, account, moving, progress)
+            else:
+                _update_in_zoom(
+                    progress,
+                    provider.update_occurrence,
+                    host_account=account,
+                    meeting_id=link_request.meeting_id,
+                    occurrence_id=zoom_occurrence_id,
+                    starts_at=moving[0].starts_at,
+                    ends_at=moving[0].ends_at,
+                )
+    logger.info("Moved %s class(es) of %s on %s.", len(done), link_request.reference, label)
+    return MoveResult(Outcome.MOVED, "", link_request, done, series)
+
+
+def _zoom_occurrence_id(provider, link_request, account, occurrence):
+    """The Zoom occurrence ID to update one class of a weekly meeting by, or ``None`` (one-off).
+
+    A blank stored ID is looked up with 011's ``occurrence_id_for`` and kept on the class, so
+    the next cancel or move needn't ask again. If Zoom has no such class, there's nothing to
+    move there: that's Zoom's "no such meeting", a lasting refusal.
+    """
+    if link_request.repeat != LinkRequest.Repeat.WEEKLY:
+        return None
+    found = occurrence.zoom_occurrence_id or provider.occurrence_id_for(
+        host_account=account, meeting_id=link_request.meeting_id, starts_at=occurrence.starts_at
+    )
+    if not found:
+        raise ZoomMeetingNotFound()
+    occurrence.zoom_occurrence_id = found
+    return found
+
+
+def _update_in_zoom(progress, update, **kwargs) -> None:
+    """One ``PATCH``, recording whether Zoom may, or certainly does, hold the new time now.
+
+    A refusal Zoom answered changed nothing; an unanswered call (``maybe_done``) may have.
+    """
+    try:
+        update(**kwargs)
+    except ProviderError as exc:
+        if exc.maybe_done:
+            progress.changed = True
+        raise
+    progress.changed = progress.certain = True
+
+
+def _move_series_in_zoom(provider, link_request, account, remaining, progress) -> None:
+    """Criterion 10's series calls and criterion 11's check, inside the transaction.
+
+    1. One ``PATCH`` re-anchoring the series at the first remaining class, at its new time,
+       for as many weekly classes as the pattern has from there to the last remaining date.
+    2. ``_tidy_series_in_zoom``: one ``GET``, then one ``DELETE ?occurrence_id=`` for each
+       class Zoom made on a pattern date that has no remaining class (a class cancelled
+       earlier, brief 011), so it doesn't come back.
+
+    The ``GET`` comes before the deletes, not after as the brief's table lists them: Zoom
+    doesn't document that occurrence IDs survive a series update, so the IDs to delete are
+    read, not guessed; what Zoom holds afterwards is that answer minus the deletes it
+    accepted. Every class from the first remaining one on must then be a remaining class at
+    its new start and end, one to one, or ``_DatesDiffer`` rolls the move back. The new IDs
+    are stored.
+    """
+    first = remaining[0]
+    _update_in_zoom(
+        progress,
+        provider.update_series,
+        host_account=account,
+        meeting_id=link_request.meeting_id,
+        starts_at=first.starts_at,
+        ends_at=first.ends_at,
+        weekdays=link_request.weekdays,
+        count=len(link_request.series_span_dates(remaining)),
+    )
+    kept = _tidy_series_in_zoom(provider, link_request, account, remaining)
+    _store_series_ids(remaining, kept)
+
+
+def _tidy_series_in_zoom(provider, link_request, account, remaining) -> list:
+    """Read a series back just after a series ``PATCH``, and delete what mustn't be there.
+
+    The one helper behind both directions (criteria 10 and 32): the forward move, and putting
+    a failed move back, which would otherwise bring back every class cancelled earlier
+    (review round 1, SF1). One ``GET``; then one ``DELETE ?occurrence_id=`` per class Zoom
+    made on a date of the series span that has no remaining class. Classes on dates before
+    the first remaining class are history, in Zoom too, and are left alone. Returns the
+    ``ZoomClass`` items Zoom keeps, soonest first.
+    """
+    first_day = timezone.localdate(remaining[0].starts_at)
+    kept_days = {timezone.localdate(o.starts_at) for o in remaining}
+    unwanted_days = set(link_request.series_span_dates(remaining)) - kept_days
+    found = provider.meeting_snapshot(host_account=account, meeting_id=link_request.meeting_id)
+    kept = []
+    for item in sorted(found):
+        day = timezone.localdate(item.starts_at)
+        if day < first_day:
+            continue
+        if day in unwanted_days:
+            provider.delete_meeting(
+                host_account=account,
+                meeting_id=link_request.meeting_id,
+                occurrence_id=item.occurrence_id,
+            )
+            continue
+        kept.append(item)
+    return kept
+
+
+def _store_series_ids(remaining, in_zoom) -> None:
+    """Check Zoom's classes against the remaining ones, then store Zoom's occurrence IDs.
+
+    One to one by start **and** end (criteria 11 and 32), or ``_DatesDiffer``. The IDs are
+    stored because a series ``PATCH`` may renumber the occurrences, and a later cancel or
+    move of one class addresses it by that ID (a stale one would "succeed" as Zoom's 3001).
+    """
+    if sorted((item.starts_at, item.ends_at) for item in in_zoom) != sorted(
+        (o.starts_at, o.ends_at) for o in remaining
+    ):
+        raise _DatesDiffer()
+    by_start = {item.starts_at: item.occurrence_id for item in in_zoom}
+    for occurrence in remaining:
+        occurrence.zoom_occurrence_id = by_start[occurrence.starts_at]
+    Occurrence.objects.bulk_update(remaining, ["zoom_occurrence_id"])
+
+
+@dataclass
+class _PutBack:
+    """What putting Zoom back did, so ``_move`` picks a true message (criteria 11, 13, 32).
+
+    ``done``: Zoom matches the database again (for a series, the final check passed).
+    ``landed``: a restoring ``PATCH`` was answered, so Zoom has certainly changed since the
+    failed move, whatever happens after it; when not ``done``, it picks
+    ``MOVE_PARTLY_PUT_BACK`` over ``MOVE_NOT_PUT_BACK`` and is the ``ERROR`` line's
+    "restoring update answered" (D21). ``failure``: the error class name, or ``mismatch``,
+    for that line; never Zoom's text.
+    """
+
+    done: bool = False
+    landed: bool = False
+    failure: str = ""
+
+
+def _put_zoom_back(provider, link_request_id, occurrence_id, progress, reference) -> _PutBack:
+    """The compensating work (criteria 11, 13, 15 and 32): Zoom back to what this database holds.
+
+    It runs after the move's transaction has rolled back, in a transaction of its own that
+    locks the request, then the account, then the classes: the order of ``approve()``,
+    ``cancel()`` and the move itself (D2), so it can't deadlock against them by taking locks
+    the other way round (review round 1, SF2). A MySQL deadlock or lock-wait timeout is
+    retried once, as ``_move`` retries; repeating any of its Zoom calls is harmless.
+
+    Zoom is set to the times the database holds *now*, read from the locked rows: the old
+    time, or the winner's time if another move of the same class committed first (criterion
+    17a). Setting times Zoom may already have is harmless, so it's right whatever the
+    unanswered call did (D2). A class or booking that's been cancelled since has nothing to
+    put back. ``_put_one_class_back`` and ``_put_series_back`` say what each sends.
+
+    **The one-class edge counts as done** (criterion 32, D21). For one class the undo
+    ``PATCH`` is the last thing the transaction does, and the transaction writes nothing.
+    So if the ``PATCH`` was answered and the transaction then fails (its commit, a lock
+    race), Zoom already has the time the locked row held, which nothing here changed: Zoom
+    matches this database. That's ``done``, logged at ``WARNING``, with no retry, since a
+    second ``PATCH`` would only send the same time again. A series is different: once its
+    first ``PATCH`` lands, the later steps are what make Zoom match, so it isn't done
+    until its final check passes.
+
+    It never raises (review round 2, nit): any error, expected or not, becomes ``failure``
+    (its class name only), so ``_move`` always writes its neutral ``ERROR`` line, picks the
+    message from ``landed``, and keeps reporting the move's own error.
+    """
+    back = _PutBack()
+    one_class = occurrence_id is not None
+    for attempt in range(1, MOVE_ATTEMPTS + 1):
+        try:
+            with transaction.atomic():
+                _put_zoom_back_once(provider, link_request_id, occurrence_id, progress, back)
+        except DatabaseError as exc:
+            if one_class and back.landed:
+                return _one_class_put_back_anyway(back, reference, exc)
+            code = _mysql_code(exc) if isinstance(exc, OperationalError) else None
+            if code in (MYSQL_DEADLOCK, MYSQL_LOCK_WAIT_TIMEOUT) and attempt < MOVE_ATTEMPTS:
+                logger.warning("Putting %s back hit MySQL %s; trying once more.", reference, code)
+                continue
+            back.failure = type(exc).__name__
+        except _DatesDiffer:
+            back.failure = "mismatch"
+        except ProviderError as exc:
+            back.failure = type(exc).__name__
+        except Exception as exc:
+            # Anything unexpected (review round 2, nit; criterion 32's catch-all) is still a
+            # failed put-back, never a crash: escaping here would skip ``_move``'s neutral
+            # ERROR line and replace the move's own exception. Only its class name is kept,
+            # never its text. The one-class edge holds for it too: once that PATCH was
+            # answered, Zoom matches this database whatever failed after it.
+            if one_class and back.landed:
+                return _one_class_put_back_anyway(back, reference, exc)
+            back.failure = type(exc).__name__
+        else:
+            back.done = True
+            logger.warning(
+                "Put %s back to its stored times in Zoom after a failed move.", reference
+            )
+            return back
+        logger.warning("Couldn't put %s back in Zoom: %s", reference, back.failure)
+        return back
+    raise AssertionError("unreachable: the last attempt returns")
+
+
+def _one_class_put_back_anyway(back, reference, exc) -> _PutBack:
+    """The one-class edge (criterion 32, D21): the undo PATCH was answered, so it's done."""
+    back.done = True
+    logger.warning(
+        "Put %s back in Zoom, but its own transaction then failed: %s",
+        reference,
+        type(exc).__name__,
+    )
+    return back
+
+
+def _put_zoom_back_once(provider, link_request_id, occurrence_id, progress, back) -> None:
+    """One attempt of ``_put_zoom_back``, inside its transaction. Raises on any failure."""
+    link_request = LinkRequest.objects.select_for_update().get(pk=link_request_id)
+    if link_request.status != LinkRequest.Status.APPROVED:
+        return
+    account = HostAccount.objects.select_for_update().get(pk=link_request.host_account_id)
+    classes = list(link_request.occurrences.select_for_update().order_by("starts_at", "pk"))
+    if occurrence_id is not None:
+        target = next((o for o in classes if o.pk == occurrence_id), None)
+        if target is not None and target.cancelled_at is None:
+            _put_one_class_back(provider, link_request, account, target, progress, back)
+        return
+    remaining = link_request.remaining_classes(timezone.now(), occurrences=classes)
+    if remaining:
+        _put_series_back(provider, link_request, account, remaining, back)
+
+
+def _restoring_update(back, update, **kwargs) -> None:
+    """One restoring ``PATCH``; once Zoom has answered it, Zoom has certainly changed."""
+    update(**kwargs)
+    back.landed = True
+
+
+def _put_one_class_back(provider, link_request, account, target, progress, back) -> None:
+    """One ``PATCH`` back to the locked row's times (criteria 13, 15 and 32).
+
+    The occurrence ID is the locked row's. Only when that's blank (a booking from before the
+    live connection, whose ID the failed attempt looked up and then lost in the rollback) is
+    the attempt's looked-up ID used (review round 1, nit): without an ID the ``PATCH`` would
+    address the whole weekly meeting and move every class. With neither, nothing is sent and
+    the class can't be put back.
+    """
+    zoom_id = None
+    if link_request.repeat == LinkRequest.Repeat.WEEKLY:
+        zoom_id = target.zoom_occurrence_id or progress.zoom_occurrence_id
+        if not zoom_id:
+            raise ZoomMeetingNotFound()
+    _restoring_update(
+        back,
+        provider.update_occurrence,
+        host_account=account,
+        meeting_id=link_request.meeting_id,
+        occurrence_id=zoom_id,
+        starts_at=target.starts_at,
+        ends_at=target.ends_at,
+    )
+
+
+def _put_series_back(provider, link_request, account, remaining, back) -> None:
+    """Undo a failed series move fully (criterion 32; owner: "Undo fully", D18).
+
+    One restoring ``PATCH`` alone rebuilds the series from its pattern, so it brings back
+    every class cancelled earlier and flattens classes moved by themselves, while the page
+    would say "nothing was changed" (review round 1, SF1). So, in order:
+
+    1. the restoring series ``PATCH``, anchored at the first remaining class's date at the
+       booking's own time of day (``start_time`` / ``end_time``, which a series move keeps
+       true, D4), for the span from there to the last remaining class;
+    2. ``_tidy_series_in_zoom``, the forward path's own helper: one ``GET``, then a
+       ``DELETE`` for each date whose class was cancelled;
+    3. one occurrence ``PATCH`` per remaining class that a one-class move left at another
+       time on its usual day, back to its stored time, by the ID read in step 2 (a class
+       moved to another day can't be here: the series move refuses then, criterion 31);
+    4. a final ``GET``, which must match the remaining classes by start and end, one to
+       one; its occurrence IDs are stored on them, under the same locks.
+    """
+    zone = timezone.get_default_timezone()
+
+    def on_pattern(occurrence):
+        day = timezone.localdate(occurrence.starts_at)
+        return (
+            datetime.combine(day, link_request.start_time, tzinfo=zone),
+            datetime.combine(day, link_request.end_time, tzinfo=zone),
+        )
+
+    anchor_start, anchor_end = on_pattern(remaining[0])
+    _restoring_update(
+        back,
+        provider.update_series,
+        host_account=account,
+        meeting_id=link_request.meeting_id,
+        starts_at=anchor_start,
+        ends_at=anchor_end,
+        weekdays=link_request.weekdays,
+        count=len(link_request.series_span_dates(remaining)),
+    )
+    kept = _tidy_series_in_zoom(provider, link_request, account, remaining)
+    ids_by_day = {timezone.localdate(item.starts_at): item.occurrence_id for item in kept}
+    for occurrence in remaining:
+        if (occurrence.starts_at, occurrence.ends_at) == on_pattern(occurrence):
+            continue
+        zoom_id = ids_by_day.get(timezone.localdate(occurrence.starts_at))
+        if not zoom_id:
+            raise _DatesDiffer()  # Zoom made no class on its day to put back
+        provider.update_occurrence(
+            host_account=account,
+            meeting_id=link_request.meeting_id,
+            occurrence_id=zoom_id,
+            starts_at=occurrence.starts_at,
+            ends_at=occurrence.ends_at,
+        )
+    first_day = timezone.localdate(remaining[0].starts_at)
+    found = provider.meeting_snapshot(host_account=account, meeting_id=link_request.meeting_id)
+    _store_series_ids(
+        remaining, [item for item in found if timezone.localdate(item.starts_at) >= first_day]
+    )
+
+
+def moved_message(result, *, emailed, checks_zoom) -> tuple[int, str]:
+    """``(message level, text)`` for the detail page after a move (criterion 16, P2)."""
+    email = result.link_request.requester_email
+    if not emailed:
+        level, text = message_levels.WARNING, MOVED_EMAIL_FAILED.format(email=email)
+    elif result.series:
+        n = len(result.moves)
+        first = result.moves[0].occurrence
+        times = f"{class_time(first.starts_at)} to {class_time(first.ends_at)}"
+        text = MOVED_SERIES.format(
+            n=n, classes="class" if n == 1 else "classes", times=times, email=email
+        )
+        level = message_levels.SUCCESS
+    else:
+        occurrence = result.moves[0].occurrence
+        level, text = message_levels.SUCCESS, MOVED_CLASS.format(when=occurrence, email=email)
+    if not checks_zoom:
+        text += MOVED_NOT_IN_ZOOM
     return level, text
 
 
@@ -1281,6 +2246,15 @@ def check_connection(account, provider=None) -> ConnectionResult:
         return ConnectionResult(error, CHECK_MISSING_SCOPE.format(slug=slug))
     except ZoomUserNotFound:
         return ConnectionResult(error, CHECK_USER_NOT_FOUND.format(email=email))
+    except ZoomDailyLimit as exc:
+        # Before the lasting test (criterion 34): waiting *does* fix it, after the reset, and
+        # there's no Zoom error number to pass on.
+        return ConnectionResult(
+            error,
+            CHECK_DAILY_LIMIT.format(
+                label=label, phrase=exc.user_message, reset=daily_reset_sentence()
+            ),
+        )
     except ProviderError as exc:
         # ZoomUnavailable and ZoomBusy are temporary; ZoomRejected is the lasting one here.
         template = CHECK_LASTING if exc.lasting else CHECK_TEMPORARY
@@ -1490,6 +2464,23 @@ def send_cancelled_email(request, link_request, cancelled, remaining, reason) ->
         "can_start": get_provider().can_start,
     }
     return _send("cancellation", "cancelled", context, [link_request.requester_email], link_request)
+
+
+def send_moved_email(request, link_request, moves) -> bool:
+    """Tell the requester the old and new times of every class a move changed (brief 012, 18).
+
+    To the requester only, after the commit. ``moves`` is the ``MoveResult``'s list of
+    ``MovedClass`` (``old_start``, ``old_end``, ``occurrence``), soonest first. It carries no
+    join link, passcode, start link or host key: the links don't change (D1), so the email only
+    says so, and ``can_start`` keeps the manual provider's version from mentioning a start
+    link it never sent (G3, P3). ``request`` is unused, kept so every sender has one shape.
+    """
+    context = {
+        "link_request": link_request,
+        "moves": list(moves),
+        "can_start": get_provider().can_start,
+    }
+    return _send("classes moved", "moved", context, [link_request.requester_email], link_request)
 
 
 def send_rejected_email(request, link_request) -> bool:

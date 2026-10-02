@@ -18,6 +18,13 @@ provider is in use:
   emails carry the app's start link. ``start_url(*, host_account, meeting_id) -> str`` asks
   for one; ``occurrence_id_for(*, host_account, meeting_id, starts_at)`` finds a class's Zoom
   occurrence ID when none was stored.
+- Moving (brief 012): ``update_occurrence(*, host_account, meeting_id, occurrence_id=None,
+  starts_at, ends_at)`` moves one class (or a one-off meeting); ``update_series(*,
+  host_account, meeting_id, starts_at, ends_at, weekdays, count)`` re-anchors a weekly series;
+  ``meeting_snapshot(*, host_account, meeting_id)`` reads a series' classes back, as
+  ``ZoomClass`` items (start, end and occurrence ID), for the read-back checks. The update
+  bodies carry only the times (``update_payload``), never ``settings``, ``topic`` or
+  ``agenda`` (006 D19). A provider that can't see Zoom changes nothing there.
 - failures raise a ``ProviderError`` subclass (``errors.py``, re-exported here).
 
 ``Meeting`` never carries Zoom's ``start_url``: it would let anyone start the meeting as host
@@ -40,6 +47,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
@@ -51,6 +59,7 @@ from .errors import (  # noqa: F401  (re-exported: callers import the error type
     ProviderError,
     ZoomAuthFailed,
     ZoomBusy,
+    ZoomDailyLimit,
     ZoomMeetingNotFound,
     ZoomMissingScope,
     ZoomNotConnected,
@@ -87,6 +96,18 @@ class Meeting:
     passcode: str = field(repr=False)
     occurrence_ids: tuple = ()
     recurring: bool = False
+
+
+class ZoomClass(NamedTuple):
+    """One class of a Zoom series as Zoom holds it now, from ``meeting_snapshot`` (brief 012).
+
+    Start **and** end, because putting a series back is checked against both (criterion 32):
+    a class Zoom has at the right start but the wrong length isn't back.
+    """
+
+    starts_at: datetime
+    ends_at: datetime
+    occurrence_id: str
 
 
 @dataclass(frozen=True)
@@ -163,6 +184,30 @@ def meeting_payload(link_request, occurrences) -> dict:
     return payload
 
 
+def update_payload(starts_at, ends_at, *, weekdays=None, count=None) -> dict:
+    """The body of a move's ``PATCH`` (brief 012, criterion 10), and nothing else.
+
+    ``start_time`` is Colombo wall-clock time with ``timezone``, as the create sends it. With
+    ``weekdays`` and ``count`` it's a series update: weekly, every week, on the same days
+    (D10), for ``count`` classes from ``starts_at``. It never carries ``settings``, ``topic``
+    or ``agenda``, so a move can't change recording or any other meeting setting (006 D19).
+    """
+    local_start = starts_at.astimezone(ZoneInfo(settings.TIME_ZONE))
+    payload = {
+        "start_time": local_start.strftime("%Y-%m-%dT%H:%M:%S"),
+        "timezone": settings.TIME_ZONE,
+        "duration": int((ends_at - starts_at).total_seconds() // 60),
+    }
+    if weekdays is not None:
+        payload["recurrence"] = {
+            "type": 2,  # weekly
+            "repeat_interval": 1,
+            "weekly_days": zoom_weekly_days(weekdays),
+            "end_times": count,
+        }
+    return payload
+
+
 class MeetingProvider:
     needs_manual_details = False
     checks_zoom = False
@@ -188,6 +233,35 @@ class MeetingProvider:
         """A provider that can't see Zoom knows no occurrence IDs."""
         return None
 
+    def update_occurrence(
+        self, *, host_account, meeting_id, occurrence_id=None, starts_at, ends_at
+    ) -> None:
+        """Nothing to change for a provider that can't reach Zoom (``manual``): IT does it."""
+
+    def update_series(self, *, host_account, meeting_id, starts_at, ends_at, weekdays, count):
+        """Nothing to change for a provider that can't reach Zoom (``manual``): IT does it."""
+
+    def meeting_snapshot(self, *, host_account, meeting_id) -> tuple[ZoomClass, ...]:
+        """A provider that can't see Zoom has no classes to read back."""
+        return ()
+
+
+def weekly_starts(starts_at, weekdays, count) -> list[datetime]:
+    """The first ``count`` weekly starts from ``starts_at`` on the ISO ``weekdays`` (``"1,3"``).
+
+    What Zoom makes of a weekly recurrence with ``end_times``. The fake provider uses it to
+    answer a series update the way Zoom would; ``starts_at`` is always on a ticked day.
+    """
+    zone = ZoneInfo(settings.TIME_ZONE)
+    local = starts_at.astimezone(zone)
+    days = {int(day) for day in weekdays.split(",") if day.strip()}
+    found, day = [], local.date()
+    while len(found) < count:
+        if day.isoweekday() in days:
+            found.append(datetime.combine(day, local.timetz()).astimezone(UTC))
+        day += timedelta(days=1)
+    return found
+
 
 class FakeProvider(MeetingProvider):
     """Deterministic stand-in for Zoom, steerable from tests (D17).
@@ -205,6 +279,15 @@ class FakeProvider(MeetingProvider):
       next delete raise that ``ProviderError`` (brief 011's cancel tests).
     - ``start_calls`` records each start-link request, and ``start_error`` makes the next one
       raise that ``ProviderError`` (brief 011, criterion 36).
+    - ``patched`` records every update in order (brief 012, criterion 23): a dict with the
+      account pk, the meeting ID, the occurrence ID, the new times and, for a series, the
+      weekdays and count. ``update_errors`` steers the next updates: each update takes the
+      first item, and raises it unless it's ``None`` (so ``[None, ZoomBusy()]`` lets the move
+      through and fails the compensating update). A series update is remembered per meeting
+      in ``series`` as ``ZoomClass`` items, as Zoom would make it (``weekly_starts``); a
+      delete of one of its occurrences removes it there, and an update of one moves it there,
+      so ``meeting_snapshot`` answers what Zoom would. ``snapshot_errors`` steers the next
+      read-backs the same way as ``update_errors`` (brief 012, criterion 32's failure tests).
 
     ``reset()`` clears all of it. With nothing steered every account is connected and free, so
     brief 005's behaviour is unchanged (criterion 33).
@@ -223,6 +306,10 @@ class FakeProvider(MeetingProvider):
     delete_error = None
     start_calls: list = []
     start_error = None
+    patched: list = []
+    update_errors: list = []
+    snapshot_errors: list = []
+    series: dict = {}
     _lock = threading.Lock()
 
     @classmethod
@@ -239,6 +326,10 @@ class FakeProvider(MeetingProvider):
             cls.delete_error = None
             cls.start_calls = []
             cls.start_error = None
+            cls.patched = []
+            cls.update_errors = []
+            cls.snapshot_errors = []
+            cls.series = {}
 
     def is_connected(self, host_account) -> bool:
         return host_account.pk not in type(self).not_connected
@@ -283,6 +374,12 @@ class FakeProvider(MeetingProvider):
                 type(self).delete_error = None
                 raise error
             type(self).deleted.append((host_account.pk, meeting_id, occurrence_id))
+            if occurrence_id and meeting_id in type(self).series:
+                type(self).series[meeting_id] = [
+                    item
+                    for item in type(self).series[meeting_id]
+                    if item.occurrence_id != occurrence_id
+                ]
 
     def start_url(self, *, host_account, meeting_id) -> str:
         """A start link on the reserved ``.invalid`` TLD, so it can never start a real meeting."""
@@ -293,6 +390,69 @@ class FakeProvider(MeetingProvider):
                 raise error
             type(self).start_calls.append((host_account.pk, meeting_id))
         return f"https://zoom.example.invalid/s/{meeting_id}"
+
+    def _record_update(self, record) -> None:
+        """Raise the next steered update error, or record the update (under the lock)."""
+        cls = type(self)
+        with cls._lock:
+            error = cls.update_errors.pop(0) if cls.update_errors else None
+            if error is not None:
+                raise error
+            cls.patched.append(record)
+            meeting_id, occurrence_id = record["meeting_id"], record["occurrence_id"]
+            if record["weekdays"] is not None:
+                length = record["ends_at"] - record["starts_at"]
+                cls.series[meeting_id] = [
+                    ZoomClass(start, start + length, str(int(start.timestamp() * 1000)))
+                    for start in weekly_starts(
+                        record["starts_at"], record["weekdays"], record["count"]
+                    )
+                ]
+            elif occurrence_id and meeting_id in cls.series:
+                # A moved occurrence keeps its ID, as the one-class move assumes (brief 012's
+                # Zoom facts; the owner's live check 26.1 confirms it against real Zoom).
+                cls.series[meeting_id] = [
+                    ZoomClass(record["starts_at"], record["ends_at"], occurrence_id)
+                    if item.occurrence_id == occurrence_id
+                    else item
+                    for item in cls.series[meeting_id]
+                ]
+
+    def update_occurrence(
+        self, *, host_account, meeting_id, occurrence_id=None, starts_at, ends_at
+    ) -> None:
+        self._record_update(
+            {
+                "host_account_id": host_account.pk,
+                "meeting_id": meeting_id,
+                "occurrence_id": occurrence_id,
+                "starts_at": starts_at,
+                "ends_at": ends_at,
+                "weekdays": None,
+                "count": None,
+            }
+        )
+
+    def update_series(self, *, host_account, meeting_id, starts_at, ends_at, weekdays, count):
+        self._record_update(
+            {
+                "host_account_id": host_account.pk,
+                "meeting_id": meeting_id,
+                "occurrence_id": None,
+                "starts_at": starts_at,
+                "ends_at": ends_at,
+                "weekdays": weekdays,
+                "count": count,
+            }
+        )
+
+    def meeting_snapshot(self, *, host_account, meeting_id) -> tuple[ZoomClass, ...]:
+        cls = type(self)
+        with cls._lock:
+            error = cls.snapshot_errors.pop(0) if cls.snapshot_errors else None
+            if error is not None:
+                raise error
+            return tuple(cls.series.get(meeting_id, ()))
 
 
 class ManualProvider(MeetingProvider):
@@ -458,6 +618,55 @@ class ZoomProvider(MeetingProvider):
         except UNREADABLE_ANSWER:
             raise ZoomUnavailable() from None
         return None
+
+    def update_occurrence(
+        self, *, host_account, meeting_id, occurrence_id=None, starts_at, ends_at
+    ) -> None:
+        """``PATCH /meetings/{id}[?occurrence_id=…]`` with the new times (brief 012, criterion 10).
+
+        With ``occurrence_id``, one class of a weekly meeting; Zoom's reference says an
+        occurrence update supports ``start_time`` (a full date and time) and ``duration``, so
+        the class may move to another date. Without it, the whole (one-off) meeting.
+        """
+        params = {"occurrence_id": occurrence_id} if occurrence_id else None
+        with self._client(host_account) as client:
+            client.patch(
+                zoom_api.meeting_path(meeting_id), update_payload(starts_at, ends_at), params
+            )
+
+    def update_series(self, *, host_account, meeting_id, starts_at, ends_at, weekdays, count):
+        """``PATCH /meetings/{id}`` re-anchoring the series at ``starts_at`` (D3, criterion 10).
+
+        One call for the whole series, whatever its length, so a move spends one of Zoom's
+        100 daily updates for the meeting and the user, not one per class.
+        """
+        payload = update_payload(starts_at, ends_at, weekdays=weekdays, count=count)
+        with self._client(host_account) as client:
+            client.patch(zoom_api.meeting_path(meeting_id), payload)
+
+    @sensitive_variables("detail")
+    def meeting_snapshot(self, *, host_account, meeting_id) -> tuple[ZoomClass, ...]:
+        """The meeting's classes in Zoom now, less deleted ones, as ``ZoomClass`` items.
+
+        One ``GET /meetings/{id}`` (brief 012, criteria 11 and 32). Each class's length is its
+        own ``duration``, else the meeting's, as the busy-time reading does. An answer this
+        code can't read is ``ZoomUnavailable``, as ``occurrence_id_for`` treats it.
+        """
+        with self._client(host_account) as client:
+            detail = client.get(zoom_api.meeting_path(meeting_id))
+        try:
+            classes = []
+            for item in detail.get("occurrences") or []:
+                if item.get("status") == "deleted":
+                    continue
+                start = parse_zoom_time(item["start_time"])
+                minutes = _duration(item, default=_duration(detail))
+                classes.append(
+                    ZoomClass(start, start + timedelta(minutes=minutes), str(item["occurrence_id"]))
+                )
+            return tuple(classes)
+        except UNREADABLE_ANSWER:
+            raise ZoomUnavailable() from None
 
     def check_connection(self, host_account):
         """Prove the token, the user and the list scope (criterion 36, D12).

@@ -170,7 +170,7 @@ def test_the_cancel_rules_of_zl42_at_three_moments(
     """Criterion 3's table, first three rows."""
     booking = zl42(zoom02)
     assert booking.can_cancel_booking(now) is can_cancel
-    found = booking.cancellable_classes(now)
+    found = booking.remaining_classes(now)
     assert len(found) == cancellable
     assert [o.starts_at for o in found] == sorted(o.starts_at for o in found)
     running = booking.class_in_progress(now)
@@ -191,14 +191,14 @@ def test_the_kept_classes_are_the_booked_ones_that_have_started(
     zoom02, it_user, django_assert_num_queries, now, kept
 ):
     """Review round 1, SF2: the classes a whole cancel leaves alone, soonest first. Together
-    with ``cancellable_classes`` they cover every booked class, never one twice."""
+    with ``remaining_classes`` they cover every booked class, never one twice."""
     booking = zl42(zoom02)
     cancel_class(booking, at(7, 8, 30), it_user)
     booking.refresh_from_db()
     classes = list(booking.occurrences.all())
     with django_assert_num_queries(0):  # given the classes, the rule asks nothing more
         found = booking.kept_classes(now, occurrences=classes)
-        cancellable = booking.cancellable_classes(now, occurrences=classes)
+        cancellable = booking.remaining_classes(now, occurrences=classes)
     assert [o.starts_at for o in found] == kept
     booked = {o.pk for o in classes if o.cancelled_at is None}
     assert {o.pk for o in found} | {o.pk for o in cancellable} == booked
@@ -218,7 +218,7 @@ def test_after_cancelling_the_seven_left_on_tuesday_the_booking_is_cancelled(
     booking = zl42(zoom02)
     now = at(6, 10)
     monkeypatch.setattr("django.utils.timezone.now", lambda: now)
-    for occurrence in booking.cancellable_classes(now):
+    for occurrence in booking.remaining_classes(now):
         cancel_class(booking, occurrence.starts_at, it_user)
     booking.refresh_from_db()
     assert booking.status_after_cancel(now) == "cancelled"
@@ -236,7 +236,7 @@ def test_after_cancelling_one_class_the_booking_stays_approved(zoom02, it_user):
     booking.refresh_from_db()
     assert booking.status_after_cancel() == "approved"
     assert booking.status == "approved"
-    assert len(booking.cancellable_classes()) == 7
+    assert len(booking.remaining_classes()) == 7
 
 
 def test_status_after_cancel_counts_only_classes_not_cancelled_and_not_ended(zoom02, it_user):
@@ -265,7 +265,7 @@ def test_a_request_that_is_not_approved_is_never_cancellable(zoom02, it_user, st
         if status == LinkRequest.Status.REJECTED:
             link_request.reject(it_user, "No.")
     assert link_request.can_cancel_booking() is False
-    assert link_request.cancellable_classes() == []
+    assert link_request.remaining_classes() == []
 
 
 def test_cancelling_a_booking_never_changes_a_class_that_has_started(zoom02, it_user, monkeypatch):

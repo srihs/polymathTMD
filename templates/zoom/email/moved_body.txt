@@ -1,0 +1,15 @@
+{# Body of the "class times changed" message, to requester_email only, sent after the commit (brief 012, criterion 18; D.5.2). Plain text. One pair per moved class, soonest first, on two lines (P4): "Was: {old}" then "Now: {new}", in the class_span form ("Wed 7 Oct 2026, 8:30 am to 11:30 am", Colombo time), with a blank line between pairs. Then "Your Zoom link and start link stay the same. The start link follows the new times." only when can_start, otherwise "Your Zoom link stays the same." (P3: the manual provider's email names no start link anywhere); the "let your students know" line and the reply line every time. Holds no join link, passcode, start link or host key: "start link" appears only as words. Context: link_request (LinkRequest: requester_name, reference, class_name), moves (list of old_start, old_end (aware datetimes, the times before the move) and occurrence (Occurrence at its new starts_at, ends_at)), can_start (bool; false for the manual provider, G3). Filters: zoom_format (class_date, class_time). #}{% load zoom_format %}{% autoescape off %}{% with n=moves|length %}Hello {{ link_request.requester_name }},
+
+The IT desk has changed the time of {{ n }} class{{ n|pluralize:"es" }} in your Zoom booking {{ link_request.reference }} for {{ link_request.class_name }}.
+
+{% for move in moves %}Was: {{ move.old_start|class_date }}, {{ move.old_start|class_time }} to {{ move.old_end|class_time }}
+Now: {{ move.occurrence.starts_at|class_date }}, {{ move.occurrence.starts_at|class_time }} to {{ move.occurrence.ends_at|class_time }}
+
+{% endfor %}{% if can_start %}Your Zoom link and start link stay the same. The start link follows the new times.{% else %}Your Zoom link stays the same.{% endif %}
+
+Zoom doesn't tell the people you shared the link with. Please let your students know the new time{{ n|pluralize }}.
+
+If the new time doesn't work for you, reply to the IT desk.
+
+Polymath College IT desk
+{% endwith %}{% endautoescape %}

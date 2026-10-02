@@ -12,7 +12,9 @@ Why it is shaped like this:
   request before acting on it, so even a create is safe to repeat then. Nothing else is ever
   repeated: a repeated create after a timeout could make a second meeting.
 - **One error mapping** (criterion 10): every failure becomes a ``ProviderError`` subclass from
-  ``errors.py`` whose message is a fixed phrase. Zoom's response text never leaves this module.
+  ``errors.py`` whose message is a fixed phrase. Zoom's response text never leaves this module:
+  it's never shown or logged (006 criterion 10, as amended by brief 012's D19). The one place
+  it's read at all is a ``429``, to choose between two fixed errors (``_is_daily_limit``).
 - **The token cache** (D4) lives in this process's memory only: never the database, never
   Django's cache (which could later be the database or Redis) and never a log. One token per
   credential set, reused until 300 seconds before it expires. Threads (the preview's parallel
@@ -40,6 +42,7 @@ from urllib3.exceptions import ProtocolError
 from .errors import (
     ZoomAuthFailed,
     ZoomBusy,
+    ZoomDailyLimit,
     ZoomMeetingNotFound,
     ZoomMissingScope,
     ZoomRejected,
@@ -58,6 +61,18 @@ MAX_PAGES = 10
 MISSING_SCOPE_CODES = frozenset({4700, 4711})
 USER_NOT_FOUND = 1001
 MEETING_NOT_FOUND = 3001
+
+# How Zoom marks a 429 as its daily limit rather than its per-second one (brief 012, criterion
+# 14, D19). Zoom's rate-limits page (https://developers.zoom.us/docs/api/rate-limits/) words
+# the two answers "You have reached the maximum per-second rate limit for this API. Try again
+# later." and "You have reached the maximum daily rate limit for this API. Refer to the
+# response header for details on when you can make another request." The page's earlier
+# version (marketplace.zoom.us/docs/api-reference/rate-limits/, as archived in 2021-2022)
+# also named that header: ``X-RateLimit-Type`` is ``QPS`` for the per-second limit and
+# ``Daily-limit`` for the daily one. Today's page no longer lists it, so either signal is
+# enough, and neither is required.
+RATE_LIMIT_TYPE_HEADER = "X-RateLimit-Type"
+DAILY_WORD = "daily"
 
 # The clock the token cache uses; a module name so tests can move time forward.
 monotonic = time.monotonic
@@ -92,12 +107,36 @@ def _zoom_code(response):
     return code if isinstance(code, int) else None
 
 
+@sensitive_variables("kind", "body", "message")
+def _is_daily_limit(response) -> bool:
+    """Whether a ``429`` is Zoom's daily limit: its header or its message says ``daily``.
+
+    Zoom's header value and message are read only to choose between two fixed errors; neither
+    is returned, kept or logged (D19). A body that isn't JSON, or has no text ``message``,
+    reads as "not daily", so an odd answer is still ``ZoomBusy`` and never raises.
+    """
+    kind = response.headers.get(RATE_LIMIT_TYPE_HEADER) or ""
+    if isinstance(kind, str) and DAILY_WORD in kind.lower():
+        return True
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    message = body.get("message") if isinstance(body, dict) else None
+    return isinstance(message, str) and DAILY_WORD in message.lower()
+
+
 def _api_error(response):
-    """The error for a non-2xx API answer (criterion 10). A 401 here is after the retry."""
+    """The error for a non-2xx API answer (criterion 10). A 401 here is after the retry.
+
+    Only a ``429`` is told apart by Zoom's own answer (brief 012, criterion 14): the daily
+    limit is lasting until Zoom's reset at 00:00 UTC, so "try again in a few minutes" would
+    keep failing all day. Any other status with ``daily`` in its message is unaffected.
+    """
     status = response.status_code
     code = _zoom_code(response)
     if status == 429:
-        return ZoomBusy()
+        return ZoomDailyLimit() if _is_daily_limit(response) else ZoomBusy()
     if status >= 500:
         return ZoomUnavailable(maybe_done=True)
     if status in (400, 401) and code in MISSING_SCOPE_CODES:
@@ -166,6 +205,11 @@ class ZoomClient:
 
     def post(self, path, json) -> dict:
         return self._json(self._call("POST", path, json=json))
+
+    def patch(self, path, json, params=None) -> None:
+        """Update (brief 012). Zoom answers ``204 No Content``; like a create, it's never repeated
+        here after a timeout, so the caller decides what an unanswered update means."""
+        self._call("PATCH", path, params=params, json=json)
 
     def delete(self, path, params=None) -> None:
         """Delete; a 404 "no such meeting" counts as done (it's already gone)."""

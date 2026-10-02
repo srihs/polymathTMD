@@ -2,6 +2,7 @@
 46, 48, 50, 59-61, 63-65)."""
 
 import logging
+import re
 from datetime import date, time
 from io import StringIO
 from unittest import mock
@@ -276,7 +277,12 @@ def test_approval_email_carries_link_start_link_classes_and_recording(account, i
     assert message.from_email == "it-desk@polymath.example"
     assert message.subject == "Your Zoom link for <b>Maths & Science</b>"
     body = message.body
-    start_url = f"http://testserver/zoom/start/{services.start_token(link_request)}/"
+    # The token the email actually carries, decoded: a second ``start_token()`` would embed the
+    # real clock's second, so comparing two of them is flaky (review round 2, nit; the same
+    # fix as test_cancel_services' ``test_a_start_token_names_its_booking``).
+    [token] = re.findall(r"http://testserver/zoom/start/([^/\s]+)/", body)
+    assert services.link_request_from_start_token(token) == link_request
+    start_url = f"http://testserver/zoom/start/{token}/"
     for expected in (
         link_request.join_url,
         link_request.meeting_id,

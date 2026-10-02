@@ -1,5 +1,5 @@
-"""Forms for Zoom link requests (brief 005), Zoom host accounts (briefs 008 and 006) and
-cancelling a booking (brief 011).
+"""Forms for Zoom link requests (brief 005), Zoom host accounts (briefs 008 and 006),
+cancelling a booking (brief 011) and moving classes (brief 012).
 
 Labels, help and error copy come from the briefs' Design sections and pinned criteria, so the
 form is their one source: the templates only print ``field.label`` and ``field.help_text``.
@@ -8,10 +8,13 @@ The rules are not repeated here. Both model forms are ``ModelForm``s, so the mod
 """
 
 import re
+from datetime import datetime, timedelta
 
 from django import forms
-from django.core.exceptions import ValidationError
+from django.core import signing
+from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 from django.forms.models import ModelChoiceIteratorValue
+from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
 
 from .models import (
@@ -23,7 +26,7 @@ from .models import (
     HostAccount,
     LinkRequest,
 )
-from .services import NOT_OFFERED
+from .services import MOVE_PAGE_OUT_OF_DATE, NOT_OFFERED, read_move_shown
 from .validators import (
     CREDENTIAL_SET_ERROR,
     HOST_KEY_ERROR,
@@ -136,8 +139,11 @@ class LinkRequestForm(forms.ModelForm):
             "wants_recording": forms.CheckboxInput,
             "notes": forms.Textarea(attrs={"rows": 4}),
             "first_date": forms.DateInput(attrs={"type": "date"}),
-            "start_time": forms.TimeInput(attrs={"type": "time", "step": 300}),
-            "end_time": forms.TimeInput(attrs={"type": "time", "step": 300}),
+            # ``format``: an ``<input type=time>`` only takes ``HH:MM``; Django's default
+            # (``TIME_INPUT_FORMATS[0]``) would print ``08:30:00`` for a pre-filled value
+            # (brief 012, criterion 28). The move forms copy these widgets.
+            "start_time": forms.TimeInput(attrs={"type": "time", "step": 300}, format="%H:%M"),
+            "end_time": forms.TimeInput(attrs={"type": "time", "step": 300}, format="%H:%M"),
             "repeat": forms.RadioSelect(attrs={"data-repeat": ""}),
             "last_date": forms.DateInput(attrs={"type": "date"}),
             "requester_name": forms.TextInput(attrs={"autocomplete": "name"}),
@@ -290,6 +296,146 @@ class CancelForm(forms.Form):
         error_messages={"required": CANCEL_REASON_REQUIRED, "max_length": CANCEL_REASON_TOO_LONG},
         widget=forms.Textarea(attrs={"rows": "4"}),
     )
+
+
+# --------------------------------------------------------------------------- Moving (012)
+
+MOVE_DATE_HELP = (
+    "Any date within the next year. It doesn't have to be one of the booking's usual days."
+)
+
+
+def _request_form_time_field(name):
+    """``start_time`` or ``end_time`` exactly as the request form has it (criterion 5).
+
+    The label, help, "required" message and widget (``type=time``, ``step=300``) are read from
+    ``LinkRequestForm.Meta``, their one definition, so the move forms can't drift from it.
+    The widget is copied by the field, so the request form's own is never changed.
+    """
+    meta = LinkRequestForm.Meta
+    return forms.TimeField(
+        label=meta.labels[name],
+        help_text=meta.help_texts[name],
+        error_messages=meta.error_messages[name],
+        widget=meta.widgets[name],
+    )
+
+
+class _MoveFormMixin(forms.Form):
+    """What both move forms share: the signed ``shown`` field and the rules' errors.
+
+    ``shown`` (criterion 30) carries the classes as the page showed them, signed by
+    ``LinkRequest.move_fingerprint``. The view sets it on every render with ``set_shown``, so
+    a re-render after a refusal acts on the times now on screen. ``clean()`` reads it back
+    with ``services.read_move_shown`` into ``cleaned_data["shown"]``; a missing or unreadable
+    value becomes a **non-field** error (the error summary would otherwise link to a hidden
+    input) and sets ``out_of_date``, which the view answers with a 400.
+    """
+
+    shown = forms.CharField(widget=forms.HiddenInput, required=False)
+
+    out_of_date = False
+
+    def set_shown(self, value):
+        """Put a fresh ``shown`` on the form, bound or not, for the page about to be drawn."""
+        if self.is_bound:
+            self.data = self.data.copy()
+            self.data[self.add_prefix("shown")] = value
+        else:
+            self.initial["shown"] = value
+
+    def clean(self):
+        cleaned_data = super().clean()
+        try:
+            cleaned_data["shown"] = read_move_shown(cleaned_data.get("shown"))
+        except signing.BadSignature:
+            cleaned_data["shown"] = None
+            self.out_of_date = True
+            self.add_error(None, MOVE_PAGE_OUT_OF_DATE)
+        return cleaned_data
+
+    def add_rule_errors(self, errors):
+        for name, message in errors.items():
+            self.add_error(None if name == NON_FIELD_ERRORS else name, message)
+
+
+class MoveClassForm(_MoveFormMixin):
+    """Move one class: a new date, start and end (brief 012, criterion 5).
+
+    ``clean()`` asks the class itself (``Occurrence.move_errors``), so the form and
+    ``services.move_class()`` apply the same rules. G2: the date widget's ``min`` (today) and
+    ``max`` (the last date 005's ``DATE_TOO_FAR`` allows) are set here, so
+    ``partials/field.html`` prints them with nothing passed in. The initial values are the
+    class's current date and times, in Colombo time.
+    """
+
+    date = forms.DateField(
+        label="Date of the class",
+        help_text=MOVE_DATE_HELP,
+        error_messages={"required": DATE_REQUIRED, "invalid": DATE_REQUIRED},
+        widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+    )
+    start_time = _request_form_time_field("start_time")
+    end_time = _request_form_time_field("end_time")
+
+    def __init__(self, *args, occurrence, **kwargs):
+        self.occurrence = occurrence
+        start = timezone.localtime(occurrence.starts_at)
+        end = timezone.localtime(occurrence.ends_at)
+        # ``FormView`` always passes ``initial`` (an empty dict), so the current values are the
+        # base and anything the caller passed goes on top.
+        current = {"date": start.date(), "start_time": start.time(), "end_time": end.time()}
+        kwargs["initial"] = {**current, **(kwargs.get("initial") or {})}
+        super().__init__(*args, **kwargs)
+        today = timezone.localdate()
+        latest = today + timedelta(days=LinkRequest.MAX_DAYS_AHEAD)
+        self.fields["date"].widget.attrs.update(min=today.isoformat(), max=latest.isoformat())
+
+    def clean(self):
+        cleaned_data = super().clean()
+        day = cleaned_data.get("date")
+        start, end = cleaned_data.get("start_time"), cleaned_data.get("end_time")
+        if day is None or start is None or end is None:
+            return cleaned_data
+        zone = timezone.get_default_timezone()
+        cleaned_data["starts_at"] = datetime.combine(day, start, tzinfo=zone)
+        cleaned_data["ends_at"] = datetime.combine(day, end, tzinfo=zone)
+        self.add_rule_errors(
+            self.occurrence.move_errors(
+                starts_at=cleaned_data["starts_at"], ends_at=cleaned_data["ends_at"]
+            )
+        )
+        return cleaned_data
+
+
+class MoveSeriesForm(_MoveFormMixin):
+    """A new time of day for every remaining class (brief 012, criterion 5; D10: time only).
+
+    ``clean()`` asks the booking (``LinkRequest.series_move_errors``). The initial values are
+    the booking's current times, which a series move keeps up to date (D4).
+    """
+
+    start_time = _request_form_time_field("start_time")
+    end_time = _request_form_time_field("end_time")
+
+    def __init__(self, *args, link_request, occurrences=None, **kwargs):
+        self.link_request = link_request
+        self.occurrences = occurrences
+        current = {"start_time": link_request.start_time, "end_time": link_request.end_time}
+        kwargs["initial"] = {**current, **(kwargs.get("initial") or {})}
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        start, end = cleaned_data.get("start_time"), cleaned_data.get("end_time")
+        if start is None or end is None:
+            return cleaned_data
+        self.add_rule_errors(
+            self.link_request.series_move_errors(
+                start_time=start, end_time=end, occurrences=self.occurrences
+            )
+        )
+        return cleaned_data
 
 
 # --------------------------------------------------------------------------- Zoom accounts

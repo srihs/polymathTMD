@@ -283,6 +283,35 @@ Zoom accounts list has a `Timetable` link on every row. Nothing is booked or mov
 timetable — it's read-only. A cancelled class simply disappears from it, with no struck-through
 "ghost" entry; its history stays on the request's own detail page.
 
+### Moving a class, or changing a series' time
+
+From an approved booking's own detail page, the IT desk can move one class to a different date and
+time, or change the time of day of every class still to come in a weekly booking (without
+sign-in to Zoom). Either way the join link, meeting ID and start link stay exactly the same — a
+move never creates a new meeting or moves the booking to a different Zoom account. Each movable
+class gets its own **Move this class** action, and a weekly booking with classes still to come
+gets **Change the time of the remaining classes**; a moved class is marked **Moved**, with who
+moved it and when.
+
+A new time has to pass the same checks an approval does: no other booked class on the account
+overlaps it, and (with `ZOOM_PROVIDER=zoom`) Zoom shows nothing else booked on that account at that
+time either. **A move is never offered another account** — if the booking's own account is busy at
+the new time, the move is simply refused, because moving to a different account would mean a new
+meeting and new links. A series move can only change the time of day; it can't change which
+weekdays the classes fall on, or add or remove classes — for that, cancel the classes that no
+longer fit (see below) and ask for a new booking. Moving a class that has already started, or a
+series while one of its classes is in progress, isn't allowed either.
+
+Either way the requester gets one email showing the old and new time of every class that moved.
+With `ZOOM_PROVIDER=zoom` the app also changes the meeting in Zoom itself, in the same step; with
+`manual` nothing changes in Zoom, and IT is told to change it there too.
+
+**If a move's Zoom call fails partway through,** the app always tries to put Zoom back to what the
+database holds, and only ever says "nothing was changed" once it has checked that Zoom really
+matches again. If Zoom can't be reached at all to make the change, the page says so and nothing is
+touched, here or in Zoom. See `docs/tasks/012-move-a-class.md` for the full set of failure
+messages.
+
 ### Cancelling a booking, or one of its classes
 
 Only the IT desk can cancel — a requester can't cancel their own booking through a link. They reply
@@ -372,6 +401,8 @@ https://developers.zoom.us/docs/api/meetings/.**
    - `meeting:write:meeting:admin` — create a meeting
    - `meeting:read:list_meetings:admin` — list a user's meetings
    - `meeting:read:meeting:admin` — view a meeting, for recurring occurrences
+   - `meeting:update:meeting:admin` — update a meeting, for moving a class or changing a series'
+     time (task 012)
    - `meeting:delete:meeting:admin` — delete a meeting, for rollback and cancelling
    - `user:read:user:admin` — view a user, for the connection check
 
@@ -395,6 +426,19 @@ https://developers.zoom.us/docs/api/meetings/.**
 11. Once every paid account works: run `python manage.py check_zoom_connections` and
     `python manage.py check --database default`, then set `ZOOM_PROVIDER=zoom` in `.env` and
     recreate `web`.
+
+**Adding the move scope to an account connected before task 012:** an app set up before task 012
+has only the first four scopes above. To let it move classes too:
+
+1. On marketplace.zoom.us, open that account's `Polymath TMD` Server-to-Server OAuth app, then
+   **Scopes → Add Scopes**, and add `meeting:update:meeting:admin` ("Meeting" → "Update a
+   meeting").
+2. Save. The app stays activated; no new credentials are needed, and nothing changes on the
+   server.
+3. A token fetched before this change doesn't carry the new scope, but it runs out within the
+   hour. Once every account's app has been updated, restart `web` so the next call to each account
+   fetches a fresh token. Before that, a move attempt fails with "The Zoom app for {label} is
+   missing the permission to change meetings."
 
 **Rotating a secret:** regenerate it on the app's App Credentials page in Zoom, update
 `zoom-credentials.env`, recreate `web`, then press **Check connection** again. The two free
@@ -440,6 +484,14 @@ booked, and IT sees a plain message saying what happened and what to try next.
   Zoom don't appear there.
 - The `recurrence.end_times` cap of 60 classes per series is confirmed from Zoom's own API docs
   (2026-09-26): https://developers.zoom.us/docs/api/meetings/.
+- **Zoom limits each user to 100 create or update calls a day,** resetting at 5:30 am Colombo time
+  (00:00 UTC). This is per Zoom user, not per account, so it can be reached by any mix of
+  approving and moving that account's classes. A series move counts as one update, not one per
+  class (task 012 D3), to use as little of that budget as possible. Once it's reached, approving,
+  moving or Check connection tells IT the account's daily limit is used up and the exact time it
+  resets, instead of a plain "try again in a few minutes" that would keep failing until morning.
+  Zoom's own wording for the error is read only to tell a daily limit apart from an ordinary "too
+  busy right now" refusal — it's never shown on a page, in an email or in a log (task 012 D19).
 
 **Manual mode, the fallback:** with `ZOOM_PROVIDER=manual`, the app can't see meetings in Zoom at
 all. When IT approves a request, they first create the meeting in Zoom on the account the system
@@ -450,18 +502,29 @@ tells them to ask the IT desk how to start the class as host. `manage.py check -
 `zoom.W001` whenever `manual` is set, because it can't see meetings made directly in Zoom and so can
 double-book them.
 
-**Go-live gate:** don't point real requesters at the public form in production yet, until both of
-these are done:
+**Go-live gate:** don't point real requesters at the public form in production yet. The owner's
+ruling (2026-09-26) is that production takes no real requests until **every** one of tasks 006,
+011, 012, 013 and 014 is done, each with its own owner live check against a real paid Zoom
+account:
 
-1. `ZOOM_PROVIDER=zoom` is running in production, with every active paid Zoom account connected —
-   `python manage.py check_zoom_connections` passes, and `python manage.py check --database default`
-   reports no `zoom.E004`. Task 006 built this; it's passed every automated check and is waiting on
-   the owner's live check against one real paid Zoom account (`docs/tasks/006-live-zoom-connection.md`).
-2. Task 011, "Cancel a booking and start a class from a link", adds cancelling (so a wrong or
-   unneeded approval can be undone, and so an account with a booking can be freed without waiting
-   for the class to finish) and the start link that replaces emailing the host key. It's also built
-   and passing every automated check, and is waiting on the owner's live check against a real paid
-   Zoom account (`docs/tasks/011-cancel-and-start-link.md`).
+1. **006, live Zoom connection** — `ZOOM_PROVIDER=zoom` running in production, with every active
+   paid Zoom account connected (`python manage.py check_zoom_connections` passes, and
+   `python manage.py check --database default` reports no `zoom.E004`). Built and passing every
+   automated check; waiting on the owner's live check (`docs/tasks/006-live-zoom-connection.md`).
+2. **011, cancel a booking and start a class from a link** — cancelling (so a wrong or unneeded
+   approval can be undone, and so an account with a booking can be freed without waiting for the
+   class to finish) and the start link that replaces emailing the host key. Built and passing
+   every automated check; waiting on the owner's live check
+   (`docs/tasks/011-cancel-and-start-link.md`).
+3. **012, move a class** — moving one class or changing a weekly booking's remaining classes to a
+   new time, without a new meeting or new links. Built and passing every automated check; waiting
+   on the owner's live check (`docs/tasks/012-move-a-class.md`).
+4. **013, Zoom webhook sync** — not yet built. Picks up changes made directly in Zoom.
+5. **014, recording links** — not yet built. Emails the recording link once Zoom finishes
+   processing it.
+
+This replaces the earlier gate of "006 + 011 only"; see each task's own brief for what its live
+check covers.
 
 **If a host key leaks** (a forwarded email, a shared mailbox, a compromised account): change it in
 Zoom first, then re-type it on that account's Zoom accounts page (`Change {name}` → New host key).

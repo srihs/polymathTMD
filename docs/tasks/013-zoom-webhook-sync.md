@@ -34,6 +34,8 @@ A `Check against Zoom` button and a nightly command do the same for any event th
 
 **Place in the split** (brief 011, Scope): third, after 011 (cancel a class) and 012 (move a class), which it reuses. 014 then adds recordings to this endpoint.
 
+**It's a go-live gate item** (owner, 2026-09-26: "we go live after all build"; brief 012, D12). Production takes no real requests until 006, 011, 012, 013 and 014 are all done, each with its owner live check. So the webhook path and the production domain (D6, steps 0a–0c) must work before go-live, not after.
+
 **In scope**
 
 - **Settings (`tmd-devops`):** a fourth, optional variable per credential set, `ZOOM_S2S_<NAME>_WEBHOOK_SECRET`; the `.example` and README; check `zoom.W002`.
@@ -339,3 +341,18 @@ Migration `0009_zoom_sync`, numbered after 012's `0008`.
    - **README:** "Keeping in step with Zoom", with D6's steps (including the proxy steps 0a–0c), the nightly command, rotating a webhook secret, and 006 D15's limit marked resolved.
    - **CLAUDE.md:** the `zoom` bullet (the webhook endpoint, `reconcile()` as the one sync path, and the one `csrf_exempt` view) and the env gotcha for the fourth variable.
    - **`docs/CHANGELOG.md`**, the 006 amendment notes (D7), and closes the brief.
+
+## Design
+<!-- owner: tmd-ui-designer — layout + wireframes, components (existing classes), states, copy, accessibility, progressive enhancement -->
+
+## Implementation notes
+<!-- owners: tmd-devops, tmd-django-backend, tmd-frontend — one sub-heading each: files changed, contract deviations, migrations, new deps (with reason), self-check output -->
+
+## Verification
+<!-- owner: tmd-test-verifier — verdict, criteria → tests table, checklist results, failures -->
+
+## Review
+<!-- owner: tmd-code-reviewer (written by the main session) — verdict, blockers, should-fix, nits -->
+
+## Docs
+<!-- owner: tmd-docs-writer — files updated; closes Status -->

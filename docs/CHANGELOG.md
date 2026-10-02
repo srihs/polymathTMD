@@ -2,6 +2,84 @@
 
 Newest first. One entry per task. Each entry lists user-visible changes, then technical notes.
 
+## 2026-10-02 — 012: Move a class (awaiting the owner's live check)
+
+- From an approved booking's own detail page, the IT desk can now move one class to a different
+  date and time, or change the time of day of every class still to come in a weekly booking — both
+  without signing in to Zoom. The join link, meeting ID and start link never change, because a move
+  stays on the same Zoom account and the same meeting. Each movable class gets its own **Move this
+  class** action, a weekly booking with classes still to come gets **Change the time of the
+  remaining classes**, and a moved class is marked **Moved**, with who moved it and when.
+- A new time has to pass the same checks an approval does: no other booked class on the account
+  overlaps it, and, with `ZOOM_PROVIDER=zoom`, Zoom shows nothing else booked on that account at
+  that time either. **A move is never offered another account** — a busy account simply refuses the
+  move, because moving to a different account would mean a new meeting and new links. A series move
+  can only change the time of day, never the weekdays or how many classes there are; a class that's
+  already started, or a series with one in progress, can't be moved.
+- The requester gets one email per move, showing the old and new time of every class that changed.
+  With `ZOOM_PROVIDER=zoom` the meeting is changed in Zoom in the same step; with `manual` nothing
+  changes in Zoom, and IT is told to change it there too.
+- If Zoom's answer to a move is uncertain or the move fails partway through, the app always tries
+  to put Zoom back to what the database holds, and only ever says "nothing was changed" once it has
+  checked that Zoom really matches again. A message now says exactly how far an undo got, instead of
+  always claiming the same thing.
+- A daily-limit refusal from Zoom (100 create/update calls a day per Zoom user) now tells IT when
+  to try again, instead of the misleading "try again in a few minutes" that kept failing until the
+  next morning. This applies wherever a daily limit can be hit: approving, cancelling, moving and
+  Check connection.
+- **Owner setup needed before this goes live:** each paid account's Zoom app needs the new
+  `meeting:update:meeting:admin` scope added under **Scopes → Add Scopes** in its Server-to-Server
+  OAuth app on marketplace.zoom.us, then `web` restarted once every account is updated. See the
+  README's "Connecting an account to Zoom" section.
+- Technical notes:
+  - **New migration:** `zoom/0008_move_classes` (schema only, reversible): `Occurrence.moved_at`
+    and `moved_by` (`PROTECT`, nullable), set on every class a move changes.
+  - **A stale form can no longer silently overwrite someone else's move.** Each move form carries a
+    hidden, signed field, `shown` (`LinkRequest.move_fingerprint()`, its own salt
+    `MOVE_SHOWN_SALT`), naming the times the form displayed. The check runs inside the move's locked
+    transaction, before any Zoom call: if what's shown no longer matches the database, the move is
+    refused (409) with no write, no Zoom call and no email, and the person is told the new current
+    time, not left to silently clobber it. `shown` is refreshed only on GET and on that refusal, so
+    a failed, unrelated resubmit (an invalid time, say) can't quietly accept someone else's move as
+    "seen" and let a second, valid post overwrite it.
+  - **A shared template bug is fixed, for every form, not just this one's.** `templates/partials/field.html`
+    used to print a date or time field's raw value, which Django's template engine localises for
+    display (`Oct. 7, 2026`, `7 a.m.`) — invalid as an `<input>` value, so browsers silently dropped
+    it and every date/time field rendered through this partial showed up blank on GET. It now prints
+    the widget's own formatted value instead (`field.subwidgets.0.data.value`), the same value
+    Django's own widget templates print, so the move forms (and every other date/time field in the
+    app) really do pre-fill. Typed-but-invalid values, and the password guard, are unaffected.
+  - **Zoom's daily call limit (100 creates/updates per user per day, reset at 00:00 UTC / 5:30 am
+    Colombo) is now told apart from an ordinary "too busy right now" refusal.** For a `429` only,
+    Zoom's rate-limit header or a `daily` in its own error message selects the new `ZoomDailyLimit`
+    error instead of the existing `ZoomBusy`. Zoom's own wording is read only to make that choice —
+    it's never shown on a page, in an email or in a log (amends task 006 criterion 10's "Zoom's text
+    is ignored" to "never shown or logged"). One helper, `services.daily_reset_sentence()`, builds
+    the "try again after 5:30 am on {date}" sentence everywhere it's needed, and the daily case is
+    now checked before the generic "lasting error" case in every caller that can see it (approve's
+    create and look-up, cancel's delete, the move's look-up, Check connection), so none of them
+    wrongly tell IT to press Check connection or that waiting won't help. Dated amendment notes were
+    added to task 006 (criteria 10, 28, 30(a), 36) and task 011 (criterion 12) recording this.
+  - **A pre-existing flaky test from task 011 is fixed.** Two tests compared two separately-built
+    signed start tokens, which embed the real clock's second and so could differ by one second under
+    load. They now decode the one token the app actually issued instead of rebuilding a second one
+    to compare against.
+  - **`LinkRequest.cancellable_classes()` is renamed `remaining_classes()`,** since "remaining
+    classes" is the one definition both cancelling and moving now share; every caller was updated.
+  - The go-live gate (README) now waits for tasks 006, 011, 012, 013 and 014, each with its own
+    owner live check — it previously named only 006 and 011.
+  - Verified PASS (1314 tests, four fix cycles) and reviewed APPROVE (round 3, after two rounds of
+    should-fix items); see `docs/tasks/012-move-a-class.md`. **Criterion 26, the owner's live check
+    against a real paid Zoom account — including cancelling a moved class afterwards to confirm it's
+    really gone from Zoom — hasn't been run yet. This task stays open until the owner reports it.**
+  - Follow-ups, recorded but not built here: the stale-form message after a same-day one-class move
+    names the booking's unchanged series times rather than the one class that actually moved — a
+    copy fix for later, not a behaviour bug; a daily-limit refusal on the public, sign-in-free start
+    page still shows the generic "couldn't reach Zoom" text rather than naming the reset time; the
+    undo helper's catch-all logs no stack trace, by design, so one would need adding if this path
+    ever needs diagnosing; tasks 013 (Zoom webhook sync, so changes made directly in Zoom are picked
+    up) and 014 (email the recording link once Zoom finishes one) are next.
+
 ## 2026-09-26 — 011: Cancel a booking and Start this class link (awaiting the owner's live check)
 
 - The IT desk can now cancel a booking — the whole thing, or just one class of a weekly booking —

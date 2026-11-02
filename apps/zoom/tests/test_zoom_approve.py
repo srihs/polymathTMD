@@ -31,7 +31,7 @@ SAME_MOMENT = "Someone else was approving at the same moment. Nothing was booked
 def live(settings, account):
     """Zoom 01, connected, with a token and an empty meeting list registered."""
     settings.ZOOM_PROVIDER = "zoom"
-    zm.connect(settings, account)
+    zm.connect(account)
     return account
 
 
@@ -84,7 +84,7 @@ def test_zoom_is_asked_fresh_before_any_lock_and_the_create_comes_after_the_book
     zoom_up, live, it_user, settings
 ):
     other = make_account("Zoom 02", sort_order=2)
-    zm.connect(settings, live, other)
+    zm.connect(live, other)
     link_request = make_request()
     # A cached preview for the chosen account must not stand in for the approval's lookup.
     services.remember_preview(live, services.class_window(link_request.occurrences.all()), [])

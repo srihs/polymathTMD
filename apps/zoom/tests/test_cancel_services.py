@@ -22,7 +22,7 @@ from urllib3.exceptions import ProtocolError
 
 from apps.zoom import services
 from apps.zoom.checks import check_it_desk_phone
-from apps.zoom.models import HostKeyReveal, HostKeyUnreadable, HostSlot, LinkRequest
+from apps.zoom.models import HostKeyReveal, HostSlot, LinkRequest, SecretUnreadable
 from apps.zoom.providers import (
     FakeProvider,
     ManualProvider,
@@ -59,7 +59,7 @@ def zoom02(db):
 def live(settings, http_mock, zoom02):
     """Zoom 02 on the live provider, connected, with a token registered."""
     settings.ZOOM_PROVIDER = "zoom"
-    zm.connect(settings, zoom02)
+    zm.connect(zoom02)
     zm.add_token(http_mock)
     return zoom02
 
@@ -710,7 +710,7 @@ def test_revealing_no_key_or_an_unreadable_one_records_nothing(zoom02, it_user, 
     with pytest.raises(services.NoHostKeySaved):
         services.reveal_host_key(empty, by=it_user)
     settings.HOST_KEY_ENCRYPTION_KEYS = [Fernet.generate_key().decode()]
-    with caplog.at_level(logging.DEBUG, logger="apps.zoom"), pytest.raises(HostKeyUnreadable):
+    with caplog.at_level(logging.DEBUG, logger="apps.zoom"), pytest.raises(SecretUnreadable):
         services.reveal_host_key(zoom02, by=it_user)
     assert HostKeyReveal.objects.count() == 0
     [record] = caplog.records

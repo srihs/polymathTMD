@@ -1,6 +1,5 @@
 """Settings shared by every environment."""
 
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import environ
@@ -144,10 +143,11 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="tmd@localhost")
 
 # --------------------------------------------------------------------------- Zoom link requests
 # Which meeting provider makes the links (brief 005, D4; brief 006): "zoom" (the app makes the
-# meeting through the Zoom API and checks Zoom for clashes; needs the credential sets below),
-# "manual" (IT pastes the link it made in Zoom; the fallback) or "fake" (dev/tests only; links
-# on the .invalid TLD). The zoom app's system checks reject any other value, and reject "fake"
-# under check --deploy; prod.py refuses to start with "fake".
+# meeting through the Zoom API and checks Zoom for clashes; each account needs a Zoom connection
+# saved in the database on the app's Zoom connections page, brief 015: there are no Zoom
+# credential variables), "manual" (IT pastes the link it made in Zoom; the fallback) or "fake"
+# (dev/tests only; links on the .invalid TLD). The zoom app's system checks reject any other
+# value, and reject "fake" under check --deploy; prod.py refuses to start with "fake".
 ZOOM_PROVIDER = env("ZOOM_PROVIDER", default="manual")
 # How long the "confirm your email" link works, and the hourly abuse limits. The limits are
 # counted in the database, so they hold across Gunicorn workers without a shared cache (D8).
@@ -159,9 +159,14 @@ ZOOM_REQUEST_LIMIT_PER_IP_PER_HOUR = 20
 # and the per-IP limit blocks everyone (D8). Never set it higher than the real proxy count:
 # clients could then spoof their IP.
 TRUSTED_PROXY_COUNT = env.int("TRUSTED_PROXY_COUNT", default=0)
-# Fernet keys that encrypt Zoom host keys at rest (D17), comma-separated. The first key
-# encrypts; every key decrypts, which is how rotation works. Kept apart from SECRET_KEY so
-# rotating SECRET_KEY never makes stored host keys unreadable. Secret: never log or render.
+# Fernet keys that encrypt, at rest, Zoom host keys (brief 005, D17) and, from brief 015, each
+# Zoom connection's Client Secret and webhook Secret Token, comma-separated. The first key
+# encrypts; every key decrypts, which is how rotation works (manage.py rotate_encryption_keys
+# re-encrypts every stored secret with the first key). Kept apart from SECRET_KEY so rotating
+# SECRET_KEY never makes stored secrets unreadable. Secret: never log or render.
+# Back these keys up apart from the database: a database backup plus these keys gives access
+# to Zoom (create, change and delete meetings on every connected account), not only to host
+# keys, and losing every key means retyping every secret (brief 015, D16, R1).
 # No default: the zoom app's check zoom.E003 reports it when empty or invalid.
 HOST_KEY_ENCRYPTION_KEYS = env.list("HOST_KEY_ENCRYPTION_KEYS", default=[])
 # The IT desk's phone number, shown as a tap-to-call link on the public "start this class"
@@ -169,88 +174,6 @@ HOST_KEY_ENCRYPTION_KEYS = env.list("HOST_KEY_ENCRYPTION_KEYS", default=[])
 # Empty means the page says "contact the IT desk" with no number. A non-empty value must be
 # a number the zoom app's phone rules can read (check zoom.E006), e.g. 011 234 5678.
 IT_DESK_PHONE = env("IT_DESK_PHONE", default="")
-
-
-# --------------------------------------------------------------------------- Zoom connection
-# One Zoom Server-to-Server OAuth app per paid subscription (brief 006, D2). Credentials come
-# only from the environment: never the database, never the repo. In Docker they arrive through
-# the git- and docker-ignored zoom-credentials.env (compose.yaml env_file), which is why none
-# of these names is listed in web.environment: an entry there would override the file.
-@dataclass(frozen=True)
-class ZoomCredentials:
-    """One credential set. Its repr names the slug only, so it can't leak into logs or reprs.
-
-    ``webhook_secret`` is the Secret Token of the set's Event Subscription (brief 013, D6). It's
-    optional, so it defaults to empty. A set without it still connects; only changes made
-    directly in Zoom go unseen until the booking is checked (the zoom.W002 warning).
-    """
-
-    slug: str
-    account_id: str = field(repr=False)
-    client_id: str = field(repr=False)
-    client_secret: str = field(repr=False)
-    webhook_secret: str = field(default="", repr=False)
-
-
-# The three values each set needs, as (ZoomCredentials field, env var suffix).
-ZOOM_CREDENTIAL_PARTS = (
-    ("account_id", "ACCOUNT_ID"),
-    ("client_id", "CLIENT_ID"),
-    ("client_secret", "CLIENT_SECRET"),
-)
-# Values a set may leave out (brief 013, criterion 1): read under the same naming rule, but an
-# empty one never makes the set incomplete, so it's never listed in ZOOM_CREDENTIAL_MISSING.
-ZOOM_CREDENTIAL_OPTIONAL_PARTS = (("webhook_secret", "WEBHOOK_SECRET"),)
-
-
-def zoom_credential_env_prefix(slug):
-    """The env var prefix for a set, the one naming rule: ``zoom-01`` gives ``ZOOM_S2S_ZOOM_01``.
-
-    Slugs are lower-case with hyphens (the HostAccount.credential_set rule); env var names
-    can't hold hyphens, so they become underscores.
-    """
-    return "ZOOM_S2S_" + slug.upper().replace("-", "_")
-
-
-def read_zoom_credentials(environment, slugs):
-    """Read each listed set's three required variables and its optional ones, without judging them.
-
-    Returns ``(secrets, missing)``: ``secrets`` maps each **complete** set's slug to its
-    ZoomCredentials, and ``missing`` maps each incomplete slug to the missing variable
-    **names** (never values). Only the required parts decide completeness; an optional part
-    left blank becomes ``""`` (brief 013: no webhook secret means no webhook, not a broken
-    connection). Nothing raises here: the zoom.E005 check reports empty lists, missing values,
-    bad slugs and colliding names, so a broken set can't stop manage.py from printing a
-    readable error.
-    """
-    secrets, missing = {}, {}
-    for slug in slugs:
-        prefix = zoom_credential_env_prefix(slug)
-        values, absent = {}, []
-        for attr, suffix in ZOOM_CREDENTIAL_PARTS:
-            name = f"{prefix}_{suffix}"
-            values[attr] = environment.str(name, default="").strip()
-            if not values[attr]:
-                absent.append(name)
-        for attr, suffix in ZOOM_CREDENTIAL_OPTIONAL_PARTS:
-            values[attr] = environment.str(f"{prefix}_{suffix}", default="").strip()
-        if absent:
-            missing[slug] = absent
-        else:
-            secrets[slug] = ZoomCredentials(slug=slug, **values)
-    return secrets, missing
-
-
-# The slugs that have credentials, e.g. "zoom-01,zoom-02". An explicit list rather than a scan
-# of every ZOOM_S2S_* variable, so E005 can name exactly what is missing (no hidden magic).
-ZOOM_CREDENTIAL_SETS = [
-    s.strip() for s in env.list("ZOOM_CREDENTIAL_SETS", default=[]) if s.strip()
-]
-# Secret, webhook secrets included. The name must keep "SECRET": Django's
-# SafeExceptionReporterFilter masks any setting whose name matches it, so error pages and
-# reports never show these values (brief 006 criterion 3; brief 013 criterion 1).
-# ZOOM_CREDENTIAL_MISSING holds variable names only ({slug: [name, ...]}), for zoom.E005.
-ZOOM_S2S_SECRETS, ZOOM_CREDENTIAL_MISSING = read_zoom_credentials(env, ZOOM_CREDENTIAL_SETS)
 
 # --------------------------------------------------------------------------- Logging
 LOGGING = {
@@ -277,8 +200,10 @@ LOGGING = {
         # ADMINS is unset. Don't set ADMINS without first revisiting the start-token
         # redaction of email bodies. The filter hides the subject, but the 500 email's
         # body (the request and the view's local variables, built by ExceptionReporter) can
-        # still hold a working /zoom/start/<token>/ link (brief 011, review round 2), and a
-        # Zoom webhook body, which carries join links (brief 013, review round 1, N1).
+        # still hold a working /zoom/start/<token>/ link (brief 011, review round 2), a
+        # Zoom webhook body, which carries join links (brief 013, review round 1, N1), and
+        # Zoom connection values: a database error's frame locals can hold an Account ID, a
+        # Client ID or a stored secret's ciphertext (brief 015, review round 1, N5; D21).
         "mail_admins": {
             "class": "django.utils.log.AdminEmailHandler",
             "level": "ERROR",
@@ -296,5 +221,9 @@ LOGGING = {
         # urllib3 logs every request line at DEBUG, and Zoom's paths carry the host account's
         # email and meeting IDs. Pinned so LOG_LEVEL=DEBUG never writes them (brief 006, R3).
         "urllib3": {"level": "WARNING"},
+        # At DEBUG, Django logs every SQL statement with its parameters, and from brief 015
+        # those carry Zoom connection values (Account IDs, Client IDs and secret ciphertexts).
+        # Pinned so LOG_LEVEL=DEBUG or a future logger tweak never writes them (D15).
+        "django.db.backends": {"level": "INFO"},
     },
 }

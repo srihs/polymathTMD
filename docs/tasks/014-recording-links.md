@@ -73,6 +73,7 @@ It keeps a small record that a recording was sent, never the link itself. IT see
 
 2. **Subscribed and verified.** `recording.completed` goes through all of 013's checks (criteria 4–8): the signature, the window, the account, and the body-hash idempotency. It's no longer answered `ignored`.
 3. **Which booking.** `payload.object.id` is matched among requests with status `approved` **or `cancelled`** (a held class's recording still matters after the rest was cancelled), on an account whose `credential_set` is the URL's slug.
+   *Amended by 015 (2026-11-02):* matching is by connection: `host_account.zoom_connection` replaces `credential_set` (015 criterion 28).
    - No match → outcome `not_ours`, 200, no Zoom call.
 4. **Which class.** The instance's `start_time` is matched to the booking's non-cancelled class whose `[starts_at − 30 minutes, ends_at)` contains it (011's window idea). The nearest `starts_at` wins if two match.
    - No match (the meeting was started outside any class) → `occurrence` is null, and the email names the recording's own date and time.
@@ -161,6 +162,7 @@ The public address is 013's (owner, Q6: "Production domain"; 013 D9).
 - **D3: `share_url` plus the passcode, never a download or play URL.** The share page applies the account's sharing rules (passcode, expiry, downloads). Download URLs with tokens bypass them.
 - **D4: A recording is matched to a class by its start time within 011's start window** (criterion 4). With the start link, the meeting normally starts inside that window.
 - **D5: Owner setup, per paid account** (for the README):
+  *Amended by 015 (2026-11-02):* step 4's "restart `web` so the next token carries the new scope" stays correct, because tokens live in process memory (015 follow-ups).
   1. On marketplace.zoom.us, open the account's `Polymath TMD` app, then **Scopes → Add Scopes**, and add `cloud_recording:read:list_recording_files:admin`.
   2. **Features → Event Subscriptions**, edit `Polymath TMD sync` (013), and add Recording → **All Recordings have completed** (`recording.completed`). Save. The endpoint URL and secret are unchanged.
   3. In the account's web settings, **Settings → Recording**: cloud recording on, "Require passcode to access shared cloud recordings" on, and sharing allowed to anyone with the link. Choose downloads and an auto-delete period (Q7).
@@ -197,6 +199,7 @@ The public address is 013's (owner, Q6: "Production domain"; 013 D9).
 
 - **`providers.py`:** `recording_share(*, host_account, meeting_uuid) -> RecordingShare(share_url, passcode)`. It's a frozen dataclass with both fields `repr=False`, and it lives only in memory. There's also `zoom_api.meeting_uuid_path()` for the double encoding.
 - **`services.py`:** `handle_recording_completed(credentials, payload) -> outcome` (called from 013's `handle_event`), `resend_recording(notice, *, provider=None)`, `send_recording_email(...)`, `send_recording_failed_it_email(...)`.
+  *Amended by 015 (2026-11-02):* `handle_recording_completed` takes the verified `ZoomConnection`, not credentials from env (015).
 
 ### URLs and views
 

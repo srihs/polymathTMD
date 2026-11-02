@@ -1,5 +1,5 @@
 """Forms for Zoom link requests (brief 005), Zoom host accounts (briefs 008 and 006),
-cancelling a booking (brief 011) and moving classes (brief 012).
+cancelling a booking (brief 011), moving classes (brief 012) and Zoom connections (brief 015).
 
 Labels, help and error copy come from the briefs' Design sections and pinned criteria, so the
 form is their one source: the templates only print ``field.label`` and ``field.help_text``.
@@ -25,6 +25,7 @@ from .models import (
     WEEKDAY_CHOICES,
     HostAccount,
     LinkRequest,
+    ZoomConnection,
 )
 from .services import MOVE_PAGE_OUT_OF_DATE, NOT_OFFERED, read_move_shown
 from .validators import (
@@ -35,6 +36,7 @@ from .validators import (
     normalise_phone,
     validate_credential_set,
     validate_host_key,
+    validate_zoom_value,
 )
 
 EMAIL_ERROR = (
@@ -464,8 +466,10 @@ HOST_KEY_HELP_NONE = (
     f"Type the 6 to 10 digits from the account's Zoom profile. {HOST_KEYS_NOT_EMAILED}"
 )
 # The model field owns this copy; the form field is declared by hand (see the class docstring)
-# and borrows it rather than keeping a second copy (review round 1, SF3).
-CREDENTIAL_SET_HELP = HostAccount._meta.get_field("credential_set").help_text
+# and borrows it rather than keeping a second copy (review round 1, SF3; brief 015, c. 18).
+ZOOM_CONNECTION_HELP = HostAccount._meta.get_field("zoom_connection").help_text
+ZOOM_CONNECTION_EMPTY = "No Zoom connection yet"
+ZOOM_CONNECTION_CHOICE = "Choose a Zoom connection from the list."
 
 
 class HostAccountForm(forms.ModelForm):
@@ -482,10 +486,10 @@ class HostAccountForm(forms.ModelForm):
     - Every method that holds the typed key in a local is ``@sensitive_variables``, so an
       error report masks it (brief 005, review round 2, nit 2).
 
-    ``credential_set`` (brief 006, criterion 34) is only the *name* of the account's Zoom
-    connection; the credentials stay in the server's environment. A name the server doesn't
-    have yet is allowed: the page says so. It's declared here, not generated, so it has one
-    validator and one pinned error, rather than the ``SlugField``'s own slug message as well.
+    ``zoom_connection`` (brief 015, criterion 18, replacing 006's typed name) picks one of the
+    saved Zoom connections. Its choices load only ``pk`` and ``slug``, so no secret column is
+    ever selected to build the list. It's declared here, not generated, for its pinned label,
+    empty label, help and error.
 
     ``clean()`` also asks the account whether the ``In use`` or ``Paid`` tick may be removed
     (``stop_booking_errors``, brief 008, criterion 17). The view has locked the account row
@@ -503,17 +507,13 @@ class HostAccountForm(forms.ModelForm):
             attrs={"autocomplete": "off", "inputmode": "numeric", "spellcheck": "false"}
         ),
     )
-    credential_set = forms.CharField(
-        label="Zoom connection name",
-        help_text=CREDENTIAL_SET_HELP,
+    zoom_connection = forms.ModelChoiceField(
+        queryset=ZoomConnection.objects.only("pk", "slug"),
+        label="Zoom connection",
+        help_text=ZOOM_CONNECTION_HELP,
         required=False,
-        max_length=40,
-        validators=[validate_credential_set],
-        error_messages={"max_length": CREDENTIAL_SET_ERROR},
-        # Not a word to correct or capitalise, and not something to autofill (G4).
-        widget=forms.TextInput(
-            attrs={"autocomplete": "off", "autocapitalize": "none", "spellcheck": "false"}
-        ),
+        empty_label=ZOOM_CONNECTION_EMPTY,
+        error_messages={"invalid_choice": ZOOM_CONNECTION_CHOICE},
     )
     remove_host_key = forms.BooleanField(
         label="Remove the saved host key",
@@ -529,14 +529,22 @@ class HostAccountForm(forms.ModelForm):
         "is_paid",
         "is_active",
         "sort_order",
-        "credential_set",
+        "zoom_connection",
         "host_key",
         "remove_host_key",
     ]
 
     class Meta:
         model = HostAccount
-        fields = ["label", "email", "notes", "is_paid", "is_active", "sort_order", "credential_set"]
+        fields = [
+            "label",
+            "email",
+            "notes",
+            "is_paid",
+            "is_active",
+            "sort_order",
+            "zoom_connection",
+        ]
         labels = {
             "label": "Name",
             "email": "Zoom sign-in email",
@@ -643,3 +651,306 @@ class HostAccountForm(forms.ModelForm):
             account.save()
             self._save_m2m()
         return account
+
+
+# --------------------------------------------------------------------------- Zoom connections
+
+CONNECTION_NAME_REQUIRED = "Type a name for this connection, like zoom-01."
+CONNECTION_NAME_TAKEN = "Another Zoom connection already has this name. Choose a different one."
+ACCOUNT_ID_ERROR = (
+    "Paste the Account ID from the App Credentials page of the Zoom app. It has no spaces."
+)
+CLIENT_ID_ERROR = (
+    "Paste the Client ID from the App Credentials page of the Zoom app. It has no spaces."
+)
+CLIENT_ID_TAKEN = (
+    "The Zoom connection {slug} already uses this Client ID. Each Zoom app needs only one "
+    "connection."
+)
+CLIENT_SECRET_ERROR = (
+    "Paste the Client Secret from the App Credentials page of the Zoom app. It has no spaces."
+)
+WEBHOOK_SECRET_ERROR = (
+    "Paste the Secret Token from the Event Subscriptions part of the Zoom app. It has no spaces."
+)
+WEBHOOK_SECRET_AND_REMOVE = "Type a new webhook secret or tick Remove, not both."
+# Criterion 13: the limits are the server's, never a ``maxlength`` the browser cuts to (G2).
+ZOOM_ID_MAX_LENGTH = 100
+ZOOM_SECRET_MAX_LENGTH = 200
+
+# Criterion 11's table (D20 G1): labels and help by page and stored state. The name and ID
+# help is defined once, on the model fields, and only borrowed here (D21 SF3), so the copy the
+# page shows can't drift from the model's.
+_CONNECTION_FIELD = ZoomConnection._meta.get_field
+CONNECTION_NAME_HELP = _CONNECTION_FIELD("slug").help_text
+ACCOUNT_ID_HELP = _CONNECTION_FIELD("account_id").help_text
+CLIENT_ID_HELP = _CONNECTION_FIELD("client_id").help_text
+CLIENT_SECRET_HELP_ADD = (
+    "Copy the Client Secret from App Credentials and paste it here. For safety, it's never "
+    "shown again once saved."
+)
+CLIENT_SECRET_HELP = {
+    "saved": "Leave it empty to keep the saved one. If the Client Secret was regenerated in "
+    "Zoom, paste the new one here.",
+    "unreadable": "Paste the Client Secret from App Credentials. The saved one can't be used.",
+}
+WEBHOOK_SECRET_HELP_ADD = (
+    "Optional. The Secret Token from the Event Subscriptions part of the Zoom app. You can add "
+    "it later, on this connection's page, which also shows the address Zoom needs."
+)
+WEBHOOK_SECRET_HELP = {
+    "none": "Paste the Secret Token from the Event Subscriptions part of the Zoom app, and "
+    "save. Then press Validate in Zoom.",
+    "saved": "Leave it empty to keep the saved one. If the Secret Token was regenerated in "
+    "Zoom, paste the new one here.",
+    "unreadable": "Paste the Secret Token from the Event Subscriptions part of the Zoom app. "
+    "The saved one can't be used.",
+}
+REMOVE_WEBHOOK_SECRET_HELP = (
+    "Tick this if the saved secret is wrong and you don't have the new one yet. Changes made in "
+    "Zoom then stop being seen here."
+)
+
+# A pasted value isn't a word to correct, capitalise, spell-check or autofill. Spell-check
+# services must never receive a secret, and "off" keeps it out of form history (D20 G2).
+PASTE_ATTRS = {
+    "autocomplete": "off",
+    "autocapitalize": "none",
+    "autocorrect": "off",
+    "spellcheck": "false",
+}
+
+
+def _pasted_field(label, required_message, *, required=True):
+    """A plain text box for a pasted Zoom value: ``TextInput``, no ``maxlength`` (G2).
+
+    Not ``PasswordInput``: IT must see what they pasted to spot a wrong paste, and a password
+    box would bring in the browser's password manager (owner's answer to O1, D20). The length
+    limit is checked in the form's ``clean_*`` instead of the browser, so an over-long paste
+    is refused, never silently cut short.
+    """
+    return forms.CharField(
+        label=label,
+        required=required,
+        error_messages={"required": required_message},
+        widget=forms.TextInput(attrs=dict(PASTE_ATTRS)),
+    )
+
+
+class ZoomConnectionForm(forms.ModelForm):
+    """Add or change a Zoom connection; one class for both, like ``HostAccountForm`` (008 D6).
+
+    Why it's shaped like this (brief 015):
+
+    - **Only the name is a model field**, and only on the add page: it can't be changed once
+      saved (D2), so the change form has no ``slug`` field and a posted one changes nothing.
+      The Account ID, Client ID and both secrets are form-only and reach the row through
+      ``ZoomConnection.set_credentials`` / ``set_webhook_secret`` / ``remove_webhook_secret``,
+      so the version bump and the change records stay the model's rules (criterion 2), and
+      ``construct_instance`` can never put a typed ID on the row before they compare it.
+    - **The secrets are write-only** (D7, 008's host-key rules): the boxes never have an
+      initial value, a typed secret is dropped from the bound data after an invalid submit
+      (``full_clean``), so the re-render can't echo it, and ``client_secret_was_typed`` /
+      ``webhook_secret_was_typed`` tell the page to say why the box is empty (criterion 14).
+      Every method holding a typed secret is ``@sensitive_variables``.
+    - **Labels and help come from here**, set in ``__init__`` per page and stored state
+      (criterion 11, D20 G1), so the template prints them and decides nothing.
+    - **An unreadable client secret must be retyped** (D20 P3): an empty New client secret is
+      refused then, or someone who fixes only an ID would be told "Saved" while the connection
+      still can't be used. The box is ``required`` exactly when it must be filled in (add, or
+      change with an unreadable secret; D21 SF2), so the browser and screen readers say so and
+      the empty-value error is the field's own ``required`` message, with the pinned text.
+    """
+
+    slug = forms.CharField(
+        label="Connection name",
+        help_text=CONNECTION_NAME_HELP,
+        max_length=40,
+        validators=[validate_credential_set],
+        error_messages={
+            "required": CONNECTION_NAME_REQUIRED,
+            "max_length": CREDENTIAL_SET_ERROR,
+            "invalid": CREDENTIAL_SET_ERROR,
+            "unique": CONNECTION_NAME_TAKEN,
+        },
+        # Typed by hand, so a cut at 40 is visible as it happens; it keeps its maxlength (G2).
+        widget=forms.TextInput(
+            attrs={"autocomplete": "off", "autocapitalize": "none", "spellcheck": "false"}
+        ),
+    )
+    account_id = _pasted_field("Account ID", ACCOUNT_ID_ERROR)
+    client_id = _pasted_field("Client ID", CLIENT_ID_ERROR)
+    client_secret = _pasted_field("Client secret", CLIENT_SECRET_ERROR, required=False)
+    webhook_secret = _pasted_field("Webhook secret", WEBHOOK_SECRET_ERROR, required=False)
+    remove_webhook_secret = forms.BooleanField(
+        label="Remove the saved webhook secret",
+        help_text=REMOVE_WEBHOOK_SECRET_HELP,
+        required=False,
+    )
+
+    # The on-screen order, which the error summary and the tab order follow (criterion 11).
+    field_order = [
+        "slug",
+        "account_id",
+        "client_id",
+        "client_secret",
+        "webhook_secret",
+        "remove_webhook_secret",
+    ]
+    SECRET_FIELDS = ("client_secret", "webhook_secret")
+
+    class Meta:
+        model = ZoomConnection
+        fields = ["slug"]
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        self.client_secret_was_typed = False
+        self.webhook_secret_was_typed = False
+        self.is_add = self.instance.pk is None
+        self.credentials_state = None if self.is_add else self.instance.credentials_state
+        fields = self.fields
+        fields["account_id"].help_text = ACCOUNT_ID_HELP
+        fields["client_id"].help_text = CLIENT_ID_HELP
+        fields["client_secret"].required = self.is_add or self.credentials_state == "unreadable"
+        if self.is_add:
+            fields["client_secret"].help_text = CLIENT_SECRET_HELP_ADD
+            fields["webhook_secret"].help_text = WEBHOOK_SECRET_HELP_ADD
+            del fields["remove_webhook_secret"]
+            return
+        # The change page: the name is shown, not edited (D2); the IDs are prefilled (D3).
+        del fields["slug"]
+        webhook_state = self.instance.webhook_secret_state
+        fields["account_id"].initial = self.instance.account_id
+        fields["client_id"].initial = self.instance.client_id
+        fields["client_secret"].label = "New client secret"
+        fields["client_secret"].help_text = CLIENT_SECRET_HELP[self.credentials_state]
+        fields["webhook_secret"].label = "New webhook secret"
+        fields["webhook_secret"].help_text = WEBHOOK_SECRET_HELP[webhook_state]
+        # Offered whenever a secret is stored, readable or not (D20 G3, as remove_host_key).
+        if not self.instance.webhook_secret_encrypted:
+            del fields["remove_webhook_secret"]
+
+    def full_clean(self):
+        """Validate, then forget typed secrets if the form is going to be shown again (D7)."""
+        super().full_clean()
+        if self.is_bound and self._errors:
+            self._forget_typed_secrets()
+
+    @sensitive_variables("typed", "data")
+    def _forget_typed_secrets(self):
+        """Drop both typed secrets from the bound data, noting which were typed (c. 14).
+
+        Shared by ``full_clean`` and ``add_taken_errors``: any page shown again after a
+        submit must neither echo a secret nor forget to say why its box is empty.
+        """
+        data = None
+        for name in self.SECRET_FIELDS:
+            key = self.add_prefix(name)
+            typed = self.data.get(key, "")
+            setattr(self, f"{name}_was_typed", bool(typed.strip()))
+            if key in self.data:
+                if data is None:
+                    data = self.data.copy()
+                data.pop(key)
+        if data is not None:
+            self.data = data
+
+    def clean_account_id(self):
+        return validate_zoom_value(
+            self.cleaned_data["account_id"], max_length=ZOOM_ID_MAX_LENGTH, message=ACCOUNT_ID_ERROR
+        )
+
+    def clean_client_id(self):
+        value = validate_zoom_value(
+            self.cleaned_data["client_id"], max_length=ZOOM_ID_MAX_LENGTH, message=CLIENT_ID_ERROR
+        )
+        other = self.instance.client_id_taken_by(value)
+        if other:
+            raise ValidationError(CLIENT_ID_TAKEN.format(slug=other), code="unique")
+        return value
+
+    @sensitive_variables("value")
+    def clean_client_secret(self):
+        """Check a typed client secret; an empty one is the ``required`` rule's (SF2, P3)."""
+        value = (self.cleaned_data.get("client_secret") or "").strip()
+        if not value:
+            return ""
+        return validate_zoom_value(
+            value, max_length=ZOOM_SECRET_MAX_LENGTH, message=CLIENT_SECRET_ERROR
+        )
+
+    @sensitive_variables("value")
+    def clean_webhook_secret(self):
+        value = (self.cleaned_data.get("webhook_secret") or "").strip()
+        if not value:
+            return ""
+        return validate_zoom_value(
+            value, max_length=ZOOM_SECRET_MAX_LENGTH, message=WEBHOOK_SECRET_ERROR
+        )
+
+    # cleaned_data holds the typed secrets too, so it's masked along with them.
+    @sensitive_variables("cleaned_data")
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get("webhook_secret") and cleaned_data.get("remove_webhook_secret"):
+            self.add_error("webhook_secret", WEBHOOK_SECRET_AND_REMOVE)
+        return cleaned_data
+
+    # cleaned_data holds the typed secrets too, so it's masked along with them.
+    @sensitive_variables("cleaned_data")
+    def add_taken_errors(self) -> bool:
+        """After a unique-constraint ``IntegrityError`` on save, say which value lost (c. 51).
+
+        The checks in ``clean_client_id`` and ``validate_unique`` run before the save, so two
+        people saving the same Client ID, or adding the same name, at the same moment can both
+        pass them, and the second save then hits the database's unique constraint. The caller
+        has rolled that save back to its savepoint; this asks the database again, with the same
+        lookups the checks use, and puts each pinned "taken" error on its field (both, when
+        both collided). The database's own error text is never read: it would name the values.
+
+        Returns ``False`` when neither value is taken, so the caller re-raises: that error
+        wasn't this race, and swallowing it would hide a real fault.
+        """
+        cleaned_data = self.cleaned_data
+        errors = {}
+        if "slug" in self.fields:
+            slug = cleaned_data.get("slug")
+            others = ZoomConnection.objects.filter(slug=slug).exclude(pk=self.instance.pk)
+            if slug and others.exists():
+                errors["slug"] = CONNECTION_NAME_TAKEN
+        other = self.instance.client_id_taken_by(cleaned_data.get("client_id"))
+        if other:
+            errors["client_id"] = CLIENT_ID_TAKEN.format(slug=other)
+        if not errors:
+            return False
+        for name, message in errors.items():
+            self.add_error(name, ValidationError(message, code="unique"))
+        self._forget_typed_secrets()
+        return True
+
+    @sensitive_variables("cleaned_data", "client_secret", "webhook_secret")
+    def save(self, commit=True):
+        """Save the connection through the model's secret methods, ``by`` the signed-in user.
+
+        ``set_credentials`` decides whether anything changed (and so whether the version and
+        the change record move); the webhook secret is stored, or removed, on its own.
+        """
+        connection = super().save(commit=False)
+        cleaned_data = self.cleaned_data
+        client_secret = cleaned_data.get("client_secret", "")
+        webhook_secret = cleaned_data.get("webhook_secret", "")
+        connection.set_credentials(
+            account_id=cleaned_data["account_id"],
+            client_id=cleaned_data["client_id"],
+            client_secret=client_secret,
+            by=self.user,
+        )
+        if webhook_secret:
+            connection.set_webhook_secret(webhook_secret, by=self.user)
+        elif cleaned_data.get("remove_webhook_secret"):
+            connection.remove_webhook_secret(by=self.user)
+        if commit:
+            connection.save()
+        return connection

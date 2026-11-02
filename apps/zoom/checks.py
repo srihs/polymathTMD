@@ -1,26 +1,28 @@
 """System checks for the Zoom settings (brief 005, criteria 48 and 63; brief 006, criteria 1, 4-6;
-brief 011, criterion 47).
+brief 011, criterion 47; brief 015, criteria 30-33).
 
 Registered explicitly in ``ZoomConfig.ready()``. Which check runs when:
 
 - **Untagged** (``manage.py check`` and ``migrate``): ``zoom.E002`` (the provider name),
-  ``zoom.E003`` (the host-key encryption keys), ``zoom.E005`` (the Zoom credential sets,
-  when ``ZOOM_PROVIDER=zoom``) and ``zoom.E006`` (``IT_DESK_PHONE`` is a number the app can
-  read). They read settings only. ``collectstatic``, which runs at image
-  build time with no keys, only runs the ``staticfiles`` checks, so it isn't blocked.
+  ``zoom.E003`` (the encryption keys, which protect host keys and, from brief 015, Zoom
+  connection secrets) and ``zoom.E006`` (``IT_DESK_PHONE`` is a number the app can read). They
+  read settings only, none of them a credential. ``collectstatic``, which runs at image build
+  time with no keys, only runs the ``staticfiles`` checks, so it isn't blocked.
+- **Retired:** ``zoom.E005`` checked the env credential variables. Brief 015 moved credentials
+  into the database, where required fields, constraints, the name rule and a unique name make
+  each of its failures impossible (D10). Its id isn't reused.
 - **Deploy** (``check --deploy``): ``zoom.E001`` (the fake provider) and ``zoom.W001`` (the
   manual provider can't see meetings made directly in Zoom).
 - **Database** (``check --database default``): ``zoom.E004``, every active paid account has a
-  working connection name. It needs the database, and one unconnected account mustn't stop
+  working Zoom connection. It needs the database, and one unconnected account mustn't stop
   the site from starting (the public form would go down with it), so it isn't untagged (D11).
   ``zoom.W002`` (brief 013, criterion 2), every such connected account's connection has a
-  webhook secret, for the same reasons; a warning, because bookings still work without it.
+  readable webhook secret, for the same reasons; a warning, because bookings still work
+  without it. Each is one query (``bookable()`` joins the connection), whatever the number of
+  accounts, and silent before ``migrate`` has made the tables.
 
-No message ever echoes a key or a credential value; E005 names variables, never values.
+No message ever echoes a key, an ID or a secret: they name accounts and connections only.
 """
-
-import re
-from collections import defaultdict
 
 from django.conf import settings
 from django.core.checks import Error
@@ -28,17 +30,10 @@ from django.core.checks import Warning as CheckWarning
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError
 
-# A pure function, imported rather than read through ``settings``: E005's name-collision test
-# must use the exact rule ``base.py`` used to turn each connection name into variable names,
-# and settings only carry the values, not the rule. Every settings module (dev, test, prod)
-# star-imports ``base`` first, so it's already loaded: this adds no second read of the
-# environment, and env is still read only in ``base.py``.
-from config.settings.base import zoom_credential_env_prefix
-
 from . import crypto
-from .models import HostAccount, webhook_secret_set_for
+from .models import HostAccount
 from .providers import PROVIDERS
-from .validators import CREDENTIAL_SET_ERROR, CREDENTIAL_SET_PATTERN, normalise_phone
+from .validators import normalise_phone
 
 IT_DESK_PHONE_ERROR = (
     "IT_DESK_PHONE isn't a phone number the app can read. Use a form like 011 234 5678 or "
@@ -115,63 +110,12 @@ def check_manual_provider_not_deployed(app_configs=None, **kwargs):
     ]
 
 
-def check_credential_sets(app_configs=None, **kwargs):
-    """``zoom.E005``: with ``zoom`` chosen, every listed credential set is usable (criterion 4).
-
-    It reads what ``base.py`` parsed (``ZOOM_CREDENTIAL_SETS`` and the variable *names* in
-    ``ZOOM_CREDENTIAL_MISSING``), so env is still read only in ``base.py``.
-    """
-    if getattr(settings, "ZOOM_PROVIDER", None) != "zoom":
-        return []
-    slugs = list(getattr(settings, "ZOOM_CREDENTIAL_SETS", []))
-    if not slugs:
-        return [
-            Error(
-                "ZOOM_PROVIDER is zoom, but ZOOM_CREDENTIAL_SETS is empty.",
-                hint="List the Zoom connection names, like zoom-01,zoom-02, in "
-                "zoom-credentials.env, with their three variables each.",
-                id="zoom.E005",
-            )
-        ]
-    errors = []
-    missing = getattr(settings, "ZOOM_CREDENTIAL_MISSING", {})
-    names = defaultdict(list)
-    for slug in slugs:
-        if not re.search(CREDENTIAL_SET_PATTERN, slug):
-            errors.append(
-                Error(
-                    f"The Zoom connection name {slug!r} in ZOOM_CREDENTIAL_SETS isn't valid.",
-                    hint=CREDENTIAL_SET_ERROR,
-                    id="zoom.E005",
-                )
-            )
-            continue
-        names[zoom_credential_env_prefix(slug)].append(slug)
-        if missing.get(slug):
-            errors.append(
-                Error(
-                    f"The Zoom connection {slug} is missing {', '.join(missing[slug])}.",
-                    hint="Set every one of them in zoom-credentials.env, then recreate web.",
-                    id="zoom.E005",
-                )
-            )
-    for prefix, clashing in names.items():
-        if len(clashing) > 1:
-            errors.append(
-                Error(
-                    f"The Zoom connections {', '.join(clashing)} all use the variables {prefix}_*.",
-                    hint="List each connection once in ZOOM_CREDENTIAL_SETS.",
-                    id="zoom.E005",
-                )
-            )
-    return errors
-
-
 def check_accounts_connected(app_configs=None, databases=None, **kwargs):
-    """``zoom.E004``: every active paid account has a working connection name (criterion 6).
+    """``zoom.E004``: every active paid account has a working Zoom connection (c. 6, 015 c. 32).
 
-    Runs only with ``check --database default`` and ``ZOOM_PROVIDER=zoom``. Before
-    ``migrate`` has made the table it reports nothing rather than crashing.
+    Runs only with ``check --database default`` and ``ZOOM_PROVIDER=zoom``. One query: the
+    connection is joined. Before ``migrate`` has made the tables it reports nothing rather
+    than crashing.
     """
     if getattr(settings, "ZOOM_PROVIDER", None) != "zoom" or "default" not in (databases or ()):
         return []
@@ -185,14 +129,17 @@ def check_accounts_connected(app_configs=None, databases=None, **kwargs):
         if state == "ready":
             continue
         if state == "none":
-            reason = "no Zoom connection name is set"
+            reason = "no Zoom connection is chosen"
         else:
-            reason = f"the server has no connection details called {account.credential_set}"
+            reason = (
+                f"the details of {account.zoom_connection.slug} can't be read with the current "
+                "encryption keys"
+            )
         errors.append(
             Error(
                 f"{account.label} has no working Zoom connection: {reason}.",
-                hint="Set it on the Zoom accounts page, or add the connection to "
-                "zoom-credentials.env.",
+                hint="Choose the connection on the Zoom accounts page, or type its client secret "
+                "again on the Zoom connections page.",
                 id="zoom.E004",
             )
         )
@@ -203,16 +150,24 @@ WEBHOOK_SECRET_MISSING = (
     "{label}'s Zoom connection has no webhook secret, so changes made directly in Zoom to its "
     "meetings aren't seen here."
 )
+WEBHOOK_SECRET_UNREADABLE = (
+    "{label}'s Zoom connection has a webhook secret that can't be read with the current "
+    "encryption keys, so changes made directly in Zoom to its meetings aren't seen here."
+)
+WEBHOOK_SECRET_HINT = (
+    "Add the webhook secret on the Zoom connection's page. The README says where Zoom shows it."
+)
 
 
 def check_webhook_secrets(app_configs=None, databases=None, **kwargs):
-    """``zoom.W002``: each connected active paid account's connection has a webhook secret.
+    """``zoom.W002``: each connected active paid account's connection has a readable webhook
+    secret (brief 013, criterion 2; brief 015, criterion 33).
 
-    Brief 013, criterion 2. Without one, Zoom can't tell this system about a class changed or
-    deleted directly in Zoom, so it stays as it was here until its booking is checked. Only
-    with ``ZOOM_PROVIDER=zoom`` and ``check --database default``; silent before ``migrate``.
-    An account whose connection isn't set up at all is ``zoom.E004``'s, so it isn't repeated
-    here. The message names the account, never the variable's value.
+    Without one, Zoom can't tell this system about a class changed or deleted directly in
+    Zoom, so it stays as it was here until its booking is checked. Only with
+    ``ZOOM_PROVIDER=zoom`` and ``check --database default``; silent before ``migrate``. An
+    account whose connection isn't working at all is ``zoom.E004``'s, so it isn't repeated
+    here. One query; the message names the account, never a value.
     """
     if getattr(settings, "ZOOM_PROVIDER", None) != "zoom" or "default" not in (databases or ()):
         return []
@@ -220,13 +175,16 @@ def check_webhook_secrets(app_configs=None, databases=None, **kwargs):
         accounts = list(HostAccount.objects.bookable())  # Meta.ordering: order, then name
     except DatabaseError:
         return []
-    return [
-        CheckWarning(
-            WEBHOOK_SECRET_MISSING.format(label=account.label),
-            hint="Add ZOOM_S2S_<NAME>_WEBHOOK_SECRET for the connection to zoom-credentials.env "
-            "(the README explains how), then recreate web.",
-            id="zoom.W002",
-        )
-        for account in accounts
-        if account.is_zoom_connected() and not webhook_secret_set_for(account.credential_set)
-    ]
+    messages = {"none": WEBHOOK_SECRET_MISSING, "unreadable": WEBHOOK_SECRET_UNREADABLE}
+    warnings = []
+    for account in accounts:
+        if not account.is_zoom_connected():
+            continue
+        message = messages.get(account.zoom_connection.webhook_secret_state)
+        if message:
+            warnings.append(
+                CheckWarning(
+                    message.format(label=account.label), hint=WEBHOOK_SECRET_HINT, id="zoom.W002"
+                )
+            )
+    return warnings

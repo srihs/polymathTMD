@@ -1,0 +1,9 @@
+{# One <select> inside a form, in the f-desk field pattern (brief 015, Design D.7.1, D20; shared, beside partials/field.html, which must never be given a choice widget): label for the select, help div#<name>-help above it, the select, and on error p#<name>-error (alert-circle + words) under it, with aria-invalid="true" and aria-describedby="<name>-error <name>-help"; otherwise aria-describedby="<name>-help" when there's help. There's no aria-label and no placeholder option standing in for the label. The options come from iterating the bound field, so the empty label, their order and the selected choice all come from the form, and after an invalid POST the person's choice is still selected. The help is a <div>, as in field.html. First used by zoom/account_form.html's Zoom connection select (criterion 18). with: field (BoundField of a Select, ChoiceField or ModelChoiceField), narrow (bool, optional; a 16rem box from 600px up). Partials: partials/field_error. #}
+{% with name=field.html_name %}<div class="field">
+  <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+  {% if field.help_text %}<div class="field__help" id="{{ name }}-help">{{ field.help_text }}</div>{% endif %}
+  <select class="input{% if narrow %} input--narrow{% endif %}" id="{{ field.id_for_label }}" name="{{ name }}"{% if field.field.required %} required{% endif %}{% if field.errors %} aria-invalid="true" aria-describedby="{{ name }}-error{% if field.help_text %} {{ name }}-help{% endif %}"{% elif field.help_text %} aria-describedby="{{ name }}-help"{% endif %}>
+    {% for option in field %}<option value="{{ option.data.value }}"{% if option.data.selected %} selected{% endif %}>{{ option.choice_label }}</option>{% endfor %}
+  </select>
+  {% include "partials/field_error.html" with field=field only %}
+</div>{% endwith %}

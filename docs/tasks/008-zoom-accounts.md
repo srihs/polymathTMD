@@ -164,6 +164,7 @@ This brief adds or changes:
 ### The list: `zoom:accounts`
 
 4. **Page and table.**
+   *Amended by 015 (2026-11-02):* the list's `Zoom connection` column states are now `Set up`, `Not set up` and `Can't be read` (015 criterion 21).
    - The h1 is `Zoom accounts`, the `<title>` is `Zoom accounts · {site name}`, and the breadcrumb is `Home › Zoom accounts`.
    - The table has a `<caption>` and `<th scope>` headers, with these columns in order:
      1. `Name`: links to `zoom:account_edit` for users with `change_hostaccount`;
@@ -480,6 +481,7 @@ In `apps/zoom/models.py`, with two migrations:
 - `stop_booking_errors(*, is_active, is_paid, now=None) -> dict[str, str]`: criterion 17. When the new flags keep the account bookable, or there are no upcoming classes, it returns `{}` without querying further. Otherwise it runs one locking read, `upcoming_classes(now).select_for_update().values_list("starts_at", flat=True)` (criterion 19), then takes the count, first and last dates in Python and builds the messages with `class_date`.
 - **A shared definition of "bookable":** a module-level `BOOKABLE = Q(is_active=True, is_paid=True)`, used by `bookable()`, plus a small `is_bookable_with(is_active, is_paid)` helper used by `stop_booking_errors`.
 - **The class docstring** changes to "Managed on the Zoom accounts page by the IT desk (brief 008)".
+  *Amended by 015 (2026-11-02):* the `HostAccount` docstring no longer says the host key is the one secret stored: Zoom connection secrets are stored too (015 D3).
 
 **QuerySets:**
 
@@ -975,6 +977,7 @@ This follows `zoom/partials/status_tag.html`. The tone, icon and word for each a
 ### Gaps in the context contract (backend to add or confirm)
 
 - **G1 — Field order.** Declare `HostAccountForm` fields as `label, email, notes, is_paid, is_active, sort_order, host_key, remove_host_key`. The error summary and the tab order both follow this order.
+  *Amended by 015 (2026-11-02):* `zoom_connection` replaces `credential_set` after `sort_order` (015 criterion 18).
 - **G2 — Copy on the form.** The labels and help texts in D.2 and D.3 are set on `HostAccountForm`, including the host-key help that depends on add/change and `host_key_state`. The model's old `help_text` (e.g. "like the heading in the old spreadsheet") isn't shown.
 - **G3 — `saved_label` (str), new, on change.** The account's **stored** label, for the h1, breadcrumb, `<title>` and booked-classes note. On an invalid POST, `UpdateView`'s `self.object` is the form's instance, which `construct_instance` has already overwritten with the typed (possibly empty or duplicate) name. `account.label` would then show what was typed. On add, it's unused.
 - **G4 — `upcoming_count` (int) and `next_class_start` (aware datetime or `None`), new, on change.** They drive the booked-classes note (D.2) that prevents the Q2 error. They can come from `HostAccount.objects.with_upcoming()` or `account.upcoming_classes()`. They're read-only facts: the locking read in `stop_booking_errors` stays the authority. If the backend declines this, the frontend leaves the note out and nothing else changes.

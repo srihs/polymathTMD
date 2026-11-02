@@ -31,7 +31,7 @@ WINDOW = (datetime(2026, 10, 5, 3, 0, tzinfo=UTC), datetime(2026, 10, 5, 6, 0, t
 @pytest.fixture
 def zoom_account(settings):
     account = make_account("Zoom 01", host_key="8421973")
-    zm.connect(settings, account)
+    zm.connect(account)
     return account
 
 
@@ -225,9 +225,16 @@ def test_busy_times_for_an_account_without_a_connection_makes_no_call(http_mock)
     assert len(http_mock.calls) == 0
 
 
-def test_is_connected_follows_the_accounts_connection_state(settings, zoom_account):
+def test_is_connected_follows_the_accounts_connection_state(settings, zoom_account, http_mock):
     assert ZoomProvider().is_connected(zoom_account)
-    zoom_account.credential_set = "zoom-other"
+    zm.make_unreadable(zoom_account.zoom_connection)
+    zoom_account.refresh_from_db()
+    assert not ZoomProvider().is_connected(zoom_account)
+    # An unreadable connection sends nothing to Zoom (brief 015).
+    with pytest.raises(ZoomNotConnected):
+        ZoomProvider().busy_times(host_account=zoom_account, start=WINDOW[0], end=WINDOW[1])
+    assert len(http_mock.calls) == 0
+    zoom_account.zoom_connection = None
     assert not ZoomProvider().is_connected(zoom_account)
 
 

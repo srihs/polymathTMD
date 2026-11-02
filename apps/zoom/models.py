@@ -11,15 +11,18 @@ Why the data is shaped like this (brief 005):
 - The schedule and the status rules live here (``clean()``, the QuerySets and the transition
   methods) so views stay thin and every path (the forms, the shell, ``services.approve()``)
   gets the same answers.
-- Host keys are the one secret stored (D17). They are encrypted through ``crypto.py`` and only
-  reachable through ``set_host_key`` / ``get_host_key``, never as a plain field.
+- Host keys are stored encrypted (D17), through ``crypto.py``, and only reachable through
+  ``set_host_key`` / ``get_host_key``, never as a plain field. From brief 015 each Zoom
+  connection's Client Secret and webhook Secret Token are stored the same way, under the same
+  keys (``ZoomConnection``).
 - Host accounts are managed on the in-app Zoom accounts page (brief 008); the project doesn't
   use the Django admin. Taking an account out of use while classes are still booked on it is
   refused here, on the model (``stop_booking_errors``), so no screen can skip the rule.
-- The Zoom connection (brief 006) is named here (``credential_set``) but its credentials live
-  only in the server's environment (``settings.ZOOM_S2S_SECRETS``). ``zoom_connection_state``
-  and ``is_zoom_connected()`` are the one definition of "connected": they read settings only,
-  never the network or the database. ``LinkRequest.zoom_marker`` is the one definition of the
+- Zoom connections (brief 015, amending 006's D2): one ``ZoomConnection`` row per Zoom
+  Server-to-Server app, typed on the in-app Zoom connections screens, and chosen on each
+  account (``HostAccount.zoom_connection``). ``HostAccount.zoom_connection_state`` and
+  ``is_zoom_connected()`` are the one definition of "connected": they read the loaded
+  connection row, never the network. ``LinkRequest.zoom_marker`` is the one definition of the
   agenda marker that lets a retry find a meeting left in Zoom by a failed attempt.
 - Cancelling (brief 011) never deletes a row. A cancelled class keeps who cancelled it, when
   and why, and its slots are removed so the account is free again. ``BOOKED`` leaves cancelled
@@ -60,6 +63,7 @@ from django.db.models import (
     Max,
     Min,
     OuterRef,
+    Prefetch,
     Q,
     Subquery,
     Value,
@@ -69,8 +73,8 @@ from django.db.models.functions import Coalesce
 from django.utils import dateformat, timezone
 from django.views.decorators.debug import sensitive_variables
 
-from . import crypto
-from .crypto import HostKeyUnreadable  # noqa: F401  (re-exported: callers catch it from here)
+from . import crypto, zoom_api
+from .crypto import SecretUnreadable  # noqa: F401  (re-exported: callers catch it from here)
 from .validators import (
     format_phone,
     normalise_phone,
@@ -247,7 +251,7 @@ def is_on_slot_step(value) -> bool:
     return not (value.minute % SLOT_MINUTES or value.second or value.microsecond)
 
 
-def _join_words(words) -> str:
+def join_words(words) -> str:
     """``Monday``, ``Monday and Wednesday``, ``Monday, Wednesday and Friday``."""
     words = list(words)
     if len(words) <= 1:
@@ -268,34 +272,387 @@ def is_bookable_with(**flags) -> bool:
     return all(bool(flags[name]) == wanted for name, wanted in BOOKABLE_FLAGS.items())
 
 
-def zoom_connection_state_for(credential_set) -> str:
-    """``"none"``, ``"missing"`` or ``"ready"`` for a connection name (brief 006, criterion 35).
+# --------------------------------------------------------------------------- Zoom connections
 
-    A module function so the change page can ask about the *stored* name even after an
-    invalid submit has put the typed one on the instance. Settings only: no query, no HTTP.
+CLIENT_SECRET_NAME = "client secret"
+WEBHOOK_SECRET_NAME = "webhook secret"
+
+
+class ZoomConnectionQuerySet(models.QuerySet):
+    def for_management(self):
+        """The Zoom connections list and change page: each row with ``accounts_in_use``.
+
+        ``accounts_in_use`` is the accounts that use the connection, in the accounts list's
+        order (``sort_order``, then ``label``), loaded by one prefetch for every row together,
+        so the list's query count doesn't grow with connections or accounts (brief 015,
+        criterion 10). Only the columns the pages read are loaded, so no account's encrypted
+        host key leaves the database here.
+        """
+        return self.prefetch_related(
+            Prefetch(
+                "host_accounts",
+                queryset=HostAccount.objects.only(
+                    "pk", "label", "sort_order", "zoom_connection_id"
+                ).order_by("sort_order", "label"),
+                to_attr="accounts_in_use",
+            )
+        )
+
+    def for_webhook(self, slug):
+        """The one connection a webhook call names, or ``None``: one indexed query (c. 27).
+
+        Only what the webhook needs is loaded: the pk (to match bookings), the name, the Zoom
+        account ID (for the account check) and the encrypted webhook secret. The client secret
+        is never read on this public path.
+        """
+        return (
+            self.only("pk", "slug", "account_id", "webhook_secret_encrypted")
+            .filter(slug=slug)
+            .first()
+        )
+
+
+class ZoomConnection(models.Model):
+    """One Zoom Server-to-Server OAuth app: the details this site books through (brief 015).
+
+    Why it's shaped like this:
+
+    - **A row per Zoom app, chosen on each account** (D1). Several accounts can share one
+      paid subscription's app (006 D2: the Zoom user is the account's email), and brief 013's
+      webhook has one address and one secret per app, so the details belong to the app, not
+      to an account. Rotating a secret is one edit, however many accounts use it.
+    - **The name never changes once saved** (D2). It's the path Zoom's Marketplace calls
+      (``/zoom/webhooks/{name}/``), and ``ZoomEvent`` history and "Last heard from Zoom" are
+      keyed by it, so renaming would silently break both. The change form has no name field.
+    - **The Account ID and Client ID are stored plain** (D3, confirmed by the owner, D18).
+      Neither grants anything without the secret: the Client ID is public by OAuth design and
+      Zoom puts the Account ID in every webhook event. Showing them lets IT check by eye which
+      app a connection is. They're still kept out of lists, messages, emails and logs.
+    - **The two secrets are Fernet-encrypted** with ``HOST_KEY_ENCRYPTION_KEYS`` through
+      ``crypto.py``, like host keys: one key list, one rotation (``rotate_encryption_keys``),
+      one backup rule. They're reachable only through the methods below.
+    - **No reveal** (D7). Nobody needs to read these back out of this app: whoever runs the
+      Zoom subscription can see or regenerate them in Marketplace. A reveal would only make
+      this site a second place to steal them from, so the pages show only each secret's state
+      and who saved it when.
+    - **``credentials_version``** (D8) goes up by one whenever a token part (Account ID, Client
+      ID or Client Secret) really changes. ``zoom_api``'s token cache is keyed by it, so every
+      worker uses the new details on its next call, with no restart and no signal. A webhook
+      secret change doesn't touch it: it isn't part of a token.
+    - **No permissions of its own** (D5, ``default_permissions = ()``). The screens are gated
+      by ``zoom.change_hostaccount``, the permission the owner named, so the Staff and access
+      page can't grant a connection permission that means nothing.
+    - **No delete** (D14): accounts point at it with ``PROTECT``, and no screen deletes one.
     """
-    if not credential_set:
-        return "none"
-    if credential_set not in settings.ZOOM_S2S_SECRETS:
-        return "missing"
-    return "ready"
+
+    slug = models.SlugField(
+        "Zoom connection name",
+        max_length=40,
+        unique=True,
+        validators=[validate_credential_set],
+        # Shown as the add page's help, through the form (criterion 11, D21 SF3).
+        help_text="A short name for this Zoom app, like zoom-01. Use lower-case letters, numbers "
+        "and hyphens. It can't be changed later, because it's part of the address Zoom sends "
+        "changes to.",
+    )
+    account_id = models.CharField(
+        "Account ID",
+        max_length=100,
+        help_text="Copy the Account ID from App Credentials and paste it here.",
+    )
+    client_id = models.CharField(
+        "Client ID",
+        max_length=100,
+        unique=True,
+        help_text="Copy the Client ID from App Credentials and paste it here.",
+    )
+    # Fernet tokens, never the secrets themselves (D3). Read and written only by the methods.
+    client_secret_encrypted = models.TextField(
+        "client secret (encrypted)",
+        editable=False,
+        help_text="Set it on the Zoom connection's page. It's never shown again.",
+    )
+    webhook_secret_encrypted = models.TextField(
+        "webhook secret (encrypted)",
+        blank=True,
+        editable=False,
+        help_text="The Event Subscription's Secret Token, set on the Zoom connection's page. "
+        "Empty until it's added.",
+    )
+    credentials_version = models.PositiveIntegerField(
+        "credentials version",
+        default=1,
+        editable=False,
+        help_text="Goes up by one each time the Account ID, Client ID or Client Secret changes, "
+        "so every part of the site uses the new details at once.",
+    )
+    credentials_changed_at = models.DateTimeField(
+        "connection details last changed",
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="When the Account ID, Client ID or Client Secret was last saved.",
+    )
+    credentials_changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        editable=False,
+        verbose_name="connection details last changed by",
+        help_text="Who last saved the Account ID, Client ID or Client Secret.",
+    )
+    webhook_secret_changed_at = models.DateTimeField(
+        "webhook secret last changed",
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="When the webhook secret was last saved or removed.",
+    )
+    webhook_secret_changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        editable=False,
+        verbose_name="webhook secret last changed by",
+        help_text="Who last saved or removed the webhook secret.",
+    )
+
+    objects = ZoomConnectionQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["slug"]
+        default_permissions = ()
+        verbose_name = "Zoom connection"
+        verbose_name_plural = "Zoom connections"
+        # MySQL 8.4 enforces these, so a stored connection is always complete: no code path,
+        # the shell included, can leave one that silently can't get a token (criterion 1).
+        constraints = [
+            models.CheckConstraint(
+                condition=~Q(account_id=""), name="zoom_connection_account_id_set"
+            ),
+            models.CheckConstraint(
+                condition=~Q(client_id=""), name="zoom_connection_client_id_set"
+            ),
+            models.CheckConstraint(
+                condition=~Q(client_secret_encrypted=""),
+                name="zoom_connection_client_secret_set",
+            ),
+        ]
+
+    def __str__(self):
+        return self.slug
+
+    def __repr__(self):
+        # Spelled out so no ID, secret or ciphertext can reach a traceback or a log (c. 42).
+        return f"<ZoomConnection: {self.slug}>"
+
+    # ----------------------------------------------------------------------- writing secrets
+    # Each method is ``@sensitive_variables`` applied directly (not via method_decorator, whose
+    # wrapper frame would show the arguments), so an error report masks every plaintext.
+
+    @sensitive_variables("client_secret", "stored")
+    def set_credentials(self, *, account_id, client_id, client_secret, by) -> bool:
+        """Store the token parts; True when anything changed (criterion 2).
+
+        An empty ``client_secret`` keeps the saved one. When any of the three differs from
+        what's stored, ``credentials_version`` goes up by one (the token cache's key, D8) and
+        the change is recorded with ``by`` and now. The first details a connection gets are
+        version 1, not a change from nothing. Comparing the secret means decrypting the stored
+        one; if it can't be read, any typed secret counts as a change. When nothing differs,
+        nothing changes at all: no version bump and no change record, so pressing Save twice
+        never invalidates a working token.
+        """
+        account_id = (account_id or "").strip()
+        client_id = (client_id or "").strip()
+        client_secret = (client_secret or "").strip()
+        had_details = bool(self.client_secret_encrypted)
+        changed = account_id != self.account_id or client_id != self.client_id
+        if client_secret and not changed:
+            try:
+                stored = self.get_client_secret() if had_details else None
+            except SecretUnreadable:
+                stored = None
+            changed = stored != client_secret
+        if not changed:
+            return False
+        self.account_id = account_id
+        self.client_id = client_id
+        if client_secret:
+            self.client_secret_encrypted = crypto.encrypt(client_secret)
+        if had_details:
+            self.credentials_version = (self.credentials_version or 1) + 1
+        self.credentials_changed_at = timezone.now()
+        self.credentials_changed_by = by
+        return True
+
+    @sensitive_variables("plain", "stored")
+    def set_webhook_secret(self, plain, *, by) -> bool:
+        """Store the webhook Secret Token; True when it changed (criterion 2).
+
+        It records the webhook change fields only: a webhook secret isn't part of a token, so
+        ``credentials_version`` stays as it is and the cached token is kept. Typing the secret
+        that's already saved changes nothing. An empty value changes nothing either: removing
+        is ``remove_webhook_secret``, a separate, deliberate act.
+        """
+        plain = (plain or "").strip()
+        if not plain:
+            return False
+        if self.webhook_secret_encrypted:
+            try:
+                stored = self.get_webhook_secret()
+            except SecretUnreadable:
+                stored = None
+            if stored == plain:
+                return False
+        self.webhook_secret_encrypted = crypto.encrypt(plain)
+        self._record_webhook_change(by)
+        return True
+
+    def remove_webhook_secret(self, *, by) -> bool:
+        """Clear a stored webhook secret, readable or not, and record it (D20 G3).
+
+        The way out when the saved secret is wrong or unreadable and the new Token isn't to
+        hand. Does nothing, and returns False, when no secret is stored.
+        """
+        if not self.webhook_secret_encrypted:
+            return False
+        self.webhook_secret_encrypted = ""
+        self._record_webhook_change(by)
+        return True
+
+    def _record_webhook_change(self, by):
+        self.webhook_secret_changed_at = timezone.now()
+        self.webhook_secret_changed_by = by
+
+    # ----------------------------------------------------------------------- reading secrets
+    # Criterion 16: these are called only by ``credentials()``, ``rotate_secrets()``, the state
+    # properties, the comparisons above and the webhook. Nothing decrypts one for display.
+
+    def get_client_secret(self) -> str:
+        """The plaintext Client Secret; ``SecretUnreadable`` when it can't be decrypted."""
+        return crypto.decrypt(self.client_secret_encrypted)
+
+    def get_webhook_secret(self) -> str:
+        """The plaintext webhook secret, ``""`` when none is saved; or ``SecretUnreadable``."""
+        if not self.webhook_secret_encrypted:
+            return ""
+        return crypto.decrypt(self.webhook_secret_encrypted)
+
+    @sensitive_variables("secret")
+    def credentials(self) -> "zoom_api.ZoomCredentials":
+        """The token parts for one operation, or ``SecretUnreadable`` (criteria 2 and 23).
+
+        Built from this row as read now, so a saved change is used on the very next call; the
+        caller drops it when the operation ends. No webhook secret: it isn't a token part.
+        """
+        secret = self.get_client_secret()
+        return zoom_api.ZoomCredentials(
+            slug=self.slug,
+            version=self.credentials_version,
+            account_id=self.account_id,
+            client_id=self.client_id,
+            client_secret=secret,
+        )
+
+    @property
+    def credentials_state(self) -> str:
+        """``"saved"`` or ``"unreadable"``. Decrypts only to test, and keeps nothing."""
+        try:
+            self.get_client_secret()
+        except SecretUnreadable:
+            return "unreadable"
+        return "saved"
+
+    @property
+    def webhook_secret_state(self) -> str:
+        """``"none"``, ``"saved"`` or ``"unreadable"``. Decrypts only to test, keeps nothing."""
+        if not self.webhook_secret_encrypted:
+            return "none"
+        try:
+            self.get_webhook_secret()
+        except SecretUnreadable:
+            return "unreadable"
+        return "saved"
+
+    @property
+    def has_webhook_secret(self) -> bool:
+        """True when a readable webhook secret is saved (013 criterion 29's meaning)."""
+        return self.webhook_secret_state == "saved"
+
+    def client_id_taken_by(self, client_id):
+        """The name of another connection that already uses ``client_id``, or ``None``.
+
+        Each Zoom app needs only one connection (criterion 13): two rows with one Client ID
+        would hold two copies of one secret, and a rotation would update only one of them.
+        The column is unique as well; this is so the form can name the other connection.
+        """
+        return (
+            ZoomConnection.objects.filter(client_id=client_id)
+            .exclude(pk=self.pk)
+            .values_list("slug", flat=True)
+            .first()
+        )
+
+    # ----------------------------------------------------------------------- rotation
+
+    def rotate_secrets(self) -> int:
+        """Re-encrypt both stored secrets with the first key; return how many (criterion 34).
+
+        Neither the version nor the change records move: re-encrypting isn't a change of
+        details, and the token stays valid. A secret that can't be read is left as it is, the
+        other is still re-encrypted on this instance, and then ``SecretUnreadable`` is raised
+        with the names of the unreadable ones (``"client secret"``, ``"webhook secret"``) as
+        its arguments and the count on ``rotated``, so ``rotate_encryption_keys`` can name
+        every one and still save the rest.
+        """
+        rotated, unreadable = 0, []
+        for name, attribute in (
+            (CLIENT_SECRET_NAME, "client_secret_encrypted"),
+            (WEBHOOK_SECRET_NAME, "webhook_secret_encrypted"),
+        ):
+            token = getattr(self, attribute)
+            if not token:
+                continue
+            try:
+                setattr(self, attribute, crypto.rotate(token))
+            except SecretUnreadable:
+                unreadable.append(name)
+                continue
+            rotated += 1
+        if unreadable:
+            error = SecretUnreadable(*unreadable)
+            error.rotated = rotated
+            raise error
+        return rotated
 
 
-def webhook_secret_set_for(credential_set) -> bool:
-    """True when the server has a webhook secret for this connection name (brief 013, c. 29).
-
-    Beside ``zoom_connection_state_for`` and like it: settings only, no query, no HTTP. It
-    answers whether there is a secret, never what it is, so the account page and ``zoom.W002``
-    can say "changes made in Zoom aren't seen here" without the value ever leaving settings.
-    """
-    credentials = settings.ZOOM_S2S_SECRETS.get(credential_set) if credential_set else None
-    return bool(credentials is not None and credentials.webhook_secret)
+# --------------------------------------------------------------------------- Host accounts (cont.)
 
 
 class HostAccountQuerySet(models.QuerySet):
     def bookable(self):
-        """Accounts IT may book. Free accounts cut meetings at 40 minutes, so never those."""
-        return self.filter(BOOKABLE)
+        """Accounts IT may book. Free accounts cut meetings at 40 minutes, so never those.
+
+        Each comes with its Zoom connection (brief 015, criterion 3), because every caller
+        asks ``is_zoom_connected()`` or calls Zoom next: the preview's threads must run no
+        query at all, and check ``zoom.E004`` must stay one query.
+        """
+        return self.filter(BOOKABLE).select_related("zoom_connection")
+
+    def locked(self):
+        """Lock the account rows only, with their Zoom connection read alongside (D8).
+
+        ``FOR UPDATE OF`` the account table alone, so no booking path ever locks a
+        ``ZoomConnection`` row: a connection edit then locks only its own row and can never
+        deadlock with ``approve()``, ``cancel()`` or a move, which lock request, then account,
+        then classes. The connection is joined so the Zoom call made under the lock uses
+        details read in this same operation, without a query of its own.
+        """
+        return self.select_related("zoom_connection").select_for_update(of=("self",))
 
     def with_upcoming(self, now=None):
         """Adds ``upcoming_count`` (int) and ``next_class_start`` (aware datetime or None).
@@ -320,8 +677,16 @@ class HostAccountQuerySet(models.QuerySet):
         )
 
     def for_management(self):
-        """The Zoom accounts list: in use first, then by order and name, with upcoming figures."""
-        return self.with_upcoming().order_by("-is_active", "sort_order", "label")
+        """The Zoom accounts list: in use first, then by order and name, with upcoming figures.
+
+        The connection is joined, so the list's ``Zoom connection`` column costs no query per
+        account (brief 015, criterion 21).
+        """
+        return (
+            self.with_upcoming()
+            .select_related("zoom_connection")
+            .order_by("-is_active", "sort_order", "label")
+        )
 
     def with_timetable_flag(self, start, end):
         """Every account, with ``on_timetable``: True when it belongs in the timetable filter.
@@ -380,7 +745,8 @@ class HostAccountQuerySet(models.QuerySet):
         """
         accounts_qs = self.bookable()
         if lock:
-            accounts_qs = accounts_qs.select_for_update()
+            # The account rows only, never their Zoom connection (brief 015, D8).
+            accounts_qs = accounts_qs.select_for_update(of=("self",))
         accounts = list(accounts_qs)
         occurrences = list(occurrences)
         if not accounts or not occurrences:
@@ -461,15 +827,17 @@ class HostAccount(models.Model):
         default=0,
         help_text="Lower numbers are suggested first when several accounts are free.",
     )
-    # Only the *name* of the connection. The credentials themselves are in the server's
-    # environment and never in the database (brief 006, D2).
-    credential_set = models.SlugField(
-        "Zoom connection name",
-        max_length=40,
+    # The Zoom app this account books through (brief 015, D1). Chosen here, where 006 put the
+    # connection name and where Check connection lives; the connection page only lists users.
+    zoom_connection = models.ForeignKey(
+        ZoomConnection,
+        on_delete=models.PROTECT,
+        null=True,
         blank=True,
-        validators=[validate_credential_set],
-        help_text="The name of this account's Zoom connection on the server, like zoom-01. "
-        "Whoever looks after the server tells you the name.",
+        related_name="host_accounts",
+        verbose_name="Zoom connection",
+        help_text="The Zoom app this account books through. If it isn't in the list, add it on "
+        "the Zoom connections page first.",
     )
     # Fernet token, never the key itself (D17). Read and written only by the methods below.
     host_key_encrypted = models.TextField(
@@ -544,7 +912,7 @@ class HostAccount(models.Model):
         self.host_key_changed_by = by
 
     def get_host_key(self) -> str:
-        """The plaintext key, ``""`` if none is saved; ``HostKeyUnreadable`` if undecryptable."""
+        """The plaintext key, ``""`` if none is saved; ``SecretUnreadable`` if undecryptable."""
         if not self.host_key_encrypted:
             return ""
         return crypto.decrypt(self.host_key_encrypted)
@@ -565,14 +933,28 @@ class HostAccount(models.Model):
             return "none"
         try:
             self.get_host_key()
-        except HostKeyUnreadable:
+        except SecretUnreadable:
             return "unreadable"
         return "saved" if self.host_key_changed_at else "saved_legacy"
 
+    @staticmethod
+    def connection_state(connection) -> str:
+        """``"none"``, ``"unreadable"`` or ``"ready"`` for a connection (brief 015, c. 3).
+
+        A static method so the change page can ask about the *stored* connection even after an
+        invalid submit has put the chosen one on the instance (as 006 did for the name). No
+        query and no HTTP: it decrypts the loaded row's client secret only to test it.
+        """
+        if connection is None:
+            return "none"
+        if connection.credentials_state == "unreadable":
+            return "unreadable"
+        return "ready"
+
     @property
     def zoom_connection_state(self) -> str:
-        """``"none"`` (no name), ``"missing"`` (not on the server) or ``"ready"``."""
-        return zoom_connection_state_for(self.credential_set)
+        """``"none"`` (no connection chosen), ``"unreadable"`` or ``"ready"``."""
+        return self.connection_state(self.zoom_connection if self.zoom_connection_id else None)
 
     def is_zoom_connected(self) -> bool:
         """The one definition used by the preview, ``approve()`` and check ``zoom.E004``."""
@@ -1143,7 +1525,7 @@ class LinkRequest(models.Model):
         first, last = dates[0], dates[-1]
         count = len(dates)
         return (
-            f"Every {_join_words(self.weekday_names)}, {times}, "
+            f"Every {join_words(self.weekday_names)}, {times}, "
             f"from {class_date(first, year=first.year != last.year)} to {class_date(last)} "
             f"({count} class{'' if count == 1 else 'es'})"
         )

@@ -59,6 +59,18 @@ STUB_TEMPLATES = {
     "zoom/host_key_reveal.html": "host key for {{ account.label }}: {{ host_key }}",
     # Brief 012: the move form stub prints the one value tests search the page for.
     "zoom/move_form.html": "move {{ link_request.reference }} {{ move_error }}",
+    # Brief 015. The list stub prints only what the contract lets the list read; the form stub
+    # renders the four pasted inputs through their widgets, so "a typed secret is never
+    # echoed" is tested against real widget output, as the host key is above.
+    "zoom/connections.html": (
+        "connections {% for c in connections %}[{{ c.slug }} {{ c.credentials_state }} "
+        "{{ c.webhook_secret_state }}{% for a in c.accounts_in_use %} {{ a.label }}{% endfor %}]"
+        "{% endfor %}"
+    ),
+    "zoom/connection_form.html": (
+        "connection form {{ saved_slug }} {{ form.account_id }} {{ form.client_id }} "
+        "{{ form.client_secret }} {{ form.webhook_secret }} {{ form.errors }}"
+    ),
     "zoom/timetable_day.html": (
         "timetable day {{ day_label }} {% for e in entries %}[{{ e.link_request.reference }}"
         " {{ e.link_request.class_name }} {{ e.link_request.get_status_display }}"

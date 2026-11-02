@@ -7,23 +7,34 @@ network. Never use ``@responses.activate`` or a separate ``RequestsMock`` here.
 Every credential value is obviously fake and distinctive, so a test can search any output for
 it. The Colombo class of the default ``make_request()`` (Mon 5 Oct 2026, 8:30 to 11:30 am) is
 03:00 to 06:00 UTC.
+
+Brief 015: credentials live in ``ZoomConnection`` rows, not settings. ``connection()`` makes the
+brief's "test connection" (``zoom-test``, Account ID ``test-account-id``, Client ID
+``test-client-id``, client secret ``test-client-secret-value``) through the model's own
+``set_credentials``, and ``connect()`` chooses it on accounts. ``credentials()`` is the plain
+``ZoomCredentials`` of that connection, for client tests that need no database.
 """
 
+import base64
 import json
 from urllib.parse import parse_qs, urlsplit
 
 import responses
+from django.test import override_settings
+from responses import matchers
 
-from apps.zoom import zoom_api
-from config.settings.base import ZoomCredentials
+from apps.zoom import crypto, zoom_api
+from apps.zoom.models import ZoomConnection
+from apps.zoom.zoom_api import ZoomCredentials
 
 SLUG = "zoom-test"
-ACCOUNT_ID = "test-account-id-3141"
-CLIENT_ID = "test-client-id-2718"
-CLIENT_SECRET = "test-client-secret-1618"
+ACCOUNT_ID = "test-account-id"
+CLIENT_ID = "test-client-id"
+CLIENT_SECRET = "test-client-secret-value"
+NEW_CLIENT_SECRET = "test-client-secret-renewed"
 TOKEN = "test-access-token-0577"
 SECOND_TOKEN = "test-access-token-0999"
-SECRETS = (ACCOUNT_ID, CLIENT_ID, CLIENT_SECRET, TOKEN, SECOND_TOKEN)
+SECRETS = (ACCOUNT_ID, CLIENT_ID, CLIENT_SECRET, NEW_CLIENT_SECRET, TOKEN, SECOND_TOKEN)
 
 API = zoom_api.API_BASE
 TOKEN_URL = zoom_api.TOKEN_URL
@@ -36,24 +47,84 @@ START_URL = "https://us02web.zoom.us/s/81234567890?zak=start-secret-9393"
 CLASS_START = "2026-10-05T03:00:00Z"  # Mon 5 Oct 2026, 8:30 am in Colombo
 
 
-def credentials(slug=SLUG):
+def client_id_for(slug):
+    """The test connection keeps ``CLIENT_ID``; any other gets its own (the column is unique)."""
+    return CLIENT_ID if slug == SLUG else f"{CLIENT_ID}-{slug}"
+
+
+def credentials(slug=SLUG, version=1):
     return ZoomCredentials(
-        slug=slug, account_id=ACCOUNT_ID, client_id=CLIENT_ID, client_secret=CLIENT_SECRET
+        slug=slug,
+        version=version,
+        account_id=ACCOUNT_ID,
+        client_id=client_id_for(slug),
+        client_secret=CLIENT_SECRET,
     )
 
 
-def connect(settings, *accounts, slug=SLUG):
-    """Give the server a credential set called ``slug`` and point ``accounts`` at it."""
-    settings.ZOOM_S2S_SECRETS = {slug: credentials(slug)}
-    settings.ZOOM_CREDENTIAL_SETS = [slug]
+def connection(slug=SLUG, *, webhook_secret="", by=None):
+    """The connection called ``slug``, made with the test values if it doesn't exist yet."""
+    found = ZoomConnection.objects.filter(slug=slug).first()
+    if found is not None:
+        return found
+    made = ZoomConnection(slug=slug)
+    made.set_credentials(
+        account_id=ACCOUNT_ID, client_id=client_id_for(slug), client_secret=CLIENT_SECRET, by=by
+    )
+    if webhook_secret:
+        made.set_webhook_secret(webhook_secret, by=by)
+    made.save()
+    return made
+
+
+def connect(*accounts, slug=SLUG, webhook_secret=""):
+    """Make (or reuse) the connection ``slug`` and choose it on ``accounts``; return it."""
+    chosen = connection(slug, webhook_secret=webhook_secret)
     for account in accounts:
-        account.credential_set = slug
-        account.save(update_fields=["credential_set"])
+        account.zoom_connection = chosen
+        account.save(update_fields=["zoom_connection"])
+    return chosen
 
 
-def add_token(mock, token=TOKEN, *, expires_in=3600, status=200):
+# A second, obviously fake Fernet key ("other-test-only-fernet-key-32byt"): a value encrypted
+# with it can't be read with the test settings' key, which is how "unreadable" is made.
+OTHER_FERNET_KEY = "b3RoZXItdGVzdC1vbmx5LWZlcm5ldC1rZXktMzJieXQ="
+
+
+def foreign_token(plain="test-unreadable-value"):
+    """Ciphertext the configured keys can't read (a key removed before rotating, c. 6)."""
+    with override_settings(HOST_KEY_ENCRYPTION_KEYS=[OTHER_FERNET_KEY]):
+        return crypto.encrypt(plain)
+
+
+def make_unreadable(connection, *, client=True, webhook=False):
+    """Store ``connection``'s secrets under a key the server doesn't have."""
+    fields = {}
+    if client:
+        fields["client_secret_encrypted"] = foreign_token()
+    if webhook:
+        fields["webhook_secret_encrypted"] = foreign_token()
+    ZoomConnection.objects.filter(pk=connection.pk).update(**fields)
+    connection.refresh_from_db()
+    return connection
+
+
+def basic_auth(client_id=CLIENT_ID, secret=CLIENT_SECRET):
+    """The ``Authorization`` header a token request carries for these details (criterion 44)."""
+    return "Basic " + base64.b64encode(f"{client_id}:{secret}".encode()).decode()
+
+
+def add_token(mock, token=TOKEN, *, expires_in=3600, status=200, secret=None, client_id=None):
+    """A token reply; with ``secret`` or ``client_id``, only for a request whose Basic auth
+    carries them (criteria 24 and 44; the other one defaults to the test connection's)."""
     body = {"access_token": token, "token_type": "bearer", "expires_in": expires_in}
-    mock.add(responses.POST, TOKEN_URL, json=body if status == 200 else {}, status=status)
+    match = []
+    if secret is not None or client_id is not None:
+        expected = basic_auth(client_id=client_id or CLIENT_ID, secret=secret or CLIENT_SECRET)
+        match = [matchers.header_matcher({"Authorization": expected})]
+    mock.add(
+        responses.POST, TOKEN_URL, json=body if status == 200 else {}, status=status, match=match
+    )
 
 
 def meetings_url(email):
@@ -158,4 +229,4 @@ def body(call):
 
 
 def zoom_error(code):
-    return {"code": code, "message": "RAW-ZOOM-TEXT with test-client-secret-1618"}
+    return {"code": code, "message": f"RAW-ZOOM-TEXT with {CLIENT_SECRET}"}

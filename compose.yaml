@@ -63,18 +63,12 @@ services:
       # Zoom link requests (brief 005).
       ZOOM_PROVIDER: ${ZOOM_PROVIDER:-manual}
       TRUSTED_PROXY_COUNT: ${TRUSTED_PROXY_COUNT:-0}
-      # Required: without it no stored Zoom host key can be encrypted or read.
+      # Required: encrypts host keys and Zoom connection secrets. Back it up apart from the DB: both together give Zoom access.
       HOST_KEY_ENCRYPTION_KEYS: ${HOST_KEY_ENCRYPTION_KEYS:?Set HOST_KEY_ENCRYPTION_KEYS in .env}
       # Tap-to-call number on the public start-class page (brief 011). Optional; empty hides it.
       IT_DESK_PHONE: ${IT_DESK_PHONE:-}
-    # Zoom Server-to-Server credentials (brief 006, D2): ZOOM_CREDENTIAL_SETS plus three
-    # ZOOM_S2S_<NAME>_* variables per set, about 34 in all, so they come from their own
-    # git- and docker-ignored file instead of the list above. Deliberately not repeated in
-    # `environment`, which would override the file. Optional, so the stack starts without it
-    # (manual and fake need no credentials). `required:` needs Docker Compose 2.24 or later.
-    env_file:
-      - path: ./zoom-credentials.env
-        required: false
+      # No Zoom credential variables: each Zoom app's details are typed on the app's Zoom
+      # connections page and stored encrypted in the database (brief 015).
     ports:
       - "${WEB_PORT:-8000}:8000"
     volumes:

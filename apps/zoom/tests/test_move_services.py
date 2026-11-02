@@ -74,7 +74,7 @@ def zoom02(db):
 def live(settings, http_mock, zoom02):
     """Zoom 02 on the live provider, connected, with a token and an empty meeting list."""
     settings.ZOOM_PROVIDER = "zoom"
-    zm.connect(settings, zoom02)
+    zm.connect(zoom02)
     zm.add_token(http_mock)
     zm.add_listing(http_mock, zoom02.email, [])
     return zoom02

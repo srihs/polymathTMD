@@ -18,6 +18,10 @@ Five areas:
   error reports, and the change view locks the account row on POST so the stop-booking rule
   can't race an approval (criterion 19). "Check connection" (brief 006) is a POST-only view
   that asks Zoom, shows the answer as a message and stores nothing.
+- **Zoom connections** (brief 015, the shell): list, add and change the Zoom apps the accounts
+  book through, all gated by ``zoom.change_hostaccount`` (D5), all ``never_cache``. The add
+  and change views mask both typed secrets in error reports, and the change view locks its
+  one connection row on POST. Nothing here shows a secret back (D7).
 - **Zoom timetable** (``zoom.review_linkrequest``, the shell; brief 009): a read-only month
   wall calendar and a day view. The calendar arithmetic is in ``timetable.py``; these views
   only parse the query, run two queries and call it.
@@ -47,7 +51,7 @@ from functools import wraps
 
 from django.conf import settings
 from django.contrib import messages
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -79,20 +83,20 @@ from .forms import (
     MoveClassForm,
     MoveSeriesForm,
     RejectForm,
+    ZoomConnectionForm,
 )
 from .models import (
     QUEUE_TABS,
     WEEKDAY_NAMES,
     HostAccount,
-    HostKeyUnreadable,
     InvalidTransition,
     LinkRequest,
     Occurrence,
+    SecretUnreadable,
+    ZoomConnection,
     ZoomEvent,
     class_date,
     queue_tab,
-    webhook_secret_set_for,
-    zoom_connection_state_for,
 )
 from .providers import get_provider
 from .services import Outcome
@@ -585,7 +589,7 @@ class CancelBookingView(ReviewerRequiredMixin, SingleObjectMixin, FormView):
     def get_queryset(self):
         return LinkRequest.objects.filter(
             status__in=[LinkRequest.Status.APPROVED, LinkRequest.Status.CANCELLED]
-        ).select_related("host_account")
+        ).select_related("host_account__zoom_connection")
 
     def get_occurrence(self):
         """The one class being cancelled, or ``None`` for the whole booking."""
@@ -911,29 +915,30 @@ class ZoomWebhookView(View):
     - ``404`` (the site's normal page) for a name with no webhook secret, ``413`` over 256 KB,
       ``401`` (empty) for a missing, stale or wrong signature or another account's event,
       ``400`` for a body that isn't an event or a bad validation token;
-    - URL validation: the JSON reply, with no query and no Zoom call (criterion 6);
+    - URL validation: the JSON reply, with ``verify``'s one query and no Zoom call (criterion
+      6, as amended by brief 015's criterion 27);
     - any other event: ``services.handle_event()``, mapped by ``WEBHOOK_STATUS``.
     """
 
     http_method_names = ["post"]
 
-    @sensitive_variables("credentials", "event", "reply")
+    @sensitive_variables("verified", "event", "reply")
     def post(self, request, slug):
-        credentials = webhooks.verify(request, slug)
-        if isinstance(credentials, webhooks.Refusal):
-            return self.refused(credentials)
+        verified = webhooks.verify(request, slug)
+        if isinstance(verified, webhooks.Refusal):
+            return self.refused(verified)
         event = webhooks.read_event(request.body)
         if isinstance(event, webhooks.Refusal):
             return self.refused(event)
         if event["event"] == webhooks.URL_VALIDATION:
-            reply = webhooks.url_validation_reply(credentials, event)
+            reply = webhooks.url_validation_reply(verified, event)
             if isinstance(reply, webhooks.Refusal):
                 return self.refused(reply)
             return JsonResponse(reply)
-        if not webhooks.is_from_account(credentials, event, slug):
+        if not webhooks.is_from_account(verified, event):
             return self.refused(webhooks.WRONG_ACCOUNT)
         result = services.handle_event(
-            slug, event, webhooks.body_sha256(request.body), request=request
+            verified, event, webhooks.body_sha256(request.body), request=request
         )
         return HttpResponse(status=WEBHOOK_STATUS[result.outcome])
 
@@ -960,7 +965,7 @@ class SyncBookingView(ReviewerRequiredMixin, SingleObjectMixin, View):
     def get_queryset(self):
         return LinkRequest.objects.filter(
             status__in=[LinkRequest.Status.APPROVED, LinkRequest.Status.CANCELLED]
-        ).select_related("host_account")
+        ).select_related("host_account__zoom_connection")
 
     def post(self, request, *args, **kwargs):
         link_request = self.get_object()
@@ -1174,6 +1179,8 @@ class HostAccountListView(SignedInPermissionMixin, ListView):
             can_add=user.has_perm(ADD_ACCOUNT),
             can_change=user.has_perm(CHANGE_ACCOUNT),
             can_review=user.has_perm(services.REVIEW_PERMISSION),
+            # Brief 015, criterion 9: the Zoom connections pages need the change permission.
+            can_manage_connections=user.has_perm(CHANGE_ACCOUNT),
         )
         return context
 
@@ -1203,16 +1210,21 @@ class HostAccountFormViewMixin(SignedInPermissionMixin):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         account = None if self.is_add else self.object
-        # The *stored* connection name: an invalid submit has already put the typed one on
-        # ``self.object``, and the state line describes what's saved (brief 006, criterion 35).
-        stored_name = "" if self.is_add else self.saved_credential_set
-        connection_state = zoom_connection_state_for(stored_name)
-        # Brief 013, criterion 29: whether changes made in Zoom reach this page's connection.
-        # ``None`` whenever there's nothing to say (the add page, a connection that isn't set
-        # up, or a provider that can't see Zoom), so the template needs no test of its own.
+        user = self.request.user
+        can_manage_connections = user.has_perm(CHANGE_ACCOUNT)
+        # The *stored* connection: an invalid submit has already put the chosen one on
+        # ``self.object``, and the state line describes what's saved (brief 006, criterion 35;
+        # brief 015, criterion 19). Captured with the row in ``get_object``.
+        stored = None if self.is_add else self.saved_connection
+        connection_state = HostAccount.connection_state(stored)
+        stored_name = stored.slug if stored is not None else ""
+        # Brief 013, criterion 29 (015, criterion 20): whether changes made in Zoom reach this
+        # page's connection. ``None`` whenever there's nothing to say (the add page, a
+        # connection that isn't ready, or a provider that can't see Zoom), so the template
+        # needs no test of its own.
         webhook_secret_set = None
         if account is not None and connection_state == "ready" and get_provider().checks_zoom:
-            webhook_secret_set = webhook_secret_set_for(stored_name)
+            webhook_secret_set = stored.has_webhook_secret
         context.update(
             account=account,
             is_add=self.is_add,
@@ -1223,12 +1235,18 @@ class HostAccountFormViewMixin(SignedInPermissionMixin):
             key_reveal_count=0,
             zoom_connection_state=connection_state,
             zoom_connection_name=stored_name,
+            zoom_connection_url=(
+                reverse("zoom:connection_edit", args=[stored.pk])
+                if stored is not None and can_manage_connections
+                else ""
+            ),
+            can_manage_connections=can_manage_connections,
             webhook_secret_set=webhook_secret_set,
             last_zoom_event_at=(
                 ZoomEvent.objects.last_received_at(stored_name) if webhook_secret_set else None
             ),
             # G5: the check form's action uses account.pk, so it's only offered with an account.
-            can_check_connection=account is not None and self.request.user.has_perm(CHANGE_ACCOUNT),
+            can_check_connection=account is not None and user.has_perm(CHANGE_ACCOUNT),
         )
         return context
 
@@ -1261,15 +1279,16 @@ class HostAccountUpdateView(HostAccountFormViewMixin, UpdateView):
     permission_required = CHANGE_ACCOUNT
 
     def get_queryset(self):
-        accounts = HostAccount.objects.with_upcoming()
+        accounts = HostAccount.objects.with_upcoming().select_related("zoom_connection")
         if self.request.method == "POST":
-            accounts = accounts.select_for_update()
+            # The account row only, never its Zoom connection (brief 015, D8).
+            accounts = accounts.select_for_update(of=("self",))
         return accounts
 
     def get_object(self, queryset=None):
         account = super().get_object(queryset)
         self.saved_label = account.label
-        self.saved_credential_set = account.credential_set
+        self.saved_connection = account.zoom_connection
         self.upcoming_count = account.upcoming_count
         self.next_class_start = account.next_class_start
         return account
@@ -1311,7 +1330,8 @@ class HostAccountCheckView(SignedInPermissionMixin, SingleObjectMixin, View):
 
     permission_required = CHANGE_ACCOUNT
     http_method_names = ["post"]
-    model = HostAccount
+    # Read with its connection now, so a detail saved a moment ago is the one checked (c. 23).
+    queryset = HostAccount.objects.select_related("zoom_connection")
 
     def post(self, request, *args, **kwargs):
         account = self.get_object()
@@ -1343,8 +1363,159 @@ class HostKeyRevealView(SignedInPermissionMixin, SingleObjectMixin, View):
         except services.NoHostKeySaved:
             messages.error(request, NO_HOST_KEY_SAVED.format(label=account.label))
             return redirect("zoom:account_edit", pk=account.pk)
-        except HostKeyUnreadable:
+        except SecretUnreadable:
             messages.error(request, HOST_KEY_CANT_BE_READ)
             return redirect("zoom:account_edit", pk=account.pk)
         context = {"account": account, "host_key": plain}
         return render(request, "zoom/host_key_reveal.html", context)
+
+
+# --------------------------------------------------------------------------- Zoom connections
+
+
+@method_decorator(never_cache, name="dispatch")
+class ZoomConnectionListView(SignedInPermissionMixin, ListView):
+    """Every Zoom connection, by name, with the accounts that use it (brief 015, criterion 10).
+
+    Gated by ``zoom.change_hostaccount`` (D5): the same people who manage accounts and host
+    keys. ``for_management()`` loads each row's accounts with one prefetch, so the page's query
+    count doesn't grow. Each row shows only states, never an ID or a secret.
+    """
+
+    permission_required = CHANGE_ACCOUNT
+    template_name = "zoom/connections.html"
+    context_object_name = "connections"
+
+    def get_queryset(self):
+        return ZoomConnection.objects.for_management()
+
+
+class ZoomConnectionFormViewMixin(SignedInPermissionMixin):
+    """What add and change share: the form, its user, the page context and the redirect.
+
+    The states are read from the stored row: the form only touches the secrets inside its
+    ``save()``, so after an invalid submit the page still describes what's saved. Both views
+    are ``never_cache`` and mask both typed secrets in error reports
+    (``sensitive_post_parameters``, criterion 17).
+
+    **Two people saving at once** (criterion 51, D21 N5): the form's "already used" checks
+    run before the save, so a simultaneous save of the same Client ID (or, on add, the same
+    name) passes them and hits the unique constraint. The save therefore runs in its own
+    savepoint, so the request's transaction (``ATOMIC_REQUESTS``) is still usable after the
+    ``IntegrityError``; the form then asks the database which value is taken and the page is
+    shown again with the pinned error. That keeps MySQL's "Duplicate entry" text, which names
+    the values, out of the logs and out of any 500 report. Any other ``IntegrityError`` is
+    re-raised.
+    """
+
+    form_class = ZoomConnectionForm
+    template_name = "zoom/connection_form.html"
+    context_object_name = "connection"
+    permission_required = CHANGE_ACCOUNT
+    is_add = False
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
+
+    def get_success_url(self):
+        return reverse("zoom:connections")
+
+    def saved_message(self) -> str:
+        """The success flash after a save; add and change word it differently (c. 11-12)."""
+        raise NotImplementedError
+
+    def form_valid(self, form):
+        try:
+            with transaction.atomic():
+                self.object = form.save()
+        except IntegrityError:
+            if not form.add_taken_errors():
+                raise
+            if not self.is_add:
+                # ``set_credentials`` changed the instance in memory before the save failed;
+                # the page describes what's stored, so read the row again.
+                self.object = self.get_object()
+            return self.form_invalid(form)
+        messages.success(self.request, self.saved_message())
+        return HttpResponseRedirect(self.get_success_url())
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        connection = None if self.is_add else self.object
+        if connection is None:
+            context.update(
+                is_add=True,
+                connection=None,
+                saved_slug="",
+                credentials_state="none",
+                webhook_secret_state="none",
+                last_zoom_event_at=None,
+                webhook_address="",
+                webhook_address_secure=False,
+                accounts_in_use=[],
+            )
+            return context
+        webhook_state = connection.webhook_secret_state
+        # Absolute, from the request, so IT copies exactly what Zoom must call (D6). Whether
+        # Zoom can use it is decided here, not in the template (D20 G4).
+        address = self.request.build_absolute_uri(reverse("zoom:webhook", args=[self.saved_slug]))
+        context.update(
+            is_add=False,
+            connection=connection,
+            saved_slug=self.saved_slug,
+            credentials_state=connection.credentials_state,
+            webhook_secret_state=webhook_state,
+            last_zoom_event_at=(
+                ZoomEvent.objects.last_received_at(self.saved_slug)
+                if webhook_state == "saved"
+                else None
+            ),
+            webhook_address=address,
+            webhook_address_secure=address.startswith("https://"),
+            accounts_in_use=connection.accounts_in_use,
+        )
+        return context
+
+
+@method_decorator(
+    [never_cache, sensitive_post_parameters("client_secret", "webhook_secret")], name="dispatch"
+)
+class ZoomConnectionCreateView(ZoomConnectionFormViewMixin, CreateView):
+    """Add a Zoom connection (criterion 11). The row is written through the model's methods."""
+
+    is_add = True
+
+    def saved_message(self):
+        return services.connection_saved_message(self.object, [], added=True)
+
+
+@method_decorator(
+    [never_cache, sensitive_post_parameters("client_secret", "webhook_secret")], name="dispatch"
+)
+class ZoomConnectionUpdateView(ZoomConnectionFormViewMixin, UpdateView):
+    """Change a Zoom connection's details or webhook secret; never its name (criterion 12).
+
+    On POST the row is read with ``select_for_update()`` inside the request's transaction
+    (``ATOMIC_REQUESTS``) before the form is validated, so two IT people saving at once can't
+    both compare against the same stored secret and lose a version bump. Only this row is
+    locked (``of=("self",)``): no booking path ever locks a connection, so this can't deadlock
+    with an approval (D8). ``saved_slug`` is captured from the stored row.
+    """
+
+    def get_queryset(self):
+        connections = ZoomConnection.objects.for_management().select_related(
+            "credentials_changed_by", "webhook_secret_changed_by"
+        )
+        if self.request.method == "POST":
+            connections = connections.select_for_update(of=("self",))
+        return connections
+
+    def get_object(self, queryset=None):
+        connection = super().get_object(queryset)
+        self.saved_slug = connection.slug
+        return connection
+
+    def saved_message(self):
+        return services.connection_saved_message(self.object, self.object.accounts_in_use)

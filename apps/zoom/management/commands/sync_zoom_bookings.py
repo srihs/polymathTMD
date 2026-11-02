@@ -101,7 +101,7 @@ class Command(BaseCommand):
         bookings = [
             link_request
             for link_request in LinkRequest.objects.with_remaining_classes(now)
-            .select_related("host_account")
+            .select_related("host_account__zoom_connection")
             .order_by("pk")
             if provider.is_connected(link_request.host_account)
         ]

@@ -418,7 +418,7 @@ def test_zooms_daily_text_never_reaches_the_page(it_client, zoom02, settings, ht
 
     _real_templates(settings)
     settings.ZOOM_PROVIDER = "zoom"
-    zm.connect(settings, zoom02)
+    zm.connect(zoom02)
     zm.add_token(http_mock)
     zm.add_listing(http_mock, zoom02.email, [])
     http_mock.add(

@@ -305,8 +305,8 @@ def test_add_form_fields_order_labels_and_widgets(it_client):
         "is_paid",
         "is_active",
         "sort_order",
-        # Brief 006, criterion 34, amends 008's D5: the connection name is on the form now.
-        "credential_set",
+        # Brief 006, criterion 34, amends 008's D5; brief 015, criterion 18: a select now.
+        "zoom_connection",
         "host_key",
     ]
     assert "remove_host_key" not in form.fields
@@ -318,7 +318,7 @@ def test_add_form_fields_order_labels_and_widgets(it_client):
         "is_paid": "Paid account",
         "is_active": "In use",
         "sort_order": "Order",
-        "credential_set": "Zoom connection name",
+        "zoom_connection": "Zoom connection",
         "host_key": "Host key",
     }
     assert all(field.help_text for field in form.fields.values())
@@ -771,7 +771,9 @@ def test_the_stop_check_and_save_run_under_locks_taken_before_the_update(it_clie
 
     account_lock = first(
         lambda s: (
-            s.startswith("SELECT") and re.search(r"FROM `zoom_hostaccount` WHERE .* FOR UPDATE$", s)
+            s.startswith("SELECT")
+            # Brief 015, D8: the account row only, never its joined Zoom connection.
+            and re.search(r"FROM `zoom_hostaccount` .*FOR UPDATE OF `zoom_hostaccount`$", s)
         )
     )
     classes_lock = first(

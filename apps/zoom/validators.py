@@ -16,11 +16,14 @@ from django.views.decorators.debug import sensitive_variables
 PHONE_ERROR = "Type a phone number we can call, like 077 123 4567 or +94 77 123 4567."
 HOST_KEY_ERROR = "A Zoom host key is 6 to 10 digits."
 CREDENTIAL_SET_ERROR = "Use lower-case letters, numbers and hyphens only, like zoom-01."
-# A Zoom connection name (brief 006, criteria 4 and 34): lower-case words of letters and
-# digits joined by single hyphens. \Z, not $, so a trailing newline can't slip through. The
-# settings turn it into env var names (zoom-01 -> ZOOM_S2S_ZOOM_01_...), and check zoom.E005
-# holds ZOOM_CREDENTIAL_SETS to the same pattern.
+# A Zoom connection name (brief 006, criteria 4 and 34; brief 015, criterion 1): lower-case
+# words of letters and digits joined by single hyphens. \Z, not $, so a trailing newline can't
+# slip through. The name is part of the connection's webhook address (/zoom/webhooks/zoom-01/),
+# so it must be safe in a URL path, and it's never changed once saved (brief 015, D2).
 CREDENTIAL_SET_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*\Z"
+# Brief 015, criterion 13: what a pasted Zoom ID or secret may hold once trimmed. Zoom's IDs and
+# secrets are printable ASCII with no spaces, so anything else is a paste of the wrong thing.
+_ZOOM_VALUE = re.compile(r"[\x21-\x7e]+")
 
 _PHONE_SEPARATORS = re.compile(r"[\s\-().]")
 _E164 = re.compile(r"\+\d{8,15}")
@@ -83,6 +86,23 @@ def is_zoom_https_url(value) -> bool:
 validate_credential_set = RegexValidator(
     CREDENTIAL_SET_PATTERN, message=CREDENTIAL_SET_ERROR, code="invalid"
 )
+
+
+@sensitive_variables("value")
+def validate_zoom_value(value, *, max_length: int, message: str) -> str:
+    """Return a pasted Zoom Account ID, Client ID or secret, trimmed; or raise ``message``.
+
+    Brief 015, criterion 13: after trimming, the value must be non-empty, have no whitespace,
+    be printable ASCII, and be at most ``max_length`` characters (100 for IDs, 200 for
+    secrets). The length is checked here, not by a ``maxlength`` attribute, so a paste that's
+    too long is refused rather than silently cut short in the browser and then refused by Zoom
+    (D20 G2). Each field passes its own pinned ``message``. ``value`` may be a secret, so it's
+    masked in error reports, and the error never repeats it.
+    """
+    value = (value or "").strip()
+    if len(value) > max_length or not _ZOOM_VALUE.fullmatch(value):
+        raise ValidationError(message, code="invalid")
+    return value
 
 
 @sensitive_variables("value")

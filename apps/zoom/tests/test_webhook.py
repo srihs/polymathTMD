@@ -41,7 +41,7 @@ def _app_records(caplog, level=logging.WARNING):
 @pytest.fixture
 def zoom02(settings, db):
     account = make_account("Zoom 02", sort_order=2)
-    kit.connect(settings, account)
+    kit.connect(account)
     return account
 
 
@@ -102,7 +102,7 @@ def test_a_signed_call_needs_no_csrf_token_or_sign_in(zoom02):
 def test_a_name_with_no_webhook_secret_is_404_and_logs_nothing_above_info(
     client, settings, zoom02, caplog, slug
 ):
-    kit.connect(settings, zoom02, extra={"zoom-03": kit.credentials("zoom-03", secret="")})
+    kit.connect(zoom02, extra={"zoom-03": ""})
     caplog.set_level(logging.DEBUG)
     response = kit.post(client, kit.meeting_event(), slug=slug)
     assert response.status_code == 404
@@ -174,7 +174,7 @@ def test_the_window_is_300_seconds_either_way(client, zoom02):
 
 
 def test_a_body_signed_with_another_sets_secret_is_refused(client, settings, zoom02):
-    kit.connect(settings, zoom02, extra={"zoom-03": kit.credentials("zoom-03", kit.OTHER_SECRET)})
+    kit.connect(zoom02, extra={"zoom-03": kit.OTHER_SECRET})
     response = kit.post(client, kit.meeting_event(), slug="zoom-02", secret=kit.OTHER_SECRET)
     assert response.status_code == 401
 
@@ -182,7 +182,8 @@ def test_a_body_signed_with_another_sets_secret_is_refused(client, settings, zoo
 # --------------------------------------------------------------------------- 6 URL validation
 
 
-def test_url_validation_answers_exactly_with_no_query_and_no_http(client, zoom02, http_mock):
+def test_url_validation_answers_exactly_with_one_query_and_no_http(client, zoom02, http_mock):
+    """013 criterion 6 as amended by 015 criterion 27: the one lookup of the connection."""
     token = "qgg8vlvZRS6UYooatFL8Aw"
     with CaptureQueriesContext(connection) as queries:
         response = kit.post(client, kit.validation_event(token))
@@ -193,7 +194,8 @@ def test_url_validation_answers_exactly_with_no_query_and_no_http(client, zoom02
     expected = hmac.new(kit.WEBHOOK_SECRET.encode(), token.encode(), hashlib.sha256).hexdigest()
     assert response.json() == {"plainToken": token, "encryptedToken": expected}
     assert list(response.json()) == ["plainToken", "encryptedToken"]
-    assert len(queries) == 0 and len(http_mock.calls) == 0
+    assert len(queries) == 1 and len(http_mock.calls) == 0
+    assert "zoom_zoomconnection" in queries[0]["sql"]
     assert ZoomEvent.objects.count() == 0
 
 
@@ -338,7 +340,7 @@ def test_the_parsed_event_is_masked_in_error_reports(rf, live02):
     event = kit.meeting_event()
     with mock.patch.object(services, "_event_meeting_id", side_effect=RuntimeError("boom")):
         try:
-            services.handle_event(kit.SLUG, event, "c" * 64)
+            services.handle_event(kit.verified(), event, "c" * 64)
         except RuntimeError:
             info = sys.exc_info()
     reporter = ExceptionReporter(rf.post("/zoom/webhooks/zoom-02/"), *info)
@@ -369,9 +371,8 @@ def test_a_booking_on_another_connection_is_never_touched(
     client, settings, live02, http_mock, caplog
 ):
     zoom03 = make_account("Zoom 03", sort_order=3)
-    kit.connect(settings, live02, extra={"zoom-03": kit.credentials("zoom-03", "x")})
-    zoom03.credential_set = "zoom-03"
-    zoom03.save()
+    kit.connect(live02, extra={"zoom-03": "x"})
+    kit.connect(zoom03, slug="zoom-03", secret="x")
     booking = kit.zl42(zoom03)
     caplog.set_level(logging.DEBUG)
     assert kit.post(client, kit.meeting_event()).status_code == 200

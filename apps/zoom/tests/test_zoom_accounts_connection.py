@@ -1,12 +1,15 @@
 """The Zoom connection on the accounts pages, the command and the system checks (brief 006,
-criteria 1, 4-6, 34-37, 39, 40 and 41)."""
+criteria 1, 4-6, 34-37, 39, 40 and 41), as amended by brief 015 (criteria 3, 18, 19, 21, 22,
+30-32 and 35): the account picks a saved ``ZoomConnection``, and nothing reads settings."""
 
 import re
 from io import StringIO
+from pathlib import Path
 from unittest import mock
 
 import pytest
 import responses
+from django import forms
 from django.contrib.messages import constants as levels
 from django.contrib.messages import get_messages
 from django.core import checks, mail
@@ -31,7 +34,6 @@ from .test_sidebar_zoom_group import _real_templates
 pytestmark = pytest.mark.django_db
 
 HOST_KEY = "8421973"
-NAME_RULE = "Use lower-case letters, numbers and hyphens only, like zoom-01."
 
 
 def _check(client, account):
@@ -45,9 +47,10 @@ def _flash(response):
 
 
 # --------------------------------------------------------------------------- 34 the field
+# Brief 015, criterion 18: the typed connection name became a select of saved connections.
 
 
-def test_the_connection_name_field_follows_order_and_has_its_label_help_and_attributes():
+def test_the_connection_field_is_a_select_in_order_with_its_label_help_and_empty_label():
     form = HostAccountForm()
     assert list(form.fields) == [
         "label",
@@ -56,27 +59,33 @@ def test_the_connection_name_field_follows_order_and_has_its_label_help_and_attr
         "is_paid",
         "is_active",
         "sort_order",
-        "credential_set",
+        "zoom_connection",
         "host_key",
     ]
-    field = form.fields["credential_set"]
-    assert field.label == "Zoom connection name"
+    field = form.fields["zoom_connection"]
+    assert isinstance(field, forms.ModelChoiceField)
+    assert isinstance(field.widget, forms.Select)
+    assert field.label == "Zoom connection"
+    assert field.empty_label == "No Zoom connection yet"
     assert field.help_text == (
-        "The name of this account's Zoom connection on the server, like zoom-01. Whoever looks "
-        "after the server tells you the name."
+        "The Zoom app this account books through. If it isn't in the list, add it on the Zoom "
+        "connections page first."
     )
     assert field.required is False
-    html = str(form["credential_set"])
-    for attribute in (
-        'autocomplete="off"',
-        'autocapitalize="none"',
-        'spellcheck="false"',
-        'maxlength="40"',
-    ):
-        assert attribute in html
-    assert HostAccountForm.Meta.fields[-1] == "credential_set"
+    assert HostAccountForm.Meta.fields[-1] == "zoom_connection"
     # One copy of the help: the form borrows the model's (review round 1, SF3).
-    assert field.help_text == HostAccount._meta.get_field("credential_set").help_text
+    assert field.help_text == HostAccount._meta.get_field("zoom_connection").help_text
+
+
+def test_the_choices_read_only_the_name_never_a_secret_column():
+    zm.connection()
+    form = HostAccountForm()
+    with CaptureQueriesContext(connection) as queries:
+        choices = [str(label) for _, label in form.fields["zoom_connection"].choices]
+    assert choices == ["No Zoom connection yet", "zoom-test"]
+    [query] = queries
+    for column in ("secret", "account_id", "client_id", "credentials"):
+        assert column not in query["sql"]
 
 
 @pytest.mark.parametrize(
@@ -107,90 +116,144 @@ def test_the_accounts_list_warns_only_where_a_connection_is_needed():
     }
 
 
-@pytest.mark.parametrize(
-    "value", ["Zoom-01", "zoom_01", "zoom 01", "-zoom", "zoom-", "zoom--01", "a" * 41, "zoom.01"]
-)
-def test_a_bad_connection_name_gets_one_plain_error(it_client, value):
+def test_choosing_a_connection_saves_it_and_an_empty_choice_clears_it(it_client):
+    chosen = zm.connection()
     account = make_account("Zoom 03", sort_order=3)
-    response = it_client.post(_edit(account), _data(account, credential_set=value))
-    assert response.status_code == 200
-    assert response.context["form"].errors["credential_set"] == [NAME_RULE]
-    account.refresh_from_db()
-    assert account.credential_set == ""
-
-
-@pytest.mark.parametrize("value", ["zoom-01", "zoom01", "a", "a" * 40, ""])
-def test_a_good_connection_name_saves_even_if_the_server_doesnt_have_it(it_client, value):
-    account = make_account("Zoom 03", sort_order=3)
-    response = it_client.post(_edit(account), _data(account, credential_set=value))
+    response = it_client.post(_edit(account), _data(account, zoom_connection=chosen.pk))
     assert response.status_code == 302
     account.refresh_from_db()
-    assert account.credential_set == value
+    assert account.zoom_connection == chosen
+    response = it_client.post(_edit(account), _data(account, zoom_connection=""))
+    assert response.status_code == 302
+    account.refresh_from_db()
+    assert account.zoom_connection is None
 
 
-def test_the_model_refuses_a_bad_name_too():
-    account = make_account("Zoom 03")
-    account.credential_set = "Zoom_01"
-    with pytest.raises(Exception) as caught:
-        account.full_clean()
-    assert NAME_RULE in str(caught.value)
+@pytest.mark.parametrize("value", ["99999", "zoom-test", "not-a-number"])
+def test_a_choice_not_in_the_list_gets_one_plain_error(it_client, value):
+    zm.connection()
+    account = make_account("Zoom 03", sort_order=3)
+    response = it_client.post(_edit(account), _data(account, zoom_connection=value))
+    assert response.status_code == 200
+    assert response.context["form"].errors["zoom_connection"] == [
+        "Choose a Zoom connection from the list."
+    ]
+    account.refresh_from_db()
+    assert account.zoom_connection is None
+
+
+def test_after_an_invalid_post_the_persons_choice_is_still_selected(it_client):
+    chosen = zm.connection()
+    account = make_account("Zoom 03", sort_order=3)
+    response = it_client.post(_edit(account), _data(account, label="", zoom_connection=chosen.pk))
+    assert response.status_code == 200
+    bound = response.context["form"]["zoom_connection"]
+    assert str(bound.value()) == str(chosen.pk)
+    assert f'<option value="{chosen.pk}" selected>' in str(bound)
 
 
 # --------------------------------------------------------------------------- 35 connection state
 
 
-def test_the_connection_state_reads_settings_only(settings):
-    settings.ZOOM_S2S_SECRETS = {"zoom-01": zm.credentials("zoom-01")}
+def test_the_connection_state_reads_the_loaded_row_only():
+    """Brief 015, criterion 3: none, ready or unreadable, with no query once loaded."""
     account = make_account("Zoom 03")
+    ready = zm.connection()
+    broken = zm.make_unreadable(zm.connection("zoom-broken"))
     with CaptureQueriesContext(connection) as queries:
         assert account.zoom_connection_state == "none"
-        account.credential_set = "zoom-02"
-        assert account.zoom_connection_state == "missing"
-        assert not account.is_zoom_connected()
-        account.credential_set = "zoom-01"
+        account.zoom_connection = ready
         assert account.zoom_connection_state == "ready"
         assert account.is_zoom_connected()
+        account.zoom_connection = broken
+        assert account.zoom_connection_state == "unreadable"
+        assert not account.is_zoom_connected()
     assert len(queries) == 0
 
 
-def test_the_pages_show_the_state_and_make_no_http_call(it_client, settings, http_mock):
-    settings.ZOOM_S2S_SECRETS = {"zoom-01": zm.credentials("zoom-01")}
+def test_the_pages_show_the_state_and_make_no_http_call(it_client, http_mock):
     ready = make_account("Zoom 01", sort_order=1)
-    missing = make_account("Zoom 02", sort_order=2)
+    unreadable = make_account("Zoom 02", sort_order=2)
     none = make_account("Zoom 03", sort_order=3)
-    HostAccount.objects.filter(pk=ready.pk).update(credential_set="zoom-01")
-    HostAccount.objects.filter(pk=missing.pk).update(credential_set="zoom-9")
+    zm.connect(ready)
+    broken = zm.connect(unreadable, slug="zoom-broken")
+    zm.make_unreadable(broken)
 
-    accounts = it_client.get(reverse("zoom:accounts")).context["accounts"]
-    assert [a.zoom_connection_state for a in accounts] == ["ready", "missing", "none"]
+    response = it_client.get(reverse("zoom:accounts"))
+    accounts = response.context["accounts"]
+    assert [a.zoom_connection_state for a in accounts] == ["ready", "unreadable", "none"]
+    assert response.context["can_manage_connections"] is True
 
-    context = it_client.get(_edit(missing)).context
+    context = it_client.get(_edit(unreadable)).context
     assert (context["zoom_connection_state"], context["zoom_connection_name"]) == (
-        "missing",
-        "zoom-9",
+        "unreadable",
+        "zoom-broken",
     )
-    assert context["can_check_connection"] is True and context["account"].pk == missing.pk
+    assert context["zoom_connection_url"] == reverse("zoom:connection_edit", args=[broken.pk])
+    assert context["can_manage_connections"] is True
+    assert context["can_check_connection"] is True and context["account"].pk == unreadable.pk
     context = it_client.get(_edit(none)).context
     assert (context["zoom_connection_state"], context["zoom_connection_name"]) == ("none", "")
+    assert context["zoom_connection_url"] == ""
 
     context = it_client.get(reverse("zoom:account_add")).context
     assert (context["zoom_connection_state"], context["zoom_connection_name"]) == ("none", "")
+    assert context["zoom_connection_url"] == "" and context["can_manage_connections"] is True
     assert context["can_check_connection"] is False and context["account"] is None
     assert len(http_mock.calls) == 0
 
 
-def test_an_invalid_submit_shows_the_stored_connection_not_the_typed_one(it_client, settings):
-    settings.ZOOM_S2S_SECRETS = {"zoom-01": zm.credentials("zoom-01")}
+def test_a_keyless_viewer_gets_no_connections_link():
+    make_account("Zoom 01")
+    client = Client()
+    client.force_login(_user_with("view_hostaccount"))
+    assert client.get(reverse("zoom:accounts")).context["can_manage_connections"] is False
+
+
+def test_the_accounts_list_query_count_is_fixed_with_connections(it_client):
+    """Criterion 21: the same count with 1 and with 5 accounts, each linked to a connection."""
+
+    def count():
+        with CaptureQueriesContext(connection) as queries:
+            assert it_client.get(reverse("zoom:accounts")).status_code == 200
+        return len(queries)
+
+    zm.connect(make_account("Zoom 01", sort_order=1), slug="zoom-01")
+    one = count()
+    for number in range(2, 6):
+        zm.connect(make_account(f"Zoom 0{number}", sort_order=number), slug=f"zoom-0{number}")
+    assert count() == one
+
+
+def test_an_invalid_submit_shows_the_stored_connection_not_the_chosen_one(it_client):
     account = make_account("Zoom 03")
-    HostAccount.objects.filter(pk=account.pk).update(credential_set="zoom-01")
-    response = it_client.post(_edit(account), _data(account, credential_set="Bad Name"))
+    stored = zm.connect(account, slug="zoom-01")
+    other = zm.connection("zoom-02")
+    response = it_client.post(_edit(account), _data(account, label="", zoom_connection=other.pk))
     assert response.status_code == 200
     context = response.context
     assert (context["zoom_connection_state"], context["zoom_connection_name"]) == (
         "ready",
         "zoom-01",
     )
-    assert context["form"]["credential_set"].value() == "Bad Name"
+    assert context["zoom_connection_url"] == reverse("zoom:connection_edit", args=[stored.pk])
+    assert str(context["form"]["zoom_connection"].value()) == str(other.pk)
+
+
+def test_the_change_view_locks_only_the_account_row(it_client):
+    """Brief 015, criterion 3 and D8: ``FOR UPDATE OF`` the account, never the connection."""
+    account = make_account("Zoom 03")
+    zm.connect(account)
+    with CaptureQueriesContext(connection) as queries:
+        it_client.post(_edit(account), _data(account, zoom_connection=account.zoom_connection_id))
+    locks = [
+        q["sql"] for q in queries if "FOR UPDATE" in q["sql"] and "zoom_hostaccount" in q["sql"]
+    ]
+    assert locks and all(s.endswith("FOR UPDATE OF `zoom_hostaccount`") for s in locks)
+    assert not any(
+        "FOR UPDATE" in q["sql"] and "zoom_zoomconnection`" in q["sql"].split("FOR UPDATE")[1]
+        for q in queries
+    )
 
 
 # --------------------------------------------------------------------------- 36 check connection
@@ -213,10 +276,10 @@ def test_check_connection_needs_the_change_permission(plain_user, it_client):
 
 
 @pytest.fixture
-def ready(settings):
-    """Zoom 03, paid and in use, whose connection name the server has."""
+def ready():
+    """Zoom 03, paid and in use, on the test connection."""
     account = make_account("Zoom 03", sort_order=3)
-    zm.connect(settings, account)
+    zm.connect(account)
     return account
 
 
@@ -259,19 +322,20 @@ def test_a_basic_user_on_a_free_account_is_fine(it_client, ready, http_mock):
     assert _flash(_check(it_client, ready))[0] == levels.SUCCESS
 
 
-def test_no_name_and_a_missing_name_ask_nothing_of_zoom(it_client, settings, http_mock):
+def test_no_connection_and_an_unreadable_one_ask_nothing_of_zoom(it_client, http_mock):
+    """Brief 015, criterion 22's first two rows: nothing is sent anywhere."""
     none = make_account("Zoom 03")
-    missing = make_account("Zoom 04")
-    HostAccount.objects.filter(pk=missing.pk).update(credential_set="zoom-test")
-    settings.ZOOM_S2S_SECRETS = {}
+    broken = make_account("Zoom 04")
+    zm.make_unreadable(zm.connect(broken))
     assert _flash(_check(it_client, none)) == (
         levels.ERROR,
-        "Zoom 03 has no Zoom connection name yet. Type it in, save, then check again.",
+        "Zoom 03 has no Zoom connection yet. Choose one, save, then check again.",
     )
-    assert _flash(_check(it_client, missing)) == (
+    assert _flash(_check(it_client, broken)) == (
         levels.ERROR,
-        "The server has no Zoom connection called zoom-test. Ask whoever looks after the server "
-        "to add it, then check again.",
+        "The details of the Zoom connection zoom-test can't be read with the server's current "
+        "encryption keys. Type its client secret again on the Zoom connection's page, then check "
+        "again.",
     )
     assert len(http_mock.calls) == 0
 
@@ -281,8 +345,9 @@ def test_no_name_and_a_missing_name_ask_nothing_of_zoom(it_client, settings, htt
     [
         (
             {"token_reply": {"status": 401}},
-            "Zoom didn't accept the connection details called zoom-test. Check the account ID, "
-            "client ID and client secret on the server, and that the Zoom app is activated.",
+            "Zoom didn't accept the details of the Zoom connection zoom-test. Check its Account "
+            "ID, Client ID and Client Secret on the Zoom connection's page, and that the Zoom app "
+            "is activated.",
         ),
         (
             {"user_reply": {"status": 400, "json": zm.zoom_error(4711)}},
@@ -317,13 +382,13 @@ def test_each_failure_has_its_own_message(it_client, ready, http_mock, answers, 
 # --------------------------------------------------------------------------- 37 the command
 
 
-def test_the_command_checks_every_active_paid_account_in_order(settings, http_mock):
+def test_the_command_checks_every_active_paid_account_in_order(http_mock):
     works = make_account("Zoom 02", sort_order=2)
     broken = make_account("Zoom 01", sort_order=1)
     make_account("Zoom 09", sort_order=0, is_paid=False)
     make_account("Zoom 08", sort_order=0, is_active=False)
-    zm.connect(settings, works)
-    HostAccount.objects.filter(pk=broken.pk).update(credential_set="zoom-gone")
+    zm.connect(works)
+    zm.make_unreadable(zm.connect(broken, slug="zoom-gone"))
     _zoom_answers(http_mock, works)
 
     out = StringIO()
@@ -331,17 +396,18 @@ def test_the_command_checks_every_active_paid_account_in_order(settings, http_mo
         call_command("check_zoom_connections", stdout=out)
     assert caught.value.returncode == 1
     assert out.getvalue().splitlines() == [
-        "Zoom 01: The server has no Zoom connection called zoom-gone. Ask whoever looks after "
-        "the server to add it, then check again.",
+        "Zoom 01: The details of the Zoom connection zoom-gone can't be read with the server's "
+        "current encryption keys. Type its client secret again on the Zoom connection's page, "
+        "then check again.",
         "Zoom 02: works",
     ]
     for secret in zm.SECRETS:
         assert secret not in out.getvalue() and secret not in str(caught.value)
 
 
-def test_the_command_exits_cleanly_when_every_account_works(settings, http_mock):
+def test_the_command_exits_cleanly_when_every_account_works(http_mock):
     account = make_account("Zoom 02")
-    zm.connect(settings, account)
+    zm.connect(account)
     _zoom_answers(http_mock, account)
     out = StringIO()
     call_command("check_zoom_connections", stdout=out)
@@ -351,46 +417,26 @@ def test_the_command_exits_cleanly_when_every_account_works(settings, http_mock)
 # --------------------------------------------------------------------------- 4-6 checks
 
 
-def test_e005_is_silent_unless_the_zoom_provider_is_chosen(settings):
-    settings.ZOOM_CREDENTIAL_SETS = []
-    for provider in ("fake", "manual"):
+def test_e005_is_retired_and_its_id_never_produced(settings):
+    """Brief 015, criterion 30: no ``check_credential_sets``, and no check says ``zoom.E005``."""
+    from django.core.checks import registry
+
+    assert not hasattr(zoom_checks, "check_credential_sets")
+    names = {check.__name__ for check in registry.registry.get_checks(True)}
+    assert "check_credential_sets" not in names
+    for provider in ("fake", "manual", "zoom"):
         settings.ZOOM_PROVIDER = provider
-        assert zoom_checks.check_credential_sets() == []
+        ids = {
+            e.id for e in checks.run_checks(include_deployment_checks=True, databases=["default"])
+        }
+        assert "zoom.E005" not in ids
+    source = (Path(zoom_checks.__file__)).read_text(encoding="utf-8")
+    assert "config" + ".settings" not in source
 
 
-def test_e005_names_what_is_wrong_and_never_a_value(settings):
+def test_the_deploy_checks_pass_with_zoom_and_no_credential_setting(settings):
+    """Brief 015: ``check --deploy`` needs no credential variable at all."""
     settings.ZOOM_PROVIDER = "zoom"
-    settings.ZOOM_CREDENTIAL_SETS = []
-    [error] = zoom_checks.check_credential_sets()
-    assert (error.id, error.msg) == (
-        "zoom.E005",
-        "ZOOM_PROVIDER is zoom, but ZOOM_CREDENTIAL_SETS is empty.",
-    )
-
-    settings.ZOOM_CREDENTIAL_SETS = ["zoom-01", "Zoom_02", "zoom-03", "zoom-03"]
-    settings.ZOOM_S2S_SECRETS = {"zoom-03": zm.credentials("zoom-03")}
-    settings.ZOOM_CREDENTIAL_MISSING = {
-        "zoom-01": ["ZOOM_S2S_ZOOM_01_CLIENT_ID", "ZOOM_S2S_ZOOM_01_CLIENT_SECRET"]
-    }
-    messages = [e.msg for e in zoom_checks.check_credential_sets()]
-    assert messages == [
-        "The Zoom connection zoom-01 is missing ZOOM_S2S_ZOOM_01_CLIENT_ID, "
-        "ZOOM_S2S_ZOOM_01_CLIENT_SECRET.",
-        "The Zoom connection name 'Zoom_02' in ZOOM_CREDENTIAL_SETS isn't valid.",
-        "The Zoom connections zoom-03, zoom-03 all use the variables ZOOM_S2S_ZOOM_03_*.",
-    ]
-    for secret in zm.SECRETS:
-        assert all(secret not in message for message in messages)
-    # The bad-name hint is the form's own error, from one definition (review round 1, SF3).
-    [bad_name] = [e for e in zoom_checks.check_credential_sets() if "Zoom_02" in e.msg]
-    assert bad_name.hint == NAME_RULE
-
-
-def test_e005_and_the_deploy_checks_pass_with_zoom_and_valid_sets(settings):
-    settings.ZOOM_PROVIDER = "zoom"
-    settings.ZOOM_CREDENTIAL_SETS = ["zoom-test"]
-    settings.ZOOM_S2S_SECRETS = {"zoom-test": zm.credentials()}
-    settings.ZOOM_CREDENTIAL_MISSING = {}
     ids = {e.id for e in checks.run_checks(include_deployment_checks=True)}
     assert not {i for i in ids if i.startswith("zoom.")}
 
@@ -409,23 +455,39 @@ def test_w001_warns_about_manual_under_deploy_only(settings):
     assert zoom_checks.check_manual_provider_not_deployed() == []
 
 
+E004_HINT = (
+    "Choose the connection on the Zoom accounts page, or type its client secret again on the "
+    "Zoom connections page."
+)
+
+
 def test_e004_names_each_paid_account_without_a_working_connection(settings):
+    """Brief 015, criterion 32: from the database, one query whatever the number of accounts."""
     settings.ZOOM_PROVIDER = "zoom"
-    settings.ZOOM_S2S_SECRETS = {"zoom-01": zm.credentials("zoom-01")}
-    make_account("Zoom 01", sort_order=1)
-    HostAccount.objects.filter(label="Zoom 01").update(credential_set="zoom-01")
+    zm.connect(make_account("Zoom 01", sort_order=1), slug="zoom-01")
     make_account("Zoom 02", sort_order=2)
-    make_account("Zoom 03", sort_order=3)
-    HostAccount.objects.filter(label="Zoom 03").update(credential_set="zoom-03")
+    zm.make_unreadable(zm.connect(make_account("Zoom 03", sort_order=3), slug="zoom-03"))
     make_account("Zoom 04", is_paid=False)
     make_account("Zoom 05", is_active=False)
 
-    errors = checks.run_checks(databases=["default"])
-    mine = [e for e in errors if e.id == "zoom.E004"]
-    assert [e.msg for e in mine] == [
-        "Zoom 02 has no working Zoom connection: no Zoom connection name is set.",
-        "Zoom 03 has no working Zoom connection: the server has no connection details called "
-        "zoom-03.",
+    with CaptureQueriesContext(connection) as queries:
+        mine = zoom_checks.check_accounts_connected(databases=["default"])
+    assert len(queries) == 1
+    assert [(e.id, e.msg, e.hint) for e in mine] == [
+        (
+            "zoom.E004",
+            "Zoom 02 has no working Zoom connection: no Zoom connection is chosen.",
+            E004_HINT,
+        ),
+        (
+            "zoom.E004",
+            "Zoom 03 has no working Zoom connection: the details of zoom-03 can't be read with "
+            "the current encryption keys.",
+            E004_HINT,
+        ),
+    ]
+    assert [e.msg for e in checks.run_checks(databases=["default"]) if e.id == "zoom.E004"] == [
+        e.msg for e in mine
     ]
     # Only with --database: a plain check never touches the database for it.
     assert "zoom.E004" not in {e.id for e in checks.run_checks()}
@@ -477,7 +539,7 @@ def test_no_credential_or_token_reaches_a_page_a_message_or_the_email(
     _real_templates(settings)
     account = make_account("Zoom 01", host_key=HOST_KEY)
     settings.ZOOM_PROVIDER = "zoom"
-    zm.connect(settings, account)
+    zm.connect(account)
     _zoom_answers(http_mock, account)
     zm.add_create(http_mock, account.email)
     link_request = make_request()

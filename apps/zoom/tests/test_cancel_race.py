@@ -59,7 +59,7 @@ def _setup(committed, settings=None, http_mock=None, *, live=False):  # noqa: F8
     account = _tracked_account(committed, "Race 02", host_key="8421973")
     if live:
         settings.ZOOM_PROVIDER = "zoom"
-        zm.connect(settings, account)
+        zm.connect(account)
         zm.add_token(http_mock)
     return user, account
 

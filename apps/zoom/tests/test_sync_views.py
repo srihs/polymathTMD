@@ -28,6 +28,7 @@ from apps.zoom.providers import (
 )
 
 from . import synckit as kit
+from . import zoommock as zm
 from .conftest import FROZEN_NOW, make_account, make_request
 from .test_sidebar_zoom_group import _real_templates
 
@@ -47,7 +48,7 @@ def sync_url(link_request):
 @pytest.fixture
 def zoom02(settings, db):
     account = make_account("Zoom 02", sort_order=2)
-    kit.connect(settings, account)
+    kit.connect(account)
     return account
 
 
@@ -359,7 +360,7 @@ def test_the_three_states_of_the_account_page(it_client, settings, zoom02, monke
     context = _account_context(it_client, zoom02)
     assert (context["webhook_secret_set"], context["last_zoom_event_at"]) == (True, heard)
 
-    kit.connect(settings, zoom02, secret="")
+    kit.connect(zoom02, secret="")
     context = _account_context(it_client, zoom02)
     assert (context["webhook_secret_set"], context["last_zoom_event_at"]) == (False, None)
 
@@ -371,9 +372,10 @@ def test_none_where_there_is_nothing_to_say(it_client, settings, zoom02):
     context = _account_context(it_client, zoom02)
     assert (context["webhook_secret_set"], context["last_zoom_event_at"]) == (None, None)
     settings.ZOOM_PROVIDER = "fake"
-    settings.ZOOM_S2S_SECRETS = {}  # the stored name is no longer on the server
+    # Brief 015: the stored connection can't be read with the server's keys.
+    zm.make_unreadable(zoom02.zoom_connection)
     context = _account_context(it_client, zoom02)
-    assert context["zoom_connection_state"] == "missing"
+    assert context["zoom_connection_state"] == "unreadable"
     assert context["webhook_secret_set"] is None
     unnamed = make_account("Zoom 07", sort_order=7)
     assert _account_context(it_client, unnamed)["webhook_secret_set"] is None
@@ -381,7 +383,7 @@ def test_none_where_there_is_nothing_to_say(it_client, settings, zoom02):
 
 def test_two_accounts_on_one_connection_show_the_same_last_heard(it_client, settings, zoom02):
     zoom03 = make_account("Zoom 03", sort_order=3)
-    kit.connect(settings, zoom02, zoom03)
+    kit.connect(zoom02, zoom03)
     ZoomEvent.objects.create(slug="zoom-02", event="x", body_sha256="1" * 64, outcome="ignored")
     first = _account_context(it_client, zoom02)["last_zoom_event_at"]
     assert first is not None
@@ -389,10 +391,10 @@ def test_two_accounts_on_one_connection_show_the_same_last_heard(it_client, sett
 
 
 def test_the_account_page_costs_at_most_one_query_more(it_client, settings, zoom02):
-    kit.connect(settings, zoom02, secret="")
+    kit.connect(zoom02, secret="")
     with CaptureQueriesContext(connection) as without:
         _account_context(it_client, zoom02)
-    kit.connect(settings, zoom02)
+    kit.connect(zoom02)
     with CaptureQueriesContext(connection) as with_secret:
         _account_context(it_client, zoom02)
     assert len(with_secret) <= len(without) + 1

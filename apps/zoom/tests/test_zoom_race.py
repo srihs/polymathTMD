@@ -41,7 +41,7 @@ def _live(committed, settings, http_mock, label="Race 01"):  # noqa: F811
     user = _tracked_user(committed, username="race-it", password="pw")
     account = _tracked_account(committed, label, host_key="8421973")
     settings.ZOOM_PROVIDER = "zoom"
-    zm.connect(settings, account)
+    zm.connect(account)
     zm.add_token(http_mock)
     zm.add_listing(http_mock, account.email)
     return user, account
@@ -98,7 +98,7 @@ def test_no_transaction_is_open_while_zoom_is_asked(committed, client, settings,
     account = _tracked_account(committed, "Race 06", host_key="8421973")
     link_request = _tracked_request(committed, class_name="Race E")
     settings.ZOOM_PROVIDER = "zoom"
-    zm.connect(settings, account)
+    zm.connect(account)
     request_connection = connections["default"]
     seen = []
 

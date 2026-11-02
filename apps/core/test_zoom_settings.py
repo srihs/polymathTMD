@@ -1,10 +1,11 @@
-"""Platform tests for brief 006's settings and plumbing (owned by tmd-devops).
+"""Platform tests for the Zoom settings and plumbing (owned by tmd-devops).
 
-They pin what the zoom app relies on but doesn't own: how credentials are read from the
-environment and named (criterion 2), that Django masks them (criterion 3), the env files and
-logging (criterion 7), and the project-wide network block (criterion 45). Brief 013's
-criterion 1 adds the optional webhook secret to the same plumbing, so its tests live here too.
-The zoom app's checks, client and provider are tested in apps/zoom/tests/.
+They pin what the zoom app relies on but doesn't own: the env files, compose and logging, and
+the project-wide network block (brief 006, criteria 7 and 45). From brief 015 Zoom credentials
+are typed in the app and stored encrypted in the database, so these tests now pin that the
+old env path is *gone* (criteria 36-39): no settings, variables, compose `env_file` or example
+file for them, and SQL parameters (which now carry connection values) never logged.
+The zoom app's model, checks, client and provider are tested in apps/zoom/tests/.
 """
 
 import logging
@@ -14,151 +15,134 @@ import subprocess
 import sys
 import threading
 
-import environ
 import pytest
 import requests
 from django.conf import settings
-from django.test import RequestFactory
-from django.views.debug import ExceptionReporter, SafeExceptionReporterFilter
 
-from config.settings.base import (
-    ZoomCredentials,
-    read_zoom_credentials,
-    zoom_credential_env_prefix,
+# Built from parts so this file never matches its own scan (brief 015, criterion 26).
+OLD_PREFIX = "ZOOM_" + "S2S"
+OLD_LIST = "ZOOM_" + "CREDENTIAL"
+NEEDLES = (OLD_PREFIX, OLD_LIST)
+CREDENTIALS_FILE = "zoom-" + "credentials.env"
+# The ignore files keep their line for a stray copy, under this comment (brief 015, D12).
+RETIRED_COMMENT = (
+    "# Retired by brief 015 (Zoom credentials are typed in the app). "
+    "Kept so a stray copy is never committed or copied into the image."
 )
 
-FAKE = ZoomCredentials(
-    slug="zoom-test",
-    account_id="test-account-id",
-    client_id="test-client-id",
-    client_secret="test-client-secret-value",
-    webhook_secret="test-webhook-secret-value",
-)
-SECRET_VALUES = (FAKE.account_id, FAKE.client_id, FAKE.client_secret, FAKE.webhook_secret)
+
+def _text(path):
+    return path.read_text(encoding="utf-8")
 
 
-# --------------------------------------------------------------------------- criterion 2
-def test_env_prefix_rule():
-    assert zoom_credential_env_prefix("zoom-01") == "ZOOM_S2S_ZOOM_01"
-    assert zoom_credential_env_prefix("main") == "ZOOM_S2S_MAIN"
+def _comment_above(path, marker):
+    """The run of `#` lines straight above the first line starting with ``marker``, joined."""
+    lines = _text(path).splitlines()
+    index = next(i for i, line in enumerate(lines) if line.strip().startswith(marker))
+    block = []
+    while index > 0 and lines[index - 1].strip().startswith("#"):
+        index -= 1
+        block.insert(0, lines[index].strip())
+    return " ".join(block)
 
 
-def test_read_zoom_credentials_keeps_complete_sets_and_names_missing_variables(monkeypatch):
-    monkeypatch.setenv("ZOOM_S2S_ZOOM_01_ACCOUNT_ID", "test-account-id")
-    monkeypatch.setenv("ZOOM_S2S_ZOOM_01_CLIENT_ID", "test-client-id")
-    monkeypatch.setenv("ZOOM_S2S_ZOOM_01_CLIENT_SECRET", " test-client-secret ")
-    monkeypatch.setenv("ZOOM_S2S_ZOOM_02_ACCOUNT_ID", "test-account-id")
-    monkeypatch.setenv("ZOOM_S2S_ZOOM_02_CLIENT_ID", "   ")  # blank counts as missing
-    monkeypatch.delenv("ZOOM_S2S_ZOOM_02_CLIENT_SECRET", raising=False)
-
-    secrets, missing = read_zoom_credentials(environ.Env(), ["zoom-01", "zoom-02"])
-
-    assert secrets == {
-        "zoom-01": ZoomCredentials(
-            slug="zoom-01",
-            account_id="test-account-id",
-            client_id="test-client-id",
-            client_secret="test-client-secret",
-        )
-    }
-    assert missing == {"zoom-02": ["ZOOM_S2S_ZOOM_02_CLIENT_ID", "ZOOM_S2S_ZOOM_02_CLIENT_SECRET"]}
+def _scanned_files():
+    """Every text file criterion 36's scan covers, skipping bytecode caches."""
+    base = settings.BASE_DIR
+    roots = [base / "apps", base / "config", base / "docker"]
+    files = [p for root in roots for p in root.rglob("*") if p.is_file()]
+    files = [p for p in files if "__pycache__" not in p.parts and p.suffix != ".pyc"]
+    singles = ["compose.yaml", "compose.dev.yaml", "Dockerfile", ".env.example"]
+    return files + [base / name for name in singles]
 
 
-def _set_required_parts(monkeypatch, prefix):
-    monkeypatch.setenv(f"{prefix}_ACCOUNT_ID", "test-account-id")
-    monkeypatch.setenv(f"{prefix}_CLIENT_ID", "test-client-id")
-    monkeypatch.setenv(f"{prefix}_CLIENT_SECRET", "test-client-secret")
+# --------------------------------------------------------------------------- brief 015, 36
+def test_base_settings_hold_no_env_credential_code():
+    text = _text(settings.BASE_DIR / "config" / "settings" / "base.py")
+    gone = [
+        "ZoomCredentials",
+        OLD_LIST + "_PARTS",
+        OLD_LIST + "_OPTIONAL_PARTS",
+        "zoom_credential_env_prefix",
+        "read_zoom_credentials",
+        OLD_LIST + "_SETS",
+        OLD_PREFIX + "_SECRETS",
+        OLD_LIST + "_MISSING",
+        "dataclass",
+    ]
+    assert [name for name in gone if name in text] == []
 
 
-def test_webhook_secret_is_read_and_stripped(monkeypatch):
-    """Brief 013, criterion 1: the fourth variable follows the same naming rule."""
-    _set_required_parts(monkeypatch, "ZOOM_S2S_ZOOM_01")
-    monkeypatch.setenv("ZOOM_S2S_ZOOM_01_WEBHOOK_SECRET", " test-webhook-secret ")
-
-    secrets, missing = read_zoom_credentials(environ.Env(), ["zoom-01"])
-
-    assert secrets["zoom-01"].webhook_secret == "test-webhook-secret"
-    assert missing == {}
+def test_no_settings_attribute_names_zoom_credentials():
+    names = [name for name in dir(settings) if any(n in name for n in NEEDLES)]
+    assert names == []
 
 
-@pytest.mark.parametrize("value", [None, "", "   "])
-def test_a_set_is_complete_without_a_webhook_secret(monkeypatch, value):
-    """Brief 013, criterion 1: the webhook secret is optional, so it's never "missing"."""
-    _set_required_parts(monkeypatch, "ZOOM_S2S_ZOOM_01")
-    if value is None:
-        monkeypatch.delenv("ZOOM_S2S_ZOOM_01_WEBHOOK_SECRET", raising=False)
-    else:
-        monkeypatch.setenv("ZOOM_S2S_ZOOM_01_WEBHOOK_SECRET", value)
-
-    secrets, missing = read_zoom_credentials(environ.Env(), ["zoom-01"])
-
-    assert secrets["zoom-01"].webhook_secret == ""
-    assert missing == {}
-
-
-def test_a_webhook_secret_never_completes_an_incomplete_set(monkeypatch):
-    monkeypatch.setenv("ZOOM_S2S_ZOOM_02_ACCOUNT_ID", "test-account-id")
-    monkeypatch.delenv("ZOOM_S2S_ZOOM_02_CLIENT_ID", raising=False)
-    monkeypatch.delenv("ZOOM_S2S_ZOOM_02_CLIENT_SECRET", raising=False)
-    monkeypatch.setenv("ZOOM_S2S_ZOOM_02_WEBHOOK_SECRET", "test-webhook-secret")
-
-    secrets, missing = read_zoom_credentials(environ.Env(), ["zoom-02"])
-
-    assert secrets == {}
-    assert missing == {"zoom-02": ["ZOOM_S2S_ZOOM_02_CLIENT_ID", "ZOOM_S2S_ZOOM_02_CLIENT_SECRET"]}
-
-
-def test_credentials_default_to_no_webhook_secret():
-    """Code that builds a set by hand (the zoom app's test helpers) needn't name the field."""
-    plain = ZoomCredentials(slug="zoom-x", account_id="a", client_id="b", client_secret="c")
-    assert plain.webhook_secret == ""
-
-
-def test_credentials_repr_shows_only_the_slug():
-    text = repr(FAKE) + str(FAKE)
-    assert "zoom-test" in text
-    for value in SECRET_VALUES:
-        assert value not in text
-
-
-def test_zoom_s2s_env_is_read_only_in_base_settings():
-    """Criterion 2's source scan: env reads of ZOOM_S2S_* live in base.py alone."""
-    env_read = re.compile(r"os\.environ|getenv\(|\benv(\.\w+)?\(")
+def test_no_zoom_credential_variable_is_named_anywhere_on_the_platform():
+    """Criterion 36's scan: apps/, config/, docker/, compose files, Dockerfile, .env.example."""
     offenders = []
-    roots = [settings.BASE_DIR / "apps", settings.BASE_DIR / "config"]
-    for path in [p for root in roots for p in root.rglob("*.py")]:
-        if path == settings.BASE_DIR / "config" / "settings" / "base.py":
+    for path in _scanned_files():
+        try:
+            lines = _text(path).splitlines()
+        except UnicodeDecodeError:
             continue
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if "ZOOM_S2S_" in line and env_read.search(line):
+        for number, line in enumerate(lines, 1):
+            if any(needle in line for needle in NEEDLES):
                 offenders.append(f"{path.relative_to(settings.BASE_DIR)}:{number}")
-    assert not offenders, offenders
+    assert offenders == []
 
 
-# --------------------------------------------------------------------------- criterion 3
-def test_zoom_secrets_are_masked_in_error_reports(settings):
-    settings.ZOOM_S2S_SECRETS = {"zoom-test": FAKE}
-    settings.ZOOM_CREDENTIAL_SETS = ["zoom-test"]
-    reporter_filter = SafeExceptionReporterFilter()
-    safe = reporter_filter.get_safe_settings()
-
-    assert safe["ZOOM_S2S_SECRETS"] == reporter_filter.cleansed_substitute
-    assert not any(value in repr(safe) for value in SECRET_VALUES)
-    # The list holds slugs only; if Django ever matches its name, it must be masked too.
-    assert safe["ZOOM_CREDENTIAL_SETS"] in (["zoom-test"], reporter_filter.cleansed_substitute)
+def test_encryption_keys_comment_covers_connection_secrets_and_backups():
+    path = settings.BASE_DIR / "config" / "settings" / "base.py"
+    comment = _comment_above(path, "HOST_KEY_ENCRYPTION_KEYS = ")
+    assert "Zoom connection" in comment
+    assert "backup" in comment
+    assert "rotate_encryption_keys" in comment
 
 
-def test_debug_page_never_shows_zoom_credentials(settings):
-    settings.ZOOM_S2S_SECRETS = {"zoom-test": FAKE}
-    request = RequestFactory().get("/")
-    try:
-        raise RuntimeError("boom")
-    except RuntimeError:
-        html = ExceptionReporter(request, *sys.exc_info()).get_traceback_html()
-    for value in SECRET_VALUES:
-        assert value not in html
+# --------------------------------------------------------------------------- brief 015, 37
+def test_the_credentials_example_file_is_gone():
+    assert not (settings.BASE_DIR / (CREDENTIALS_FILE + ".example")).exists()
 
 
+def test_compose_loads_no_credentials_file():
+    text = _text(settings.BASE_DIR / "compose.yaml")
+    assert "env_file" not in text
+    assert "zoom-" + "credentials" not in text
+
+
+@pytest.mark.parametrize("name", [".gitignore", ".dockerignore"])
+def test_ignore_files_keep_the_retired_credentials_line(name):
+    lines = [line.strip() for line in _text(settings.BASE_DIR / name).splitlines()]
+    assert CREDENTIALS_FILE in lines
+    assert lines[lines.index(CREDENTIALS_FILE) - 1] == RETIRED_COMMENT
+
+
+# --------------------------------------------------------------------------- brief 015, 38
+def test_env_example_lists_the_zoom_provider():
+    text = _text(settings.BASE_DIR / ".env.example")
+    assert re.search(r"^#\s+zoom\s+-", text, re.MULTILINE)
+    comment = _comment_above(settings.BASE_DIR / ".env.example", "ZOOM_PROVIDER=")
+    assert "Zoom connections page" in comment
+    assert "zoom-" + "credentials" not in text
+
+
+def test_env_example_says_what_the_encryption_keys_cover():
+    comment = _comment_above(settings.BASE_DIR / ".env.example", "HOST_KEY_ENCRYPTION_KEYS=")
+    assert "host keys" in comment
+    assert "Zoom connection" in comment
+    assert "apart from database backups" in comment
+    assert "rotate_encryption_keys" in comment
+
+
+def test_compose_comment_on_the_encryption_keys():
+    comment = _comment_above(settings.BASE_DIR / "compose.yaml", "HOST_KEY_ENCRYPTION_KEYS:")
+    assert comment.count("#") == 1, "one line"
+    assert "Zoom connection secrets" in comment
+    assert "apart from the DB" in comment
+
+
+# --------------------------------------------------------------------------- prod refusal
 def test_prod_settings_refuse_the_fake_provider_and_name_zoom():
     env = {
         **os.environ,
@@ -179,52 +163,19 @@ def test_prod_settings_refuse_the_fake_provider_and_name_zoom():
     assert "ZOOM_PROVIDER=zoom" in result.stderr
 
 
-# --------------------------------------------------------------------------- criterion 7
+# --------------------------------------------------------------------------- logging
 def test_urllib3_logs_nothing_below_warning():
     assert settings.LOGGING["loggers"]["urllib3"]["level"] == "WARNING"
     assert logging.getLogger("urllib3").getEffectiveLevel() == logging.WARNING
 
 
-def test_compose_loads_the_optional_credentials_file():
-    text = (settings.BASE_DIR / "compose.yaml").read_text(encoding="utf-8")
-    assert re.search(
-        r"env_file:\s*\n\s*- path: \./zoom-credentials\.env\s*\n\s*required: false", text
-    )
-    # Listing them under `environment` would override the file with empty values.
-    assert not re.search(r"^\s*(ZOOM_CREDENTIAL_SETS|ZOOM_S2S_\w+):", text, re.MULTILINE)
+def test_sql_is_never_logged_with_its_parameters():
+    """Brief 015, D15: SQL parameters now carry Zoom connection IDs and ciphertexts."""
+    assert settings.LOGGING["loggers"]["django.db.backends"]["level"] == "INFO"
+    assert logging.getLogger("django.db.backends").getEffectiveLevel() >= logging.INFO
 
 
-def test_credentials_file_is_git_ignored():
-    lines = (settings.BASE_DIR / ".gitignore").read_text(encoding="utf-8").splitlines()
-    assert "zoom-credentials.env" in {line.strip() for line in lines}
-
-
-def test_credentials_example_names_every_variable_with_no_values():
-    lines = (
-        (settings.BASE_DIR / "zoom-credentials.env.example").read_text(encoding="utf-8")
-    ).splitlines()
-    assignments = [line for line in lines if line.strip() and not line.startswith("#")]
-    names = [line.split("=", 1)[0] for line in assignments]
-    prefix = zoom_credential_env_prefix("zoom-01")
-    assert names == [
-        "ZOOM_CREDENTIAL_SETS",
-        f"{prefix}_ACCOUNT_ID",
-        f"{prefix}_CLIENT_ID",
-        f"{prefix}_CLIENT_SECRET",
-        f"{prefix}_WEBHOOK_SECRET",
-    ]
-    assert all(line.endswith("=") for line in assignments), "the example must hold no value"
-    # One comment line straight above each variable.
-    for line in assignments:
-        assert lines[lines.index(line) - 1].startswith("# ")
-
-
-def test_env_example_lists_the_zoom_provider():
-    text = (settings.BASE_DIR / ".env.example").read_text(encoding="utf-8")
-    assert re.search(r"^#\s+zoom\s+-", text, re.MULTILINE)
-
-
-# --------------------------------------------------------------------------- criterion 45
+# --------------------------------------------------------------------------- brief 006, 45
 def test_unregistered_http_call_is_blocked():
     with pytest.raises(requests.exceptions.ConnectionError):
         requests.get("https://api.zoom.us/v2/users/x", timeout=(5, 15))

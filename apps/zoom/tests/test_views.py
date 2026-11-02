@@ -834,7 +834,7 @@ def test_full_flow_never_logs_the_host_key_or_encryption_keys(
         flashes += _messages(removed)
         from django.core.management import call_command
 
-        call_command("rotate_host_keys", stdout=mock.MagicMock())
+        call_command("rotate_encryption_keys", stdout=mock.MagicMock())
     assert HostAccount.objects.get(label="Zoom 01").get_host_key() == new_key
     assert not HostAccount.objects.get(label="Zoom 02").has_host_key
     # Unread messages pile up in storage, so each response lists every one stored so far.

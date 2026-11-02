@@ -370,7 +370,7 @@ def test_timetable_accounts_load_only_what_the_timetable_reads():
         assert (account.label, account.sort_order, account.on_timetable) == ("Zoom 01", 0, True)
     assert len(queries) == 1
     assert "host_key_encrypted" not in queries[0]["sql"]
-    assert {"host_key_encrypted", "email", "notes", "credential_set"} <= (
+    assert {"host_key_encrypted", "email", "notes", "zoom_connection_id"} <= (
         account.get_deferred_fields()
     )
 

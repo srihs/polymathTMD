@@ -2,6 +2,62 @@
 
 Newest first. One entry per task. Each entry lists user-visible changes, then technical notes.
 
+## 2026-11-02 — 015: Zoom connections in the app (awaiting the owner's live check)
+
+- The IT desk now types a Zoom app's details on a new **Zoom connections** screen in the app,
+  instead of someone with server access editing a credentials file. Open it from **Zoom accounts**
+  (a **Zoom connections** link, shown to people who can change Zoom accounts). Each paid Zoom
+  subscription gets one connection: a name like `zoom-01`, its Account ID, Client ID and Client
+  Secret, and optionally the webhook Secret Token. A new value works on the next request, with no
+  restart.
+  - A Zoom account now **chooses** its connection from a list, instead of typing a name that had to
+    match the file. Accounts that share one Zoom subscription choose the same connection.
+  - The Client Secret and webhook secret are stored encrypted. They are never shown again, not even
+    to the IT desk. A connection's page shows only whether each is saved, and who saved it and when.
+    A secret box left empty keeps what is saved.
+  - If the server's encryption keys change so a secret can't be read, the connection and its
+    accounts show **Can't be read** and say to type the secret again.
+  - The connection's page shows the **address for Zoom's Event Subscriptions** to copy into
+    Marketplace, and warns if the page was opened on an address that isn't `https://`. Saving the
+    webhook Secret Token makes Marketplace's **Validate** pass at once.
+  - Two people saving the same Client ID or connection name at the same moment now get a plain
+    error on the second person's page, not a server error.
+- **Owner steps before this goes live:** type each paid account's connection on the new screen and
+  choose it on the account (README, "Connecting an account to Zoom"). An existing deployment must
+  **recreate `web` once** (`docker compose up -d`) to drop the old `env_file`. Back up
+  `HOST_KEY_ENCRYPTION_KEYS` apart from the database: it now protects connection secrets too, and a
+  database backup plus those keys gives access to Zoom. The owner's live check (criterion 50) is
+  still to do. It also runs 006 criterion 48 and 013 criterion 26 through the new screen. Before
+  it, the dev test accounts Zoom 01-03 are taken out of use (agent plan step 7, not part of this
+  change).
+- Technical notes:
+  - **New migration:** `zoom/0010_zoom_connections` (schema only, reversible). It creates
+    `ZoomConnection`, removes `HostAccount.credential_set` and adds the
+    `HostAccount.zoom_connection` foreign key (`PROTECT`). There is no data migration: no
+    credentials file was ever created.
+  - **Removed:** `zoom-credentials.env.example`, `compose.yaml`'s `env_file`, the credential block
+    in `config/settings/base.py`, the `ZOOM_S2S_*` and `ZOOM_CREDENTIAL_*` settings and check
+    `zoom.E005`. The `.gitignore` and `.dockerignore` lines for `zoom-credentials.env` stay, as a
+    guard. `zoom.E004` and `zoom.W002` now read the database.
+  - **Renamed:** `rotate_host_keys` is now `rotate_encryption_keys`. It re-encrypts every host
+    key, client secret and webhook secret in one transaction and exits 1 if any value can't be
+    read, so run it to success before removing the old key. `HostKeyUnreadable` is now
+    `SecretUnreadable`. `HOST_KEY_ENCRYPTION_KEYS` keeps its name.
+  - **Token cache:** keyed by `(slug, credentials_version, client_id)` and read per operation, so
+    every Gunicorn worker picks up a saved change. Changing only the webhook secret keeps the token.
+  - **Logging:** `django.db.backends` is pinned at `INFO`, because SQL parameters now carry
+    connection values. The `mail_admins` comment names them too.
+  - **UI:** new shared partial `partials/select_field.html`, new `zoom/partials/connection_tag.html`
+    and `secret_field.html`, and two new CSS components, `.copy-value` and `.tag--bad`
+    (`docs/design/copy-value.md`, `docs/design/tag-bad.md`). Rebuild the images.
+  - **No new dependency.** The 006 decision D2 ("credentials never touch the database") is
+    reversed by the owner's request; earlier briefs 005, 006, 008, 011, 013 and 014 carry dated
+    notes pointing at 015.
+  - **Follow-ups, not built:** removing an unused connection (D14), a **Copy address** button (F1),
+    and the review's two optional nits: the duplicate-value re-check relies on MySQL's READ
+    COMMITTED default (backend), and `django.template` could be pinned at `INFO` beside the
+    `django.db.backends` pin (devops).
+
 ## 2026-11-02 — 013: Zoom webhook sync (awaiting the owner's live check)
 
 - When someone changes or deletes a class directly in Zoom, the app now finds out and keeps its
@@ -59,8 +115,9 @@ Newest first. One entry per task. Each entry lists user-visible changes, then te
   - **Follow-ups, not built:** a `Needs a look` tab with a count in the queue (P8), pruning old
     `ZoomEvent` rows (keep the newest per slug), and an explicit site-URL setting for the nightly
     command's email links.
-  - **Next:** brief 015 will later move the Zoom credentials, webhook secret included, into the
-    database and remove `zoom-credentials.env`. It is planned, not built.
+  - **Since then:** brief 015 moved the Zoom credentials, webhook secret included, into the
+    database and removed `zoom-credentials.env` (see the 015 entry above). The steps in this entry
+    that mention that file are out of date.
 
 ## 2026-10-02 — 012: Move a class (awaiting the owner's live check)
 

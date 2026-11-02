@@ -1,10 +1,10 @@
 """Helpers for brief 013's tests: the test secret, signed webhook calls, and Zoom's meeting
 answers. Not a test module.
 
-- **The test secret** (the brief's Terms): connection ``zoom-02`` with
-  ``webhook_secret="test-webhook-secret"`` in ``ZOOM_S2S_SECRETS``, through the ``settings``
-  fixture. ``connect`` points accounts at it; ``live`` also switches to the ``zoom`` provider
-  and registers a token, so ``GET /meetings/{id}`` goes to the project-wide HTTP mock.
+- **The test secret** (the brief's Terms, as amended by brief 015): a ``ZoomConnection`` row
+  ``zoom-02`` with the webhook secret ``test-webhook-secret-value``, made through the model.
+  ``connect`` chooses it on accounts; ``live`` also switches to the ``zoom`` provider and
+  registers a token, so ``GET /meetings/{id}`` goes to the project-wide HTTP mock.
 - **A signed POST**: ``x-zm-request-timestamp`` is the frozen now in epoch seconds, and
   ``x-zm-signature`` is ``v0=`` plus the hex HMAC-SHA256 of ``v0:{ts}:{raw body}``.
 - ZL-0042 is weekly (Mon and Wed, 5 to 28 Oct 2026, 8:30 to 11:30 am, 8 classes) and ZL-0043
@@ -21,14 +21,12 @@ from datetime import UTC, date, datetime
 import responses
 from django.urls import reverse
 
-from config.settings.base import ZoomCredentials
-
 from . import zoommock as zm
 from .conftest import COLOMBO, FROZEN_NOW, booked_on, make_request
 
 SLUG = "zoom-02"
-WEBHOOK_SECRET = "test-webhook-secret"
-OTHER_SECRET = "other-webhook-secret"
+WEBHOOK_SECRET = "test-webhook-secret-value"
+OTHER_SECRET = "other-webhook-secret-value"
 ACCOUNT_ID = zm.ACCOUNT_ID
 MEETING = "81234567890"
 ONE_OFF_MEETING = "81234560000"
@@ -41,30 +39,38 @@ def at(day, hour, minute=0, month=10):
     return datetime(2026, month, day, hour, minute, tzinfo=COLOMBO)
 
 
-def credentials(slug=SLUG, secret=WEBHOOK_SECRET, account_id=ACCOUNT_ID):
-    return ZoomCredentials(
-        slug=slug,
-        account_id=account_id,
-        client_id=zm.CLIENT_ID,
-        client_secret=zm.CLIENT_SECRET,
-        webhook_secret=secret,
+def connect(*accounts, slug=SLUG, secret=WEBHOOK_SECRET, extra=None):
+    """Connection ``slug`` (with webhook ``secret``, maybe empty) exists; ``accounts`` use it.
+
+    ``extra`` is ``{name: webhook secret}`` for more connections that no account uses yet.
+    Returns the ``slug`` connection.
+    """
+    for name, other_secret in (extra or {}).items():
+        zm.connection(name, webhook_secret=other_secret)
+    chosen = zm.connect(*accounts, slug=slug, webhook_secret=secret)
+    # An existing connection is brought to ``secret`` too, so a test can take it away.
+    if chosen.get_webhook_secret() != secret:
+        if secret:
+            chosen.set_webhook_secret(secret, by=None)
+        else:
+            chosen.remove_webhook_secret(by=None)
+        chosen.save()
+    return chosen
+
+
+def verified(slug=SLUG):
+    """What ``webhooks.verify`` hands on for connection ``slug`` (brief 015)."""
+    from apps.zoom.webhooks import VerifiedConnection
+
+    row = zm.ZoomConnection.objects.get(slug=slug)
+    return VerifiedConnection(
+        pk=row.pk, slug=row.slug, account_id=row.account_id, webhook_secret=row.get_webhook_secret()
     )
-
-
-def connect(settings, *accounts, slug=SLUG, secret=WEBHOOK_SECRET, extra=None):
-    """The server has connection ``slug`` (with ``secret``, maybe empty); ``accounts`` use it."""
-    sets = {slug: credentials(slug, secret)}
-    sets.update(extra or {})
-    settings.ZOOM_S2S_SECRETS = sets
-    settings.ZOOM_CREDENTIAL_SETS = list(sets)
-    for account in accounts:
-        account.credential_set = slug
-        account.save(update_fields=["credential_set"])
 
 
 def live(settings, http_mock, *accounts, **kwargs):
     """``connect`` plus the live ``zoom`` provider and a token reply."""
-    connect(settings, *accounts, **kwargs)
+    connect(*accounts, **kwargs)
     settings.ZOOM_PROVIDER = "zoom"
     zm.add_token(http_mock)
 

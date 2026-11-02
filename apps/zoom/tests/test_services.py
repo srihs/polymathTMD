@@ -11,6 +11,7 @@ import pytest
 from cryptography.fernet import Fernet
 from django.core import checks, mail
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import IntegrityError, OperationalError
 from django.test import RequestFactory, override_settings
 
@@ -20,7 +21,7 @@ from apps.zoom.checks import (
     check_host_key_encryption_keys,
     check_provider_setting,
 )
-from apps.zoom.models import HostAccount, HostKeyUnreadable, HostSlot, LinkRequest
+from apps.zoom.models import HostAccount, HostSlot, LinkRequest, SecretUnreadable
 from apps.zoom.providers import FakeProvider, ManualProvider, get_provider
 from apps.zoom.services import Outcome
 
@@ -456,8 +457,8 @@ def test_rotation_reencrypts_with_the_new_key_so_the_old_one_can_go(settings):
 
     settings.HOST_KEY_ENCRYPTION_KEYS = [new_key, old_key]
     out = StringIO()
-    call_command("rotate_host_keys", stdout=out)
-    assert out.getvalue().strip() == "Re-encrypted 2 host keys."
+    call_command("rotate_encryption_keys", stdout=out)
+    assert out.getvalue().strip() == "Re-encrypted 2 host keys and 0 Zoom connection secrets."
 
     settings.HOST_KEY_ENCRYPTION_KEYS = [new_key]
     assert HostAccount.objects.get(label="Zoom 01").get_host_key() == HOST_KEY
@@ -482,7 +483,7 @@ def test_rotation_changes_neither_who_nor_when_a_key_was_set(settings, it_user):
         Fernet.generate_key().decode(),
         *settings.HOST_KEY_ENCRYPTION_KEYS,
     ]
-    call_command("rotate_host_keys", stdout=StringIO())
+    call_command("rotate_encryption_keys", stdout=StringIO())
     account.refresh_from_db()
     assert (account.host_key_changed_at, account.host_key_changed_by) == (earlier, it_user)
     assert account.get_host_key() == HOST_KEY
@@ -491,11 +492,13 @@ def test_rotation_changes_neither_who_nor_when_a_key_was_set(settings, it_user):
 def test_removing_a_key_before_rotating_makes_keys_unreadable(settings):
     account = make_account(host_key=HOST_KEY)
     settings.HOST_KEY_ENCRYPTION_KEYS = [Fernet.generate_key().decode()]
-    with pytest.raises(HostKeyUnreadable):
+    with pytest.raises(SecretUnreadable):
         account.get_host_key()
     err = StringIO()
-    call_command("rotate_host_keys", stdout=StringIO(), stderr=err)
-    assert "Zoom 01" in err.getvalue() and HOST_KEY not in err.getvalue()
+    with pytest.raises(CommandError) as caught:
+        call_command("rotate_encryption_keys", stdout=StringIO(), stderr=err)
+    assert caught.value.returncode == 1
+    assert "the host key of Zoom 01" in err.getvalue() and HOST_KEY not in err.getvalue()
 
 
 def test_crypto_refuses_to_work_without_keys(settings):

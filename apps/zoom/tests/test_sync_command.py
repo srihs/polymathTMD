@@ -28,7 +28,7 @@ at = kit.at
 @pytest.fixture
 def zoom02(settings, db):
     account = make_account("Zoom 02", sort_order=2)
-    kit.connect(settings, account)
+    kit.connect(account)
     return account
 
 
@@ -71,7 +71,7 @@ def test_copied_and_emailed(zoom02):
 
 def test_only_moved_names_the_classes(settings, zoom02):
     zoom03 = make_account("Zoom 03", sort_order=3)
-    kit.connect(settings, zoom02, zoom03)
+    kit.connect(zoom02, zoom03)
     booking = kit.zl43(zoom03)
     FakeProvider.meeting_states[booking.meeting_id] = read_meeting_state(
         kit.single_detail(at(6, 9))

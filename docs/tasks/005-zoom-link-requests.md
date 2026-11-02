@@ -370,6 +370,7 @@ Yes, links can be created automatically with credentials. That uses a Zoom Serve
     - `status='approved'` needs a non-null `host_account` and a non-empty `join_url`;
     - `status='rejected'` needs a non-empty `rejection_reason`.
 46. **No other secrets in the database.**
+   *Amended by 015 (2026-11-02):* the secret-name test now also scans `ZoomConnection`, and its allowed list grows (015 criterion 5).
     - No field on any `zoom` model has a name matching `password|secret|host_key|hostkey|token|start_url` (pytest over `_meta.get_fields()`), with **exactly one allowed exception**: `HostAccount.host_key_encrypted` (criterion 60).
     - The provider result never includes, and the models never store, Zoom's `start_url`.
     - No Zoom API credential is stored anywhere in the database.
@@ -616,6 +617,7 @@ Yes, links can be created automatically with credentials. That uses a Zoom Serve
 
     Adding an account means creating a new app plus an env entry and a restart.
 - **D17: Host keys are stored encrypted, and emailed with the link** (owner, Q2: "Email the host key with the link"). This supersedes the host-key part of D13.
+  *Amended by 015 (2026-11-02):* host keys are no longer the one secret the database holds. Zoom connection secrets (the Client Secret and webhook secret) are stored too, encrypted under the same keys (015 D3). See `docs/tasks/015-zoom-connections-in-the-app.md`.
   - **Risk accepted by the owner:** anyone who has the approval email, whether it's forwarded, the mailbox is shared or the account is compromised, can take host control of **every** meeting on that Zoom account, not just this class. The key stays valid until IT changes it in Zoom.
   - **Mitigations in 005:**
     - the email goes only to the **verified** requester, with no cc or bcc (criterion 35);
@@ -637,6 +639,7 @@ Yes, links can be created automatically with credentials. That uses a Zoom Serve
     1. Generate a key with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
     2. Put it **first** in `HOST_KEY_ENCRYPTION_KEYS` and restart.
     3. Run `manage.py rotate_host_keys`.
+    *Amended by 015 (2026-11-02):* run `manage.py rotate_encryption_keys` instead. `rotate_host_keys` was renamed (015 D4) because the keys now also protect Zoom connection secrets.
     4. Remove the old key and restart.
 
     Fernet keys are URL-safe base64 with no `$`, so they're safe in `.env`. **Losing every key means re-typing all host keys**, and the README says so. The encryption key is not `SECRET_KEY`, so rotating `SECRET_KEY` (sessions, signing) never makes stored host keys unreadable.

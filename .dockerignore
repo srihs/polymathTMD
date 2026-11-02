@@ -12,7 +12,7 @@
 .env
 .env.*
 !.env.example
-# Zoom Server-to-Server credentials (task 006); compose passes them in via env_file.
+# Retired by brief 015 (Zoom credentials are typed in the app). Kept so a stray copy is never committed or copied into the image.
 zoom-credentials.env
 
 .venv

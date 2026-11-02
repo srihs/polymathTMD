@@ -509,6 +509,7 @@ The owner's answers to this brief's questions (2026-09-26, relayed):
 - **D8: The permission is renamed by a data migration.** Django's `migrate` creates missing permissions but never renames existing ones. The new name mentions reschedule now, so 012 doesn't need a second rename. If 012 is dropped, the name is set back.
 - **D9: A cancelled booking isn't reopened.** There's no "restore". Zoom's recover exists for 7 days, but restoring a booking means re-checking clashes as a new approval would, which is 012's machinery. IT approves a new request instead.
 - **D11: The host key becomes an IT-only fallback you can reveal** (owner, Q1: "Keep as IT-only fallback"; this reverses the planner's recommendation).
+  *Amended by 015 (2026-11-02):* no other secret gets a reveal. Client secrets and webhook secrets are write-only (015 D7).
   - **What stays:**
     - the key is stored encrypted (005 D17);
     - encryption-key rotation;
@@ -757,6 +758,7 @@ The fixed texts for `invalid` and `not_set_up` (criteria 22 and 26) are the temp
   The contrast figures are the designer's (danger button about 6.6:1; secret value about 12:1 light and 8.5:1 dark). The verifier confirms them at criterion 35's widths and modes.
 - **New setting:** `IT_DESK_PHONE` (criterion 47), read only in `base.py`, and listed in `.env.example` and `compose.yaml`.
 - **Also reused for the host-key reveal:** 008's `host_key_state`, `get_host_key()`, `HostKeyUnreadable` and its copy; 006's separate-form pattern from `Check connection`.
+  *Amended by 015 (2026-11-02):* `HostKeyUnreadable` is now `SecretUnreadable`, with no alias (015 D13).
 - **Not built:** a start-link table, token revocation, requester self-cancel, restore, re-assign, a host-key clean-up brief (dropped by the owner's Q1 answer).
 
 ## Agent plan

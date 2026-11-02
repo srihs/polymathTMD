@@ -54,7 +54,7 @@ def zoom02(settings, http_mock):
     """Zoom 02 on the live provider, connected, with a token registered."""
     account = make_account("Zoom 02", sort_order=2)
     settings.ZOOM_PROVIDER = "zoom"
-    zm.connect(settings, account)
+    zm.connect(account)
     zm.add_token(http_mock)
     return account
 

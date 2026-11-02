@@ -1,0 +1,111 @@
+{# Add a Zoom connection, or change one (brief 015, Design D.3 and D.4, criteria 11–15), in the shell; only for zoom.change_hostaccount (the view's gate, criterion 8). One template: is_add chooses the h1, title, breadcrumb, section intros and button. After a failed POST the error summary (pinned lead) is the first thing after the title row. Three sections on both pages, in the form's field order. The connection: on add, slug; on change, no input (the name can't change, D2) but a .facts list of the name and the accounts that use it, and why the name is fixed. App credentials: on change, the credentials state notice first (saved: notice--ok "Connection details saved on {date} by {name}."; unreadable: notice--bad); then the intro, account_id and client_id through partials/field (prefilled on change, D3), and client_secret through zoom/partials/secret_field. Changes made in Zoom: on change, the webhook state notice first (saved: notice--ok with "Last heard from Zoom on {when}." or "Nothing heard from Zoom yet."; none: notice--warn "No webhook secret saved"; unreadable: notice--bad); then the intro; on change, the Address for Zoom's Event Subscriptions in .copy-value (plain text, not a link and not an input; docs/design/copy-value.md), followed, when webhook_address_secure is false, by the notice--warn "Zoom can't use this address" (the view decides, D20 G4); then webhook_secret through zoom/partials/secret_field and, when the form has it, remove_webhook_secret through partials/check_field. Both secret inputs are always empty: a saved secret is never shown, only its state and who saved it when, and one typed before an invalid POST isn't sent back; the form's *_was_typed flags show the "wasn't kept" notes (criterion 14). There's no reveal (D7). None of the state blocks has a role or takes focus. The page needs no JS. Context: form (ZoomConnectionForm: slug (add only), account_id, client_id, client_secret, webhook_secret, remove_webhook_secret (change only, and only when a webhook secret is stored); client_secret_was_typed, webhook_secret_was_typed (bool); labels, help and widget attributes come from the form), is_add (bool), connection (ZoomConnection or None; on change only credentials_changed_at, credentials_changed_by (User or None), webhook_secret_changed_at and webhook_secret_changed_by are read), saved_slug (str: the stored name on change; "" on add), credentials_state (str: "saved" or "unreadable" on change; "none" on add), webhook_secret_state (str: "none", "saved" or "unreadable"; "none" on add), last_zoom_event_at (aware datetime or None; only when webhook_secret_state is "saved"), webhook_address (str: the absolute zoom:webhook URL on change; "" on add), webhook_address_secure (bool: the address starts with https://; false on add, where nothing reads it), accounts_in_use (list of HostAccount: pk, label; empty on add). Partials: partials/crumb, partials/error_summary, partials/field, partials/check_field, zoom/partials/secret_field, zoom/partials/when. Filters: zoom_format (class_date). #}{% extends "base.html" %}
+{% load zoom_format %}
+
+{% block title %}{% if is_add %}Add a Zoom connection{% else %}Change the Zoom connection {{ saved_slug }}{% endif %}{% endblock %}
+
+{% block heading %}<span class="break-anywhere">{% if is_add %}Add a Zoom connection{% else %}Change the Zoom connection {{ saved_slug }}{% endif %}</span>{% endblock %}
+
+{% block breadcrumb %}{% url 'zoom:accounts' as accounts_url %}{% url 'zoom:connections' as connections_url %}{% include "partials/crumb.html" with url=accounts_url text="Zoom accounts" current=False only %}{% include "partials/crumb.html" with url=connections_url text="Zoom connections" current=False only %}{% if is_add %}{% include "partials/crumb.html" with url="" text="Add a Zoom connection" current=True only %}{% else %}{% include "partials/crumb.html" with url="" text=saved_slug current=True only %}{% endif %}{% endblock %}
+
+{% block content %}
+{% include "partials/error_summary.html" with form=form lead="We couldn't save this Zoom connection yet." only %}
+<div class="box">
+  <div class="box__body">
+    <div class="box__form">
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        <fieldset class="formsection">
+          <legend class="formsection__title">The connection</legend>
+          {% if is_add %}
+          {% include "partials/field.html" with field=form.slug narrow=True only %}
+          {% else %}
+          <div class="stack">
+            <dl class="facts">
+              <dt>Connection name</dt>
+              <dd translate="no">{{ saved_slug }}</dd>
+              <dt>Used by</dt>
+              <dd>{% if accounts_in_use %}<span class="tags">{% for account in accounts_in_use %}<a class="tap-link break-anywhere" href="{% url 'zoom:account_edit' account.pk %}"><span class="visually-hidden">Change </span>{{ account.label }}</a>{% endfor %}</span>{% else %}<span class="text-muted">No account yet</span>{% endif %}</dd>
+            </dl>
+            <p class="text-muted">The name can't be changed, because it's part of the address Zoom sends changes to.</p>
+          </div>
+          {% endif %}
+        </fieldset>
+
+        <fieldset class="formsection">
+          <legend class="formsection__title">App credentials</legend>
+          {% if not is_add %}
+          {% if credentials_state == "unreadable" %}
+          <div class="notice notice--bad">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg>
+            <p>The client secret is saved, but it can't be read with the server's current encryption keys. Type it again.</p>
+          </div>
+          {% else %}
+          <div class="notice notice--ok">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>
+            <p>{% if connection.credentials_changed_at %}Connection details saved on {{ connection.credentials_changed_at|class_date }}{% if connection.credentials_changed_by %} by {{ connection.credentials_changed_by }}{% endif %}.{% else %}Connection details saved.{% endif %}</p>
+          </div>
+          {% endif %}
+          {% endif %}
+          <p class="box__lead">In Zoom's App Marketplace (marketplace.zoom.us), open this subscription's Polymath TMD app, then App Credentials. Copy each value from there and paste it here.</p>
+          {% include "partials/field.html" with field=form.account_id only %}
+          {% include "partials/field.html" with field=form.client_id only %}
+          {% include "zoom/partials/secret_field.html" with field=form.client_secret was_typed=form.client_secret_was_typed note="For your safety, the client secret you typed wasn't kept. Type it again." only %}
+        </fieldset>
+
+        <fieldset class="formsection">
+          <legend class="formsection__title">Changes made in Zoom</legend>
+          {% if not is_add %}
+          {% if webhook_secret_state == "saved" %}
+          <div class="notice notice--ok">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>
+            <div class="notice__body">
+              <p>{% if connection.webhook_secret_changed_at %}Webhook secret saved on {{ connection.webhook_secret_changed_at|class_date }}{% if connection.webhook_secret_changed_by %} by {{ connection.webhook_secret_changed_by }}{% endif %}.{% else %}Webhook secret saved.{% endif %}</p>
+              <p>{% if last_zoom_event_at %}Last heard from Zoom on {% include "zoom/partials/when.html" with at=last_zoom_event_at only %}.{% else %}Nothing heard from Zoom yet.{% endif %}</p>
+            </div>
+          </div>
+          {% elif webhook_secret_state == "unreadable" %}
+          <div class="notice notice--bad">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg>
+            <p>A webhook secret is saved, but it can't be read with the server's current encryption keys. Type it again.</p>
+          </div>
+          {% else %}
+          <div class="notice notice--warn">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+            <div class="notice__body">
+              <p class="notice__title">No webhook secret saved</p>
+              <p>Without it, changes made directly in Zoom aren't seen here. Add it when you set up the Zoom app's Event Subscription, using the address below.</p>
+            </div>
+          </div>
+          {% endif %}
+          {% endif %}
+          <p class="box__lead">{% if is_add %}Zoom can tell this site when a class is changed or deleted directly in Zoom. You can set this up later, on this connection's page.{% else %}Zoom can tell this site when a class is changed or deleted directly in Zoom. That needs the address below and the Zoom app's Secret Token.{% endif %}</p>
+          {% if not is_add %}
+          <dl class="copy-value">
+            <dt class="copy-value__label">Address for Zoom's Event Subscriptions</dt>
+            <dd class="copy-value__value" translate="no">{{ webhook_address }}</dd>
+            <dd class="copy-value__help">In the Zoom app, open Features, then Event Subscriptions, and paste this into Event notification endpoint URL. Tap or click it once to select it all.</dd>
+          </dl>
+          {% if not webhook_address_secure %}
+          <div class="notice notice--warn">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+            <div class="notice__body">
+              <p class="notice__title">Zoom can't use this address</p>
+              <p>Zoom only sends changes to an address that starts with https://. Open this page through the site's public https:// address, or ask whoever looks after the server for it.</p>
+            </div>
+          </div>
+          {% endif %}
+          {% endif %}
+          {% include "zoom/partials/secret_field.html" with field=form.webhook_secret was_typed=form.webhook_secret_was_typed note="For your safety, the webhook secret you typed wasn't kept. Type it again." only %}
+          {% if form.remove_webhook_secret %}{% include "partials/check_field.html" with field=form.remove_webhook_secret only %}{% endif %}
+        </fieldset>
+
+        <div class="form-actions">
+          <button class="button button--primary" type="submit">{% if is_add %}Add the connection{% else %}Save changes{% endif %}</button>
+          <a class="button button--quiet" href="{% url 'zoom:connections' %}">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

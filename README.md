@@ -47,7 +47,7 @@ compose.dev.yaml   overlay: runserver with live reload, source mounted
 copy .env.example .env
 ```
 
-Fill in `SECRET_KEY`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD` and `HOST_KEY_ENCRYPTION_KEYS` (required — it encrypts Zoom host keys at rest; see "Zoom link requests" below). Generate `SECRET_KEY` and the MySQL passwords with:
+Fill in `SECRET_KEY`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD` and `HOST_KEY_ENCRYPTION_KEYS` (required — it encrypts Zoom host keys and Zoom connection secrets at rest; see "Zoom link requests" below). Generate `SECRET_KEY` and the MySQL passwords with:
 
 ```powershell
 python -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -59,8 +59,12 @@ and `HOST_KEY_ENCRYPTION_KEYS` with:
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-Back it up somewhere safe: losing every key means re-typing every host account's key on the Zoom
-accounts page.
+Back it up somewhere safe, **apart from the database backups**. Losing every key means re-typing
+every host key on the Zoom accounts page and every Zoom connection secret on the Zoom connections
+page. A database backup together with these keys gives access to Zoom: anyone holding both can
+create, change and delete meetings on every connected account. If both ever leak, regenerate every
+Client Secret and webhook Secret Token in Zoom's Marketplace, type them on the Zoom connections
+pages, then rotate the keys (see "Rotating `HOST_KEY_ENCRYPTION_KEYS`" below).
 
 Don't use `$` in any value. Docker Compose and django-environ both read it as the start of a variable.
 
@@ -99,10 +103,9 @@ the prod stack locally, override the provider rather than editing `.env`:
 $env:ZOOM_PROVIDER = "manual"; docker compose up -d --build
 ```
 
-Set it to `zoom` instead once you want to test against real Zoom credentials. Put those in
-`zoom-credentials.env`, next to `.env`, first — see "Connecting an account to Zoom" below. That
-file is git-ignored and never baked into the image; `web` loads it through `env_file`, whether or
-not the file exists.
+Set it to `zoom` instead once you want to test against real Zoom credentials. Type those on the
+in-app **Zoom connections** page first — see "Connecting an account to Zoom" below. There is no
+credentials file and no Zoom variable in `.env`.
 
 **Security note:** builds made before 2026-09-25 could copy `Dashboard 2A.xlsx` (which holds Zoom
 host keys) into the image, because `.dockerignore` didn't exclude it. Rebuild any image built
@@ -172,14 +175,17 @@ Set these environment variables on the host:
 | `EMAIL_BACKEND`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `DEFAULT_FROM_EMAIL` | SMTP settings. Required, or prod mail (including Zoom link emails) never leaves the container |
 | `ZOOM_PROVIDER` | `zoom` (production, once every paid account is connected) or `manual` (a fallback that can't see Zoom directly — `manage.py check --deploy` warns with `zoom.W001`). `fake` is dev only — the prod image refuses to start with it |
 | `TRUSTED_PROXY_COUNT` | Reverse proxies in front of the app that add to `X-Forwarded-For`. `0` for a direct connection; `1` behind the TLS proxy |
-| `HOST_KEY_ENCRYPTION_KEYS` | Required. Comma-separated Fernet key(s) that encrypt Zoom host keys at rest — see "Zoom link requests" below |
+| `HOST_KEY_ENCRYPTION_KEYS` | Required. Comma-separated Fernet key(s) that encrypt Zoom host keys **and Zoom connection secrets** at rest. Back them up apart from the database — see "Setting up `.env`" above and "Zoom link requests" below |
 | `IT_DESK_PHONE` | Optional, empty by default. A phone number the public "Start this class" page shows as a tap-to-call link when it can't start a class, e.g. `011 234 5678`. Leave it empty and the page just says "Contact the IT desk." instead. `manage.py check` fails with `zoom.E006` if it's set to something that isn't a phone number |
 
-Zoom credentials (`ZOOM_CREDENTIAL_SETS` and the four `ZOOM_S2S_<NAME>_*` variables per account:
-account ID, client ID, client secret and, optionally, the webhook secret)
-don't go in this table or in `compose.yaml`'s `web.environment` — they live in
-`zoom-credentials.env`, git-ignored and loaded through `env_file`. See "Connecting an account to
-Zoom" above.
+Zoom credentials aren't environment variables at all. Each Zoom app's details are typed on the
+**Zoom connections** page and stored in the database, with the secrets encrypted. See "Connecting
+an account to Zoom" above.
+
+**Redeploying an existing deployment (task 015):** `compose.yaml`'s `web` no longer has an
+`env_file` entry. Recreate `web` once (`docker compose up -d`; a `restart` isn't enough) so the
+container drops the old `env_file` setting. If you ever made a `zoom-credentials.env`, delete it
+after typing its values on the Zoom connections page.
 
 If you run more than one web replica, set `DJANGO_MIGRATE=0` on the replicas. Then run `python manage.py migrate` once as a separate job.
 
@@ -417,17 +423,26 @@ https://developers.zoom.us/docs/api/meetings/.**
    either on or off. A teacher who has only the host key has to be let into the meeting before they
    can claim host, so join before host should be on and the waiting room off, unless someone who
    can admit them is always there.
-8. On the server, copy `zoom-credentials.env.example` to `zoom-credentials.env`, next to `.env`.
-   It's git-ignored and never baked into the image. Add the account's slug to
-   `ZOOM_CREDENTIAL_SETS` (for example `zoom-01`), then set `ZOOM_S2S_ZOOM_01_ACCOUNT_ID`,
-   `ZOOM_S2S_ZOOM_01_CLIENT_ID` and `ZOOM_S2S_ZOOM_01_CLIENT_SECRET`. A fourth variable,
-   `ZOOM_S2S_ZOOM_01_WEBHOOK_SECRET`, is optional and is set later, in "Keeping in step with Zoom"
-   below. Without it the account still works, but the app doesn't see changes made directly in Zoom
-   (`manage.py check --database default` warns with `zoom.W002`).
-9. Recreate `web` (`docker compose up -d`) so it reads the file.
-10. On the Zoom accounts page, set that account's **Zoom connection name** to the slug, save, then
-    press **Check connection**.
-11. Once every paid account works: run `python manage.py check_zoom_connections` and
+8. In the app, sign in as someone in the `IT desk` group (the `zoom.change_hostaccount`
+   permission), open **Zoom accounts**, then **Zoom connections** and **Add a Zoom connection**.
+   Fill in:
+   - **Connection name:** a short name like `zoom-01`, with lower-case letters, numbers and
+     hyphens. It can't be changed later, because it's part of the address Zoom sends changes to.
+   - **Account ID**, **Client ID** and **Client secret:** the three values from step 3
+     (Marketplace → the app → **App Credentials**). Paste them as they are, with no spaces.
+   - **Webhook secret:** leave it empty for now. It comes from the app's **Event Subscriptions**
+     part and is added later, in "Keeping in step with Zoom" below. Without it the account still
+     works, but the app doesn't see changes made directly in Zoom
+     (`manage.py check --database default` warns with `zoom.W002`).
+
+   The values take effect straight away: no restart and no recreate. The Client Secret and webhook
+   secret are stored encrypted, and are never shown again. The page shows only that they are saved,
+   and who saved them and when. Account ID and Client ID stay readable on the connection's own page
+   so you can check which Zoom app it is.
+9. On the Zoom accounts page, open that account's **Change** page, choose the connection in **Zoom
+   connection**, save, then press **Check connection**. Several accounts that share one Zoom
+   subscription choose the same connection.
+10. Once every paid account works: run `python manage.py check_zoom_connections` and
     `python manage.py check --database default`, then set `ZOOM_PROVIDER=zoom` in `.env` and
     recreate `web`.
 
@@ -444,9 +459,17 @@ has only the first four scopes above. To let it move classes too:
    fetches a fresh token. Before that, a move attempt fails with "The Zoom app for {label} is
    missing the permission to change meetings."
 
-**Rotating a secret:** regenerate it on the app's App Credentials page in Zoom, update
-`zoom-credentials.env`, recreate `web`, then press **Check connection** again. The two free
-accounts need no app — they're never booked.
+**Rotating a secret:** regenerate it on the app's App Credentials page in Zoom, then open that
+connection on the Zoom connections page, paste the new value into **New client secret** and save.
+Press **Check connection** on an account that uses it. No restart is needed: the next Zoom call
+fetches a new token. Leaving a secret box empty keeps the saved one. If the page says a secret
+"can't be read" (the server's encryption keys changed), type it again. The two free accounts need
+no app — they're never booked.
+
+**Removing an abandoned connection:** the app can't delete a Zoom connection yet. An unused one
+just stays in the list as `No account yet`. If one is abandoned, ask whoever administers that Zoom
+subscription to **regenerate its Client Secret in Marketplace**, which makes the stored copy
+useless.
 
 **Checking connections from the command line:** `python manage.py check_zoom_connections` checks
 every active paid account at once (handy after rotating a secret). It prints one line per account
@@ -547,15 +570,18 @@ Only a booking's classes that are still to come are ever changed. A change made 
    **Features → General Features → Event Subscriptions**, and switch it on. Name it
    `Polymath TMD sync`.
 2. **Event notification endpoint URL:** `https://{your domain}/zoom/webhooks/{connection name}/`,
-   where the connection name is the account's **Zoom connection name** on the Zoom accounts page,
-   like `zoom-01`. Each account has its own path and its own secret.
+   where the connection name is the **Connection name** on the Zoom connections page, like
+   `zoom-01`. You don't need to build it by hand: the connection's own page shows it under
+   **Address for Zoom's Event Subscriptions**. It must start with `https://` (the page warns if it
+   doesn't, in which case open the page through the site's public address). Each connection has its
+   own path and its own secret.
 3. **Events:** Meeting → **Meeting has been deleted** and **Meeting has been updated**. Nothing
    else. (The app answers any other event with "OK" and ignores it.)
-4. Copy the app's **Secret Token** into `zoom-credentials.env` as
-   `ZOOM_S2S_ZOOM_01_WEBHOOK_SECRET` (use the account's own name in place of `ZOOM_01`), then
-   recreate `web` (`docker compose up -d`). A `restart` isn't enough.
-5. Press **Validate** in Marketplace, then save. Validation passes only once the server has the
-   secret. Zoom sends an `endpoint.url_validation` event with a `plainToken`. The app checks the
+4. Copy the app's **Secret Token**, open the connection on the Zoom connections page, paste it
+   into **Webhook secret** (**New webhook secret** on a saved connection) and save. It takes
+   effect at once, with no restart.
+5. Press **Validate** in Marketplace, then save. Validation passes only once the app has the
+   secret, which is why step 4 comes first. Zoom sends an `endpoint.url_validation` event with a `plainToken`. The app checks the
    request's signature like any other, then answers with the token and its HMAC-SHA256 under the
    secret. It refuses a `plainToken` that isn't made of letters, numbers, `-` and `_`, so the
    endpoint can't be used to sign text of someone else's choosing.
@@ -581,14 +607,16 @@ protection: the signature takes its place. If Zoom can't be asked (a `503`) or a
 (a `500`), the event is not remembered, so Zoom's retry (after 5, 20 and 60 minutes) does the work.
 
 **Is it working?** On the Zoom accounts page, an account's change page shows **Last heard from Zoom
-on {when}** in its Zoom connection section. Every cancel or move made in the app echoes back within
-seconds, so a stale time means the webhook has stopped arriving (the proxy is closed, the secret is
-wrong, or the server was down). An account whose connection has no webhook secret shows **Changes
-made in Zoom aren't seen here** instead.
+on {when}** in its Zoom connection section, and so does the connection's own page. Every cancel or
+move made in the app echoes back within seconds, so a stale time means the webhook has stopped
+arriving (the proxy is closed, the secret is wrong, or the server was down). An account whose
+connection has no webhook secret shows **Changes made in Zoom aren't seen here** instead.
 
-**Rotating a webhook secret:** regenerate the Secret Token in Marketplace, update
-`zoom-credentials.env`, and recreate `web`. Until `web` has the new secret, Zoom's calls are refused
-with a `401`, and the nightly command and the button cover the gap.
+**Rotating a webhook secret:** regenerate the Secret Token in Marketplace, then paste the new one
+into **New webhook secret** on the connection's page and save. Until you do, Zoom's calls are
+refused with a `401`, and the nightly command and the button cover the gap. If the saved secret is
+wrong and you don't have the new one yet, tick **Remove the saved webhook secret**; Zoom's calls
+are then refused with a `404`.
 
 #### The `Check against Zoom` button
 
@@ -630,7 +658,7 @@ the "needs a look" flag on any approved booking that has no classes left to come
 One booking's failure never stops the run: the rest are still checked.
 
 **If a line says `couldn't be checked: Zoom has no user with this account's sign-in email`,** the
-account's **Zoom connection name**, or the credentials in `zoom-credentials.env`, are wrong. Zoom
+account's chosen **Zoom connection**, or the details saved on that connection, are wrong. Zoom
 said a meeting doesn't exist, and the app found that Zoom doesn't know the account's user either,
 so it is most likely looking at the wrong Zoom account. **Nothing is cancelled** until that is
 fixed. Press **Check connection** on that account's page to see which part is wrong.
@@ -681,5 +709,11 @@ Zoom first, then re-type it on that account's Zoom accounts page (`Change {name}
 The old key stops working the moment you change it in Zoom.
 
 **Rotating `HOST_KEY_ENCRYPTION_KEYS`:** put a new key first in the comma-separated list, restart,
-run `python manage.py rotate_host_keys` (re-encrypts every stored key with the new one and prints
-only a count), then remove the old key and restart.
+then run `python manage.py rotate_encryption_keys`. It re-encrypts, in one transaction, every saved
+host key, every Zoom connection's client secret and every webhook secret with the new key, and
+prints only counts, such as `Re-encrypted 11 host keys and 12 Zoom connection secrets.` **It must
+succeed before the old key is removed.** If it can't read a value, it prints which one
+(`Couldn't read: the client secret of zoom-03. Type those again on the Zoom accounts and Zoom
+connections pages.`) and exits 1, after re-encrypting everything it could read. Type that value
+again, run the command again, and only when it succeeds remove the old key and restart. Removing the old key early makes every
+unconverted Zoom connection unreadable and stops all booking.

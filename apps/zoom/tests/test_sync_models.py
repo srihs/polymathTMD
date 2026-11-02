@@ -19,8 +19,8 @@ from apps.zoom.models import (
     HostAccount,
     LinkRequest,
     Occurrence,
+    ZoomConnection,
     ZoomEvent,
-    webhook_secret_set_for,
 )
 from apps.zoom.providers import (
     MeetingState,
@@ -157,11 +157,14 @@ def test_last_received_at_is_the_newest_event_for_the_name_in_one_query(monkeypa
 # --------------------------------------------------------------------------- 29 the question
 
 
-def test_webhook_secret_set_reads_settings_only(settings):
-    kit.connect(settings, extra={"zoom-03": kit.credentials("zoom-03", secret="")})
+def test_webhook_secret_set_reads_the_loaded_connection_only():
+    """Brief 015, criterion 20: the question is now the connection's ``has_webhook_secret``."""
+    kit.connect(extra={"zoom-03": ""})
+    found = list(ZoomConnection.objects.order_by("slug"))
     with CaptureQueriesContext(connection) as queries:
-        found = [webhook_secret_set_for(name) for name in ("zoom-02", "zoom-03", "zoom-99", "")]
-    assert found == [True, False, False, False]
+        answers = [conn.has_webhook_secret for conn in found]
+    assert [c.slug for c in found] == ["zoom-02", "zoom-03"]
+    assert answers == [True, False]
     assert len(queries) == 0
 
 
@@ -177,24 +180,28 @@ def test_w002_warns_for_each_connected_paid_account_without_a_secret(settings, z
     zoom03 = make_account("Zoom 03", sort_order=3)
     make_account("Zoom 04", sort_order=4)  # no connection at all: E004's, not W002's
     make_account("Zoom 05", sort_order=5, is_paid=False)
-    kit.connect(settings, zoom02, extra={"zoom-03": kit.credentials("zoom-03", secret="")})
-    zoom03.credential_set = "zoom-03"
-    zoom03.save()
+    kit.connect(zoom02, extra={"zoom-03": ""})
+    kit.connect(zoom03, slug="zoom-03", secret="")
     settings.ZOOM_PROVIDER = "zoom"
-    found = zoom_checks.check_webhook_secrets(databases=["default"])
+    with CaptureQueriesContext(connection) as queries:
+        found = zoom_checks.check_webhook_secrets(databases=["default"])
     assert [(w.id, w.msg) for w in found] == [("zoom.W002", W002.format(label="Zoom 03"))]
-    assert "test-webhook-secret" not in str(found)
+    assert found[0].hint == (
+        "Add the webhook secret on the Zoom connection's page. The README says where Zoom shows it."
+    )
+    assert kit.WEBHOOK_SECRET not in str(found)
+    assert len(queries) == 1  # brief 015, criterion 33: one query
 
 
 @pytest.mark.parametrize("provider", ["fake", "manual"])
 def test_w002_is_silent_without_the_zoom_provider(settings, zoom02, provider):
-    kit.connect(settings, zoom02, secret="")
+    kit.connect(zoom02, secret="")
     settings.ZOOM_PROVIDER = provider
     assert zoom_checks.check_webhook_secrets(databases=["default"]) == []
 
 
 def test_w002_needs_the_database_tag_and_is_quiet_before_the_table_exists(settings, zoom02):
-    kit.connect(settings, zoom02, secret="")
+    kit.connect(zoom02, secret="")
     settings.ZOOM_PROVIDER = "zoom"
     assert zoom_checks.check_webhook_secrets(databases=None) == []
     with mock.patch.object(

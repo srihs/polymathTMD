@@ -1677,6 +1677,9 @@ textarea.input {
 .tag--note { background: var(--c-note-soft); color: var(--c-note-text); }
 .tag--plain { background: var(--c-plain-soft); color: var(--c-plain-text); }
 .tag--brand { background: var(--c-brand-soft); color: var(--c-brand-text); }
+/* Broken, and must be fixed before work goes on (docs/design/tag-bad.md,
+   brief 015): the same pair as .notice--bad, always with alert-octagon. */
+.tag--bad { background: var(--c-bad-soft); color: var(--c-bad-text); }
 
 .tags {
   display: flex;
@@ -1831,8 +1834,9 @@ textarea.input {
 }
 
 /* A wide table whose tags may wrap onto two lines (the Zoom accounts list,
-   brief 006 D.2): with seven columns beside the sidebar at 1024px, no-wrap
-   tags like "Missing on the server" would push it past its box. */
+   brief 006 D.2; the Zoom connections list, brief 015): with seven columns
+   beside the sidebar at 1024px, or a 76px card value at 320px, no-wrap tags
+   like "Can't be read" would push it past its box. */
 .datagrid--wrap-tags .tag {
   white-space: normal;
   text-align: left;
@@ -2114,6 +2118,43 @@ textarea.input {
   letter-spacing: 0.12em;
   overflow-wrap: anywhere;
   user-select: all;
+}
+
+/* A value to copy exactly into another system, such as an address
+   (docs/design/copy-value.md, brief 015: the Zoom connection's address for
+   Event Subscriptions). Not a secret, so body-size and it prints; one click
+   or tap selects exactly the value. Safari needs the prefixed property. */
+.copy-value {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4);
+  border: var(--rule) solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-surface-2);
+}
+
+.copy-value__label {
+  margin: 0 0 var(--space-2);
+  color: var(--c-heading);
+  font-weight: var(--fw-medium);
+}
+
+.copy-value__value {
+  margin: 0;
+  color: var(--c-heading);
+  font-family: var(--font-mono);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+  -webkit-user-select: all;
+  user-select: all;
+  cursor: text;
+}
+
+.copy-value__help {
+  margin: var(--space-2) 0 0;
+  color: var(--c-muted);
+  font-size: var(--fs-help);
+  line-height: var(--lh-body);
 }
 
 /* 5o. Box parts used by the long detail pages */
@@ -2971,6 +3012,13 @@ textarea.input {
     display: block;
     color: var(--c-muted);
     font-weight: var(--fw-regular);
+  }
+
+  /* A long name in a card wraps instead of pushing the card past a 320px
+     screen (brief 015: a Zoom account label or a connection name of up to
+     40 characters). Short references like ZL-0001 keep their no-wrap. */
+  .datagrid__ref.break-anywhere {
+    white-space: normal;
   }
 
   /* The month grid becomes a list of the days that have classes (D5): the

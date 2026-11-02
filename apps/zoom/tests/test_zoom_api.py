@@ -402,7 +402,7 @@ def test_more_than_ten_pages_fails_closed(http_mock):
 @pytest.mark.django_db
 def test_nothing_secret_is_logged_or_in_any_error(http_mock, settings, caplog):
     account = make_account("Zoom 01", host_key="8421973")
-    zm.connect(settings, account)
+    zm.connect(account)
     link_request = make_request()
     occurrences = list(link_request.occurrences.all())
     provider = ZoomProvider()

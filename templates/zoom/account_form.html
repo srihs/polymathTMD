@@ -1,4 +1,4 @@
-{# Add a Zoom account, or change one (brief 008, D.2 and D.3), in the shell; add needs zoom.add_hostaccount, change needs zoom.change_hostaccount. One template: is_add chooses the h1, breadcrumb, title and button. After a failed POST the error summary is the first thing after the title row. Four sections, in the form's field order (G1): The account (label, email, notes), Booking (the booked-classes note on change, is_paid, is_active, sort_order), Zoom connection (brief 006, D.3: on change the state line from the stored row; brief 013, D.4.1, criterion 29: when webhook_secret_set is True the Set up notice gains "Changes made directly in Zoom are copied here." with "Last heard from Zoom on {when}." or "Nothing heard from Zoom yet.", when it is False (tested with "is False", so None never shows it) a separate warn notice "Changes made in Zoom aren't seen here" follows Set up, and None shows nothing new; then credential_set, then, for can_check_connection, the Check connection button; the button submits the separate empty form #zoom-check, written after the main form through the HTML form attribute, so forms never nest and it works with no JS; both carry the busy-button hooks, docs/design/busy-button.md), Host key (the state line on change, then brief 011's Show host key button when can_reveal_host_key and the "Last shown to … Shown n time(s) in all." line when key_reveal_count > 0, D.6; the "wasn't kept" note, host_key, remove_host_key when the form has it). Show host key submits the separate empty form #host-key-show (POST to zoom:account_host_key), written after the main form through the HTML form attribute, like #zoom-check; the key then shows on its own page, zoom/host_key_reveal.html. The host key input is written out here, always with no value, so its aria-describedby can add host_key-note (D.3); a saved key is never shown on this page, only its state. The stop-booking errors (criterion 17) arrive as ordinary field errors on is_active and is_paid. Context: form (HostAccountForm: label, email, notes, is_paid, is_active, sort_order, credential_set (label, help and widget attributes from the form, brief 006 G4), host_key, remove_host_key only when a key is saved, key_was_typed (bool); labels and help texts come from the form), account (HostAccount or None; on change: has_host_key, host_key_changed_at, host_key_changed_by (User or None)), is_add (bool), host_key_state (str: "saved", "saved_legacy", "unreadable" or "none"), saved_label (str, change only: the stored name, not what was just typed; falls back to account.label), zoom_connection_state (str: "ready", "missing" or "none", from the stored row; "none" on add), zoom_connection_name (str: the stored slug, for the missing sentence; "" on add), can_check_connection (bool; always false on add, and account is then present for account.pk, brief 006 G5), upcoming_count (int, change only, optional) and next_class_start (aware datetime or None, optional) for the booked-classes note, can_reveal_host_key (bool; change page only, zoom.change_hostaccount and a readable saved key, brief 011), last_key_reveal (HostKeyReveal or None: shown_by, shown_at), key_reveal_count (int), webhook_secret_set (True, False or None, brief 013: None on add, when the stored connection isn't ready, or when the provider doesn't check Zoom; only whether the server has a webhook secret, never the secret), last_zoom_event_at (aware datetime or None, brief 013: when Zoom last called for the stored connection name; None unless webhook_secret_set is True and an event was recorded). Partials: partials/crumb, partials/error_summary, partials/field, partials/check_field, partials/field_error, zoom/partials/when. Filters: zoom_format (class_date). #}{% extends "base.html" %}
+{# Add a Zoom account, or change one (brief 008, D.2 and D.3), in the shell; add needs zoom.add_hostaccount, change needs zoom.change_hostaccount. One template: is_add chooses the h1, breadcrumb, title and button. After a failed POST the error summary is the first thing after the title row. Four sections, in the form's field order (G1): The account (label, email, notes), Booking (the booked-classes note on change, is_paid, is_active, sort_order), Zoom connection, Host key. Zoom connection (brief 006, D.3; brief 013, D.4.1; brief 015, D.7, criteria 18–20): on change only, the state notice from the stored link (an invalid POST doesn't change it): ready is Set up (notice--ok) "This account uses the Zoom connection {name}. …", and when webhook_secret_set is True it gains "Changes made directly in Zoom are copied here." with "Last heard from Zoom on {when}." or "Nothing heard from Zoom yet."; when it is False (tested with "is False", so None never shows it) a separate warn notice "Changes made in Zoom aren't seen here" follows; unreadable is Can't be read (notice--bad); none is Not set up (notice--note). {name} is the stored connection's slug, a link to its change page when zoom_connection_url isn't empty, plain text otherwise; never translated. Then the zoom_connection select through partials/select_field (never field.html, which must not get a choice widget), then, for can_manage_connections, the Zoom connections link (criterion 9), then, for can_check_connection, the Check connection button; the button submits the separate empty form #zoom-check, written after the main form through the HTML form attribute, so forms never nest and it works with no JS; both carry the busy-button hooks, docs/design/busy-button.md. Host key: the state line on change, then brief 011's Show host key button when can_reveal_host_key and the "Last shown to … Shown n time(s) in all." line when key_reveal_count > 0, D.6; then host_key through zoom/partials/secret_field (narrow, with the "wasn't kept" note and host_key-note in its aria-describedby when key_was_typed; never a value, and a saved key is never shown on this page, only its state; brief 015 moved it onto that partial with unchanged output), then remove_host_key when the form has it. Show host key submits the separate empty form #host-key-show (POST to zoom:account_host_key), written after the main form through the HTML form attribute, like #zoom-check; the key then shows on its own page, zoom/host_key_reveal.html. The stop-booking errors (criterion 17) arrive as ordinary field errors on is_active and is_paid. Context: form (HostAccountForm: label, email, notes, is_paid, is_active, sort_order, zoom_connection (a ModelChoiceField; its empty label, options, label and help come from the form), host_key, remove_host_key only when a key is saved, key_was_typed (bool); labels and help texts come from the form), account (HostAccount or None; on change: has_host_key, host_key_changed_at, host_key_changed_by (User or None)), is_add (bool), host_key_state (str: "saved", "saved_legacy", "unreadable" or "none"), saved_label (str, change only: the stored name, not what was just typed; falls back to account.label), zoom_connection_state (str: "ready", "unreadable" or "none", from the stored link; "none" on add), zoom_connection_name (str: the stored connection's slug, or ""), zoom_connection_url (str: the stored connection's zoom:connection_edit URL when there is one and can_manage_connections; otherwise ""), can_manage_connections (bool, zoom.change_hostaccount), can_check_connection (bool; always false on add, and account is then present for account.pk, brief 006 G5), upcoming_count (int, change only, optional) and next_class_start (aware datetime or None, optional) for the booked-classes note, can_reveal_host_key (bool; change page only, zoom.change_hostaccount and a readable saved key, brief 011), last_key_reveal (HostKeyReveal or None: shown_by, shown_at), key_reveal_count (int), webhook_secret_set (True, False or None, brief 013 criterion 29, brief 015 criterion 20: the stored connection's has_webhook_secret; None on add, when the stored connection isn't ready, or when the provider doesn't check Zoom; never the secret), last_zoom_event_at (aware datetime or None: when Zoom last called for the stored connection's slug; None unless webhook_secret_set is True and an event was recorded). Partials: partials/crumb, partials/error_summary, partials/field, partials/select_field, partials/check_field, zoom/partials/secret_field, zoom/partials/when. Filters: zoom_format (class_date). #}{% extends "base.html" %}
 {% load zoom_format %}
 
 {% block title %}{% if is_add %}Add a Zoom account{% else %}Change {{ saved_label|default:account.label }}{% endif %}{% endblock %}
@@ -43,7 +43,7 @@
             <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-check-circle"></use></svg>
             <div class="notice__body">
               <p class="notice__title">Set up</p>
-              <p>The server has a Zoom connection called <span class="break-anywhere">{{ zoom_connection_name }}</span>. Press Check connection to make sure Zoom accepts it.</p>
+              <p>This account uses the Zoom connection {% if zoom_connection_url %}<a class="break-anywhere" href="{{ zoom_connection_url }}" translate="no">{{ zoom_connection_name }}</a>{% else %}<span class="break-anywhere" translate="no">{{ zoom_connection_name }}</span>{% endif %}. Press Check connection to make sure Zoom accepts it.</p>
               {% if webhook_secret_set %}<p>Changes made directly in Zoom are copied here. {% if last_zoom_event_at %}Last heard from Zoom on {% include "zoom/partials/when.html" with at=last_zoom_event_at only %}.{% else %}Nothing heard from Zoom yet.{% endif %}</p>{% endif %}
             </div>
           </div>
@@ -52,16 +52,16 @@
             <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
             <div class="notice__body">
               <p class="notice__title">Changes made in Zoom aren't seen here</p>
-              <p>The server has no webhook secret for <span class="break-anywhere">{{ zoom_connection_name }}</span>. Until it has one, a class changed or deleted directly in Zoom stays as it was here until its booking is checked against Zoom. Ask whoever looks after the server to add it. The README explains how.</p>
+              <p>The Zoom connection {% if zoom_connection_url %}<a class="break-anywhere" href="{{ zoom_connection_url }}" translate="no">{{ zoom_connection_name }}</a>{% else %}<span class="break-anywhere" translate="no">{{ zoom_connection_name }}</span>{% endif %} has no webhook secret. Until it has one, a class changed or deleted directly in Zoom stays as it was here until its booking is checked against Zoom. Add it on the Zoom connection's page.</p>
             </div>
           </div>
           {% endif %}
-          {% elif zoom_connection_state == "missing" %}
-          <div class="notice notice--warn">
-            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
+          {% elif zoom_connection_state == "unreadable" %}
+          <div class="notice notice--bad">
+            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-octagon"></use></svg>
             <div class="notice__body">
-              <p class="notice__title">Missing on the server</p>
-              <p>The server has no Zoom connection called <span class="break-anywhere">{{ zoom_connection_name }}</span>. Check the name for typing mistakes, or ask whoever looks after the server to add it.</p>
+              <p class="notice__title">Can't be read</p>
+              <p>The details of the Zoom connection {% if zoom_connection_url %}<a class="break-anywhere" href="{{ zoom_connection_url }}" translate="no">{{ zoom_connection_name }}</a>{% else %}<span class="break-anywhere" translate="no">{{ zoom_connection_name }}</span>{% endif %} can't be read with the server's current encryption keys. Type its client secret again on the Zoom connection's page.</p>
             </div>
           </div>
           {% else %}
@@ -74,7 +74,12 @@
           </div>
           {% endif %}
           {% endif %}
-          {% include "partials/field.html" with field=form.credential_set narrow=True only %}
+          {% include "partials/select_field.html" with field=form.zoom_connection narrow=True only %}
+          {% if can_manage_connections %}
+          <div class="field">
+            <a class="tap-link" href="{% url 'zoom:connections' %}">Zoom connections</a>
+          </div>
+          {% endif %}
           {% if can_check_connection %}
           <div class="field">
             <button class="button button--secondary" type="submit" form="zoom-check" data-busy-text="Checking with Zoom…" aria-describedby="zoom-check-help">Check connection</button>
@@ -122,21 +127,7 @@
           {% endif %}
           {% endif %}
 
-          {# The host key, written out rather than through field.html: it never carries a value (a typed key is not echoed back, D7), and its aria-describedby adds host_key-note when that note shows. #}
-          {% with field=form.host_key name=form.host_key.html_name attrs=form.host_key.field.widget.attrs %}
-          {% if form.key_was_typed %}
-          <div class="notice notice--warn" id="{{ name }}-note">
-            <svg class="icon icon--xl" aria-hidden="true" focusable="false"><use href="#i-alert-triangle"></use></svg>
-            <p>For your safety, the host key you typed wasn't kept. Type it again.</p>
-          </div>
-          {% endif %}
-          <div class="field">
-            <label class="field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {% if field.help_text %}<p class="field__help" id="{{ name }}-help">{{ field.help_text }}</p>{% endif %}
-            <input class="input input--narrow" type="text" id="{{ field.id_for_label }}" name="{{ name }}"{% for key, value in attrs.items %}{% if key != "type" and key != "value" %} {{ key }}="{{ value }}"{% endif %}{% endfor %}{% if field.errors %} aria-invalid="true"{% endif %}{% if field.errors or form.key_was_typed or field.help_text %} aria-describedby="{% if field.errors %}{{ name }}-error {% endif %}{% if form.key_was_typed %}{{ name }}-note {% endif %}{% if field.help_text %}{{ name }}-help{% endif %}"{% endif %}>
-            {% include "partials/field_error.html" with field=field only %}
-          </div>
-          {% endwith %}
+          {% include "zoom/partials/secret_field.html" with field=form.host_key was_typed=form.key_was_typed note="For your safety, the host key you typed wasn't kept. Type it again." narrow=True only %}
 
           {% if form.remove_host_key %}{% include "partials/check_field.html" with field=form.remove_host_key only %}{% endif %}
         </fieldset>

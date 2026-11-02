@@ -28,7 +28,7 @@ from django.db import connection, transaction
 from django.test import RequestFactory
 
 from apps.zoom import services
-from apps.zoom.models import HostAccount, HostSlot, LinkRequest
+from apps.zoom.models import HostAccount, HostSlot, LinkRequest, ZoomConnection
 from apps.zoom.providers import FakeProvider
 from apps.zoom.services import Outcome
 
@@ -60,6 +60,9 @@ def committed(django_db_setup, django_db_blocker):
             # Backstop: catches anything a partial setup committed but never registered.
             LinkRequest.objects.filter(class_name__startswith="Race ").delete()
             HostAccount.objects.filter(label__startswith="Race ").delete()
+            # Brief 015: the Zoom connections the race tests chose on their accounts. Only
+            # committed rows exist here, so an unused connection is always one of theirs.
+            ZoomConnection.objects.filter(host_accounts__isnull=True).delete()
             get_user_model().objects.filter(username="race-it").delete()
             connection.close()
 

@@ -593,7 +593,7 @@ def test_the_start_url_is_never_kept_anywhere(client, zoom02, now_is, settings, 
     """Criterion 24, with the live provider and a mocked Zoom, on the real templates."""
     _real_templates(settings)
     settings.ZOOM_PROVIDER = "zoom"
-    zm.connect(settings, zoom02)
+    zm.connect(zoom02)
     zm.add_token(http_mock)
     secret = "https://us02web.zoom.us/s/81234567890?zak=SECRETZAK"
     http_mock.add(

@@ -85,7 +85,7 @@ def _shown(response):
 def test_a_stale_one_class_form_is_refused_then_works_again(committed, settings, http_mock):  # noqa: F811
     user_a, user_b, account, browser = _people(committed)
     settings.ZOOM_PROVIDER = "zoom"
-    zm.connect(settings, account)
+    zm.connect(account)
     zm.add_token(http_mock)
     zm.add_listing(http_mock, account.email, [])
     http_mock.add(responses.PATCH, zm.meeting_url(MEETING), status=204)
@@ -205,7 +205,7 @@ def test_an_invalid_post_keeps_the_stale_shown_so_the_next_post_is_refused(
     """
     user_a, user_b, account, browser = _people(committed)
     settings.ZOOM_PROVIDER = "zoom"
-    zm.connect(settings, account)
+    zm.connect(account)
     zm.add_token(http_mock)
     zm.add_listing(http_mock, account.email, [])
     http_mock.add(responses.PATCH, zm.meeting_url(MEETING), status=204)

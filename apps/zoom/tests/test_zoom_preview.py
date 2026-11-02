@@ -267,7 +267,7 @@ def test_no_accounts_at_all_is_not_all_unchecked(it_client):
 
 def test_manual_mode_asks_nothing_and_every_entry_is_off(it_client, account, settings, http_mock):
     settings.ZOOM_PROVIDER = "manual"
-    zm.connect(settings, account)
+    zm.connect(account)
     context = _detail(it_client, make_request())
     [entry] = context["availability"]
     assert (entry["zoom_state"], entry["zoom_clashes"], entry["zoom_problem"]) == ("off", [], "")
@@ -327,7 +327,7 @@ def test_an_unexpected_failure_in_a_lookup_fails_closed(it_client, account):
 @pytest.fixture
 def live_zoom(settings, account):
     settings.ZOOM_PROVIDER = "zoom"
-    zm.connect(settings, account)
+    zm.connect(account)
     return account
 
 

@@ -8,7 +8,7 @@ provider is in use:
 - ``checks_zoom``: the provider can ask Zoom which meetings an account already has, so the
   preview and ``approve()`` check Zoom for clashes as well as the database.
 - ``is_connected(account)``: whether this provider can reach Zoom for the account. It reads
-  settings only, never the network.
+  the account's loaded connection row only, never the network.
 - ``busy_times(*, host_account, start, end) -> list[BusyTime]``: the account's dated Zoom
   meetings overlapping ``[start, end)`` (criterion 12).
 - ``create_meeting(*, link_request, host_account, occurrences, manual=None) -> Meeting``.
@@ -41,7 +41,7 @@ returns the URL to the start page's POST, which redirects to it at once, and not
 Providers:
 
 - ``zoom``: the live Zoom API through ``zoom_api.py``, one Server-to-Server OAuth app per
-  subscription, chosen by ``HostAccount.credential_set``.
+  subscription, its details in the ``ZoomConnection`` chosen on each account (brief 015).
 - ``manual`` (the fallback): IT creates the meeting in Zoom on the account the system chose,
   then pastes its details. It can't see Zoom, which is why ``zoom.W001`` warns about it.
 - ``fake`` (dev and tests): deterministic links on the reserved ``.invalid`` TLD, so a fake
@@ -61,6 +61,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.views.decorators.debug import sensitive_variables
 
 from . import zoom_api
+from .crypto import SecretUnreadable
 from .errors import (  # noqa: F401  (re-exported: callers import the error types from here)
     ProviderError,
     ZoomAuthFailed,
@@ -598,8 +599,9 @@ class ZoomProvider(MeetingProvider):
     when the call ends rather than whenever the garbage collector gets to it.
 
     The Zoom user is ``HostAccount.email``, used as the ``userId``, never ``me``, which is
-    ambiguous for account-level apps (D10). The credential set is the account's
-    ``credential_set``, looked up in ``settings.ZOOM_S2S_SECRETS``.
+    ambiguous for account-level apps (D10). The credentials are the account's chosen
+    ``ZoomConnection`` (brief 015), read from the database in the same operation as the call,
+    so a detail saved a moment ago is used at once, in every worker (D8).
     """
 
     checks_zoom = True
@@ -610,11 +612,20 @@ class ZoomProvider(MeetingProvider):
 
     @sensitive_variables("credentials")
     def _client(self, host_account):
-        credentials = None
-        if host_account.credential_set:
-            credentials = settings.ZOOM_S2S_SECRETS.get(host_account.credential_set)
-        if credentials is None:
+        """A client for the account's connection as loaded now; ``ZoomNotConnected`` if none.
+
+        A connection whose client secret can't be decrypted is "not connected" too: nothing is
+        sent to Zoom, and the caller shows its own not-connected message. The callers load the
+        connection with the account (``bookable()``, ``locked()``), so this runs no query, and
+        the preview's threads touch no database (brief 015, criterion 25).
+        """
+        connection = host_account.zoom_connection if host_account.zoom_connection_id else None
+        if connection is None:
             raise ZoomNotConnected()
+        try:
+            credentials = connection.credentials()
+        except SecretUnreadable:
+            raise ZoomNotConnected() from None
         return zoom_api.ZoomClient(credentials)
 
     # Zoom's list carries every meeting's join link: masked in error reports.
@@ -795,7 +806,7 @@ class ZoomProvider(MeetingProvider):
 
         ``None`` when the meeting is confirmed gone. Zoom answers ``404`` with code 3001 both
         for a deleted meeting and for one that belongs to **another** Zoom account, so a wrong
-        connection name or a swapped credentials file would make every meeting look deleted,
+        connection chosen on an account, or swapped details, would make every meeting look deleted,
         and reconcile would cancel a whole account's bookings (review round 1, S1). So a 3001
         is double-checked (criterion 31, D17): one ``GET /users/{email}`` on the same
         connection, 006's Check connection call. Only when Zoom has that user is the meeting

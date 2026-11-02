@@ -39,6 +39,7 @@ A `Check against Zoom` button and a nightly command do the same for any event th
 **In scope**
 
 - **Settings (`tmd-devops`):** a fourth, optional variable per credential set, `ZOOM_S2S_<NAME>_WEBHOOK_SECRET`; the `.example` and README; check `zoom.W002`.
+  *Amended by 015 (2026-11-02):* the webhook secret is no longer a fourth env variable. It is a field on the connection (015 criterion 1).
 - **The endpoint:** `zoom:webhook` (one path per credential set). It verifies the signature and timestamp, answers Zoom's URL validation, and records each event for idempotency.
 - **Model** (migration `0009`): `ZoomEvent` (the idempotency record) and `LinkRequest.zoom_attention` (what IT needs to look at).
 - **`services.reconcile(link_request)`:** the one place that brings a booking into line with Zoom. It's used by the webhook, the `Check against Zoom` button and the `sync_zoom_bookings` command.
@@ -62,16 +63,19 @@ A `Check against Zoom` button and a nightly command do the same for any event th
 
 - These carry over from 005, 006, 011 and 012: the frozen now, ZL-0042 and ZL-0043, mocked Zoom and the network block, "booked", "started" and "remaining", and the pinned-copy rule.
 - **Test secret:** the set `zoom-02` with `webhook_secret="test-webhook-secret"` in `ZOOM_S2S_SECRETS` through the `settings` fixture. **Signed POST:** a request whose `x-zm-request-timestamp` is the frozen now in epoch seconds, and whose `x-zm-signature` is `v0=` plus the hex HMAC-SHA256 of `v0:{timestamp}:{raw body}` under the test secret (https://developers.zoom.us/docs/api/webhooks/).
+  *Amended by 015 (2026-11-02):* the "test secret" is set on a test `ZoomConnection` (`set_webhook_secret`), not in `ZOOM_S2S_SECRETS` (015).
 
 ### Settings and checks (`tmd-devops` builds 1; backend builds 2)
 
 1. **The webhook secret comes from env only.**
+   *Amended by 015 (2026-11-02):* **superseded.** The webhook secret is an encrypted field on `ZoomConnection`, set on the connection page (015 criterion 1, D3).
    - `read_zoom_credentials` also reads `ZOOM_S2S_<NAME>_WEBHOOK_SECRET`, which is **optional**: a set is complete without it.
    - `ZoomCredentials` gains `webhook_secret: str = field(default="", repr=False)`.
    - It's inside `ZOOM_S2S_SECRETS`, so Django masks it (006 criterion 3; the test is extended).
    - `zoom-credentials.env.example` lists the fourth name per set, with an empty value and a comment.
    - 006's source scan still finds no `ZOOM_S2S_` env read outside `base.py`.
 2. **`zoom.W002`** (tagged `database`, with the `zoom` provider only). For each active paid account whose set has no webhook secret, there's one warning:
+   *Amended by 015 (2026-11-02):* W002's hint is now "Add the webhook secret on the Zoom connection's page", with an unreadable form (015 criterion 33).
 
    `{label}'s Zoom connection has no webhook secret, so changes made directly in Zoom to its meetings aren't seen here.`
 
@@ -83,6 +87,7 @@ A `Check against Zoom` button and a nightly command do the same for any event th
    - It accepts **POST only** (GET → 405). It's `csrf_exempt` and `non_atomic_requests`, with no sign-in.
    - **No other view is CSRF-exempt:** a source scan finds `csrf_exempt` exactly once in `apps/`, and a test with `Client(enforce_csrf_checks=True)` gets 403 on `zoom:approve`, `zoom:cancel` and `zoom:start` without a token.
 4. **What's refused before any work:**
+   *Amended by 015 (2026-11-02):* the unknown-name and no-secret lookup is now one query on `ZoomConnection`, and an unreadable secret is a 404 with one `WARNING` (015 criterion 27, D9).
    - a slug that isn't in `ZOOM_S2S_SECRETS`, or whose set has no webhook secret → **404** with the site's normal 404 page, and no record above `INFO` from the app's own loggers (`apps.zoom` and its children). Django's own `django.request` line (`Not Found: /zoom/webhooks/zoom-99/`) is expected and allowed (D14);
    - a `Content-Length` over 256 KB → **413**, without reading the body.
 5. **Signature and replay window** (D2). The headers `x-zm-request-timestamp` (digits only) and `x-zm-signature` must both be present.
@@ -99,6 +104,7 @@ A `Check against Zoom` button and a nightly command do the same for any event th
      - one 301 seconds ahead;
      - a body signed with **another set's** secret.
 6. **URL validation** (`event` = `endpoint.url_validation`). It's verified by criterion 5 like every event. Then:
+   *Amended by 015 (2026-11-02):* criterion 6's "no database query" becomes exactly one query, the connection lookup (015 criterion 27).
    - `payload.plainToken` must match `^[A-Za-z0-9_-]{1,256}$`, or the answer is **400** (D2: this stops the endpoint being used to sign attacker-chosen text such as `v0:…`);
    - otherwise the answer is **200** JSON, exactly `{"plainToken": p, "encryptedToken": hex(HMAC-SHA256(secret, p))}`.
    - It makes no database query and no HTTP call (a test counts both).
@@ -128,6 +134,7 @@ A `Check against Zoom` button and a nightly command do the same for any event th
 ### Bringing a booking into line: `services.reconcile()`
 
 12. **Which booking.** For `meeting.deleted`/`meeting.updated`, `payload.object.id` is looked up among `approved` **and `cancelled`** requests whose `meeting_id` matches **and** whose `host_account.credential_set` equals the URL's slug (amended 2026-11-02, D15).
+   *Amended by 015 (2026-11-02):* matching is by connection: `host_account.zoom_connection_id` replaces `credential_set == slug` (015 criterion 28).
     - **Why cancelled ones too:** the echo of a whole booking cancelled in the app (011) arrives as `meeting.deleted` for a booking that is now `cancelled`. Criterion 17 needs that echo recorded as `no_change`, not `not_ours`.
     - **A matched `cancelled` booking is never sent to Zoom and never changed.** Its event is recorded `no_change`, with no `GET`, no write and no email. A test delivers the echo of an app-made whole cancel and asserts exactly that.
     - No match → outcome `not_ours`, 200, no Zoom call.
@@ -237,7 +244,9 @@ A `Check against Zoom` button and a nightly command do the same for any event th
 22. **Template rules, no-JS, layout and accessibility,** as in 011 criterion 35, for the notice, the tag and the button.
 23. **No test reaches the network.** Webhook tests post signed bodies with Django's test `Client`, and Zoom's `GET` is mocked.
 24. **Automated checks** as in 011 criterion 37. Settings change, so **`check --deploy` runs on the prod stack** as in 006 criterion 46, with a dummy set **including** a dummy webhook secret: only W021 may appear. The `check --database default` run shows `zoom.W002` for a dummy set without one.
+   *Amended by 015 (2026-11-02):* the dummy webhook secret is set on a connection, not passed as env (015).
 25. **Prod walkthrough** (no real Zoom; the verifier signs with a dummy secret passed by `exec -e`, as 006's verifier did). **Over HTTP on port 8011**, not 8010, which another project now holds (main session, 2026-10-30). The port is passed as a run-time override only, `WEB_PORT=8011 ZOOM_PROVIDER=manual docker compose up -d --build`, never by editing `.env`. Every HTTP check, screenshot and `curl` in this brief uses 8011 until the owner decides otherwise.
+   *Amended by 015 (2026-11-02):* the dummy secret is typed on the connection page, not passed as env (015).
     - `GET` → 405;
     - an unsigned `POST` → 401;
     - a signed URL validation → the exact JSON;
@@ -249,6 +258,7 @@ A `Check against Zoom` button and a nightly command do the same for any event th
 
     Screenshots at 1440 and 400 (dev, fake provider steered, on 8011): the needs-a-look notice, the queue tag, a class row with each Zoom note (criterion 27), a booking cancelled in Zoom, and the account change page in criterion 29's three states.
 26. **The owner's live check** (after D6's setup on one account):
+   *Amended by 015 (2026-11-02):* the Secret Token is typed on the connection page (015).
     1. Marketplace validates the endpoint. **Also confirm no new API scope is needed** (amended 2026-11-02, D15). The only new Zoom call in this brief is `GET /meetings/{id}`, which 011's start link and `occurrence_id_for` already use under `meeting:read:meeting:admin`. Check that the app's Scopes page lists nothing new as required, and that the event subscription saves with the existing scopes. If Marketplace asks for a scope, record its name; the docs writer adds it to the README.
     2. Deleting one class of a live weekly test booking **in Zoom** cancels it here within a minute and emails the requester.
     3. Changing a one-off's time in Zoom moves it here.
@@ -285,6 +295,7 @@ A `Check against Zoom` button and a nightly command do the same for any event th
       - the command's sweep is one `UPDATE` (captured SQL);
       - a flagged booking that still has remaining classes keeps its flag.
 29. **The Zoom account page shows whether changes made in Zoom are seen here** (P7, D11, D12).
+   *Amended by 015 (2026-11-02):* `webhook_secret_set` is now the stored connection's `has_webhook_secret`, and the `False` notice's body changes (015 criterion 20). `webhook_secret_set_for` is removed.
     - **Context on `zoom/account_form.html`** (change page, from the **stored** connection name, as 006's `zoom_connection_state` is):
       - `webhook_secret_set`: `True` or `False` when the stored connection is `ready` **and** the provider `checks_zoom`; `None` otherwise (the add page, a connection that isn't `ready`, or `manual`). It reads `settings.ZOOM_S2S_SECRETS[slug].webhook_secret` through one model-level function beside `zoom_connection_state_for`. It's never the secret, only whether there is one.
       - `last_zoom_event_at`: an aware datetime or `None`. It's the newest `ZoomEvent.received_at` for the stored slug (D12: derived, not stored), read with one aggregate query, `ZoomEvent.objects.last_received_at(slug)`. It's `None` when `webhook_secret_set` isn't `True`, or when no event has been recorded.
@@ -367,6 +378,7 @@ A `Check against Zoom` button and a nightly command do the same for any event th
   - IT is not emailed about plain deletions (they made them), only about what the app couldn't copy (needs a look).
   - A mistaken deletion is recovered in Zoom within 7 days, then with a new request (011 D9).
 - **D6: Owner setup** (for the README).
+  *Amended by 015 (2026-11-02):* steps 4-5 are now: type the Secret Token in **Webhook secret** on the connection page and save. Validate passes at once, with no recreate (015).
 
   **Once, for the server (owner, Q6: "Production domain"; D9):**
 
@@ -412,6 +424,7 @@ A `Check against Zoom` button and a nightly command do the same for any event th
   - **P10, accepted (main session, 2026-10-30):** criterion 18's "copied, the email failed, and needs a look" row uses the designer's P10, replacing the planner's interim text. It says what to tell the requester (only the copied changes, since the requester is never told about needs-a-look lines), which "Tell them yourself" left open.
   - **Which text wins:** the Design section still marks D.10 as "proposals" and shows some pre-decision wording, such as criterion 18's old flashes in D.7. Where it differs from the criteria, the criteria win. The designer can refresh their own section at any time.
 - **D12: `last_zoom_event_at` is derived from `ZoomEvent`, not stored** (P7; main session asked the planner to decide).
+  *Amended by 015 (2026-11-02):* the first bullet's "env-only, with no database row" is now a row on `ZoomConnection`. `last_zoom_event_at` is still derived from `ZoomEvent`, as decided (015).
   - **Where it could have lived:**
     - **the credential set:** it's env-only, with no database row (006 D2);
     - **a column on `HostAccount`:** it would need a write on every event, and would disagree across accounts sharing one set;
@@ -1420,6 +1433,7 @@ Rendered, for 2 changes: `Checked with Zoom: 2 changes copied here, and some cha
 <!-- owners: tmd-devops, tmd-django-backend, tmd-frontend — one sub-heading each: files changed, contract deviations, migrations, new deps (with reason), self-check output -->
 
 ### tmd-devops (agent plan step 2, criterion 1), 2026-10-30
+*Amended by 015 (2026-11-02):* the notes below are left as the historical record. Brief 015 moved the webhook secret from `zoom-credentials.env` into the database, so `ZOOM_S2S_*`, `webhook_secret_set_for` and the `read_zoom_credentials` block they describe are gone.
 
 **The planner's "env only" is confirmed against the code.**
 - `compose.yaml` passes the whole of `zoom-credentials.env` to `web` through `env_file: [{path: ./zoom-credentials.env, required: false}]`, so a fourth variable per set arrives with no compose change. `compose.dev.yaml` doesn't touch `env_file`. Listing it under `web.environment` would be wrong: it would override the file (CLAUDE.md's Zoom-credentials exception, which `test_compose_loads_the_optional_credentials_file` enforces).

@@ -1,8 +1,15 @@
 """Checking that a call to the Zoom webhook came from that connection's own Zoom app (brief 013).
 
-Pure functions over the request's headers, its raw bytes and the settings: no database and no
-HTTP, so the view stays a mapping from results to status codes, and every rule is testable on
-its own. ``hmac`` and ``hashlib`` from the standard library are all it needs (no Zoom SDK).
+Functions over the request's headers, its raw bytes and one ``ZoomConnection`` row: one
+indexed query and no HTTP, so the view stays a mapping from results to status codes, and every
+rule is testable on its own. ``hmac`` and ``hashlib`` from the standard library are all it
+needs (no Zoom SDK).
+
+Brief 015: the webhook secret and the Zoom account ID are read from the connection row named
+in the address, with **exactly one query** per call (criterion 27), so a secret saved on the
+connection's page works on the very next call, with no restart (criterion 29). ``verify``
+decrypts the secret once and hands the view a ``VerifiedConnection``; nothing else here reads
+the database.
 
 Why it's shaped like this (D2):
 
@@ -26,7 +33,10 @@ Why it's shaped like this (D2):
 Nothing here logs or returns the secret, a signature, a header value or the body: a refusal
 is logged once at ``WARNING`` with the connection name and a reason word (``missing``,
 ``stale``, ``bad signature``, ``wrong account``). An unknown connection name is logged at
-``INFO`` only (criterion 4), since anyone can type a URL.
+``INFO`` only (criterion 4), since anyone can type a URL. A connection whose webhook secret
+can't be decrypted answers the same ``404`` as an unknown one, so it tells the caller nothing
+more, but logs one ``WARNING`` (``unreadable secret``, brief 015, D9): unlike a stranger's
+guess, it's a fault the server's operator must fix.
 """
 
 import hashlib
@@ -34,11 +44,13 @@ import hmac
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from django.conf import settings
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
+
+from .crypto import SecretUnreadable
+from .models import ZoomConnection
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +76,7 @@ class Refusal:
 
 
 UNKNOWN = Refusal(404, "unknown")
+UNREADABLE_SECRET = Refusal(404, "unreadable secret")
 TOO_LARGE = Refusal(413, "too large")
 MISSING = Refusal(401, "missing")
 STALE = Refusal(401, "stale")
@@ -71,6 +84,22 @@ BAD_SIGNATURE = Refusal(401, "bad signature")
 WRONG_ACCOUNT = Refusal(401, "wrong account")
 UNREADABLE = Refusal(400, "unreadable")
 BAD_TOKEN = Refusal(400, "bad token")
+
+
+@dataclass(frozen=True)
+class VerifiedConnection:
+    """The connection a call was proved to come from, as ``verify`` read it (brief 015).
+
+    Only what the rest of the call needs: the pk (to match bookings by connection, criterion
+    28), the name (for logs and the ``ZoomEvent`` record), the Zoom account ID (the account
+    check) and the decrypted webhook secret (URL validation). The last two are ``repr=False``,
+    so a traceback or a log that shows this names the connection and nothing else.
+    """
+
+    pk: int
+    slug: str
+    account_id: str = field(repr=False)
+    webhook_secret: str = field(repr=False)
 
 
 @sensitive_variables("secret", "timestamp", "body", "message")
@@ -98,19 +127,24 @@ def _content_length(request):
         return 0
 
 
-@sensitive_variables("credentials", "secret", "timestamp", "signature", "expected", "body")
+@sensitive_variables("connection", "secret", "timestamp", "signature", "expected", "body")
 def verify(request, slug):
-    """The connection's ``ZoomCredentials`` when the call is Zoom's own, else a ``Refusal``.
+    """A ``VerifiedConnection`` when the call is Zoom's own, else a ``Refusal``.
 
-    In order (criteria 4 and 5): a connection name the server doesn't have, or one with no
-    webhook secret, is ``404``; a ``Content-Length`` over 256 KB is ``413`` before the body is
+    In order (013 criteria 4 and 5, 015 criterion 27): a connection name with no row, or one
+    with no webhook secret, is ``404``; one whose secret can't be decrypted is ``404`` too,
+    with one ``WARNING`` (D9); a ``Content-Length`` over 256 KB is ``413`` before the body is
     read; then both headers must be there, the timestamp within 300 seconds of now either way,
-    and the signature right for the raw body. Settings only: no query, no HTTP.
+    and the signature right for the raw body. Exactly one query (``for_webhook``), no HTTP.
     """
-    credentials = settings.ZOOM_S2S_SECRETS.get(slug)
-    if credentials is None or not credentials.webhook_secret:
+    connection = ZoomConnection.objects.for_webhook(slug)
+    if connection is None or not connection.webhook_secret_encrypted:
         logger.info("Zoom webhook call to a connection name with no webhook secret: refused.")
         return UNKNOWN
+    try:
+        secret = connection.get_webhook_secret()
+    except SecretUnreadable:
+        return _refused(slug, UNREADABLE_SECRET)
     if _content_length(request) > MAX_BODY_BYTES:
         return _refused(slug, TOO_LARGE)
     body = request.body
@@ -123,11 +157,16 @@ def verify(request, slug):
         return _refused(slug, MISSING)
     if abs(timezone.now().timestamp() - int(timestamp)) > MAX_AGE_SECONDS:
         return _refused(slug, STALE)
-    expected = signature_for(credentials.webhook_secret, timestamp, body)
+    expected = signature_for(secret, timestamp, body)
     # WSGI hands headers over as latin-1 text, so this round-trips whatever bytes were sent.
     if not hmac.compare_digest(expected.encode(), signature.encode("latin-1")):
         return _refused(slug, BAD_SIGNATURE)
-    return credentials
+    return VerifiedConnection(
+        pk=connection.pk,
+        slug=connection.slug,
+        account_id=connection.account_id,
+        webhook_secret=secret,
+    )
 
 
 @sensitive_variables("body", "event")
@@ -152,25 +191,26 @@ def read_event(body):
     return event
 
 
-@sensitive_variables("credentials", "token", "secret")
-def url_validation_reply(credentials, event):
+@sensitive_variables("verified", "token", "secret")
+def url_validation_reply(verified, event):
     """Zoom's URL validation answer (criterion 6), or ``BAD_TOKEN`` (400).
 
     ``{"plainToken": p, "encryptedToken": hex(HMAC-SHA256(secret, p))}``, only for a
     ``plainToken`` of URL-safe characters (see the module docstring). Only call it for an
-    event that ``verify`` accepted. No query, no HTTP.
+    event that ``verify`` accepted, with the ``VerifiedConnection`` it returned. No query, no
+    HTTP: the one lookup was ``verify``'s.
     """
     payload = event.get("payload")
     token = payload.get("plainToken") if isinstance(payload, dict) else None
     if not isinstance(token, str) or not PLAIN_TOKEN_PATTERN.fullmatch(token):
         return BAD_TOKEN
-    secret = credentials.webhook_secret
+    secret = verified.webhook_secret
     encrypted = hmac.new(secret.encode(), token.encode("ascii"), hashlib.sha256).hexdigest()
     return {"plainToken": token, "encryptedToken": encrypted}
 
 
-@sensitive_variables("credentials")
-def is_from_account(credentials, event, slug) -> bool:
+@sensitive_variables("verified")
+def is_from_account(verified, event) -> bool:
     """True when ``payload.account_id`` is this connection's own Zoom account (criterion 7).
 
     Compared in constant time, like the signature. A mismatch is logged with the connection
@@ -180,8 +220,8 @@ def is_from_account(credentials, event, slug) -> bool:
     named = payload.get("account_id") if isinstance(payload, dict) else None
     # ``surrogatepass``: JSON can carry a lone surrogate, which plain UTF-8 can't encode.
     if isinstance(named, str) and hmac.compare_digest(
-        named.encode("utf-8", "surrogatepass"), credentials.account_id.encode()
+        named.encode("utf-8", "surrogatepass"), verified.account_id.encode()
     ):
         return True
-    _refused(slug, WRONG_ACCOUNT)
+    _refused(verified.slug, WRONG_ACCOUNT)
     return False

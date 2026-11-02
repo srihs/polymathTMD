@@ -9,7 +9,10 @@
   Zoom says, asking Zoom for every account in parallel under a deadline, with a 60-second
   cache (brief 006, D8). It's the one place the two sources are combined.
 - ``check_connection()``: the Zoom accounts page's "Check connection", and the
-  ``check_zoom_connections`` command (brief 006, D12).
+  ``check_zoom_connections`` command (brief 006, D12). From brief 015 the credentials it
+  proves are the account's ``ZoomConnection`` row, read as the check runs, so a detail saved
+  on the Zoom connections page is checked at once, with no restart.
+- ``connection_saved_message()``: the Zoom connections pages' success flash (brief 015).
 - The confirmation token (D8): signed and expiring, carrying only the request's pk, so no
   token column is needed.
 - ``client_ip()`` and ``is_throttled()``: the abuse limits, counted in the database.
@@ -84,15 +87,16 @@ from .models import (
     ZOOM_MOVE_NOT_BOOKABLE,
     HostAccount,
     HostKeyReveal,
-    HostKeyUnreadable,
     HostSlot,
     LinkRequest,
     Occurrence,
+    SecretUnreadable,
     ZoomEvent,
     class_date,
     class_moment,
     class_span,
     class_time,
+    join_words,
 )
 from .providers import (
     ProviderError,
@@ -200,14 +204,16 @@ CHECK_BASIC_USER = (
     "users' meetings end after 40 minutes. Untick Paid account, or ask the Zoom account owner "
     "to give this user a licence."
 )
-CHECK_NO_NAME = "{label} has no Zoom connection name yet. Type it in, save, then check again."
-CHECK_NOT_ON_SERVER = (
-    "The server has no Zoom connection called {slug}. Ask whoever looks after the server to add "
-    "it, then check again."
+# Brief 015, criterion 22: the three amended rows. 006's "not on the server" row is retired.
+CHECK_NO_CONNECTION = "{label} has no Zoom connection yet. Choose one, save, then check again."
+CHECK_UNREADABLE = (
+    "The details of the Zoom connection {slug} can't be read with the server's current "
+    "encryption keys. Type its client secret again on the Zoom connection's page, then check "
+    "again."
 )
 CHECK_AUTH_FAILED = (
-    "Zoom didn't accept the connection details called {slug}. Check the account ID, client ID "
-    "and client secret on the server, and that the Zoom app is activated."
+    "Zoom didn't accept the details of the Zoom connection {slug}. Check its Account ID, Client "
+    "ID and Client Secret on the Zoom connection's page, and that the Zoom app is activated."
 )
 CHECK_MISSING_SCOPE = (
     "The Zoom app for {slug} is missing a permission. Add the scopes listed in the README, then "
@@ -346,14 +352,26 @@ def zoom_clashes(link_request, occurrences, busy_times, known_ids) -> list[dict]
 
 
 def _preview_key(account, window) -> str:
-    """Keyed by the account, its Zoom user and connection name, and the request's window.
+    """Keyed by the account, its Zoom user, its connection and that connection's credentials
+    version, and the request's window.
 
-    The email and connection name are part of the key so that changing either on the accounts
-    page makes the next load ask Zoom again. Hashed to keep the key short and cache-safe.
+    The email, the chosen connection and its ``credentials_version`` are part of the key, so
+    changing the email or the connection on the accounts page, or the connection's details on
+    its own page, makes the next load ask Zoom again (brief 015, criterion 25). The connection
+    was loaded with the account, so this runs no query. Hashed to keep the key short and
+    cache-safe.
     """
     start, end = window
+    connection = account.zoom_connection if account.zoom_connection_id else None
     raw = "|".join(
-        [str(account.pk), account.email, account.credential_set, start.isoformat(), end.isoformat()]
+        [
+            str(account.pk),
+            account.email,
+            str(account.zoom_connection_id or ""),
+            str(connection.credentials_version if connection else ""),
+            start.isoformat(),
+            end.isoformat(),
+        ]
     )
     return "zoom:preview:" + hashlib.sha256(raw.encode()).hexdigest()
 
@@ -723,9 +741,7 @@ def _approve_once(link_request_id, *, account_id, by, manual, provider) -> Appro
                 # No message: the detail page shows its own started notice (from has_started).
                 return ApproveResult(Outcome.STARTED, link_request=link_request)
 
-            account = (
-                HostAccount.objects.select_for_update().bookable().filter(pk=account_id).first()
-            )
+            account = HostAccount.objects.locked().bookable().filter(pk=account_id).first()
             if account is None:
                 return ApproveResult(Outcome.CONFLICT, NOT_OFFERED, link_request)
             label = account.label
@@ -1037,7 +1053,7 @@ def _cancel_once(link_request_id, occurrence_id, *, by, reason, provider, progre
                 LinkRequest.Status.CANCELLED,
             ):
                 return CancelResult(Outcome.NOTHING_TO_DO, NOTHING_LEFT_TO_CANCEL, link_request)
-            account = HostAccount.objects.select_for_update().get(pk=link_request.host_account_id)
+            account = HostAccount.objects.locked().get(pk=link_request.host_account_id)
             label = account.label
             occurrences = list(
                 link_request.occurrences.select_for_update().order_by("starts_at", "pk")
@@ -1564,7 +1580,9 @@ def _move_check_first(link_request_id, occurrence_id, times, shown, provider, pr
     so a class that can't be moved makes no Zoom call (criterion 4).
     """
     link_request = (
-        LinkRequest.objects.select_related("host_account").filter(pk=link_request_id).first()
+        LinkRequest.objects.select_related("host_account__zoom_connection")
+        .filter(pk=link_request_id)
+        .first()
     )
     if link_request is None or link_request.status != LinkRequest.Status.APPROVED:
         message = MOVE_CLASS_CANCELLED if occurrence_id is not None else NOTHING_LEFT_TO_MOVE
@@ -1645,7 +1663,7 @@ def _move_once(
         if link_request.status != LinkRequest.Status.APPROVED:
             message = NOTHING_LEFT_TO_MOVE if series else MOVE_CLASS_CANCELLED
             return MoveResult(Outcome.NOTHING_TO_DO, message, link_request)
-        account = HostAccount.objects.select_for_update().get(pk=link_request.host_account_id)
+        account = HostAccount.objects.locked().get(pk=link_request.host_account_id)
         label = progress.label = account.label
         classes = list(link_request.occurrences.select_for_update().order_by("starts_at", "pk"))
         now = timezone.now()
@@ -1912,7 +1930,7 @@ def _put_zoom_back_once(provider, link_request_id, occurrence_id, progress, back
     link_request = LinkRequest.objects.select_for_update().get(pk=link_request_id)
     if link_request.status != LinkRequest.Status.APPROVED:
         return
-    account = HostAccount.objects.select_for_update().get(pk=link_request.host_account_id)
+    account = HostAccount.objects.locked().get(pk=link_request.host_account_id)
     classes = list(link_request.occurrences.select_for_update().order_by("starts_at", "pk"))
     if occurrence_id is not None:
         target = next((o for o in classes if o.pk == occurrence_id), None)
@@ -2256,7 +2274,11 @@ def reconcile(link_request, *, provider=None, request=None, zoom_event=None) -> 
     """
     provider = provider or get_provider()
     for look in range(1, RECONCILE_LOOKS + 1):
-        current = LinkRequest.objects.select_related("host_account").get(pk=link_request.pk)
+        # The connection comes with the account, so asking Zoom costs no query of its own:
+        # a webhook event costs only its one lookup more than in brief 013 (015 criterion 28).
+        current = LinkRequest.objects.select_related("host_account__zoom_connection").get(
+            pk=link_request.pk
+        )
         classes = list(current.occurrences.all())
         expected = current.sync_fingerprint(classes)
         reference, label = current.reference, current.host_account.label
@@ -2363,7 +2385,7 @@ def _reconcile_once(link_request_id, state, zoom_event, expected) -> _Reconciled
         link_request = LinkRequest.objects.select_for_update().get(pk=link_request_id)
         approved = link_request.status == LinkRequest.Status.APPROVED
         if approved:
-            account = HostAccount.objects.select_for_update().get(pk=link_request.host_account_id)
+            account = HostAccount.objects.locked().get(pk=link_request.host_account_id)
             link_request.host_account = account
             classes = list(link_request.occurrences.select_for_update().order_by("starts_at", "pk"))
         else:
@@ -2521,8 +2543,8 @@ def _reconcile_emails(done, request) -> ReconcileResult:
 # The parsed body holds join links (and, from 014, recording download tokens): masked in error
 # reports (criterion 20, review round 1, N1).
 @sensitive_variables("event")
-def handle_event(slug, event, body_sha256, *, provider=None, request=None) -> EventResult:
-    """Act on one verified webhook event from connection ``slug`` (criteria 8-12, D13).
+def handle_event(connection, event, body_sha256, *, provider=None, request=None) -> EventResult:
+    """Act on one verified webhook event from ``connection`` (criteria 8-12, D13).
 
     - The same body again (Zoom's retry): ``duplicate``, with no Zoom call (criterion 8).
     - An event this brief doesn't handle, or any meeting event with a provider that can't
@@ -2535,9 +2557,12 @@ def handle_event(slug, event, body_sha256, *, provider=None, request=None) -> Ev
       so Zoom's retry does the work. ``not_asked`` (a cancelled booking's echo) is recorded
       and answered as ``no_change``.
 
-    ``event`` is the parsed body; only its event name, time and meeting ID are read here.
+    ``connection`` is ``webhooks.verify``'s ``VerifiedConnection``: bookings are matched by its
+    pk (brief 015, criterion 28), and its name keys the ``ZoomEvent`` record. ``event`` is the
+    parsed body; only its event name, time and meeting ID are read here.
     """
     provider = provider or get_provider()
+    slug = connection.slug
     name = str(event.get("event") or "")[:60]
     event_ts = event.get("event_ts")
     record = EventRecord(
@@ -2558,7 +2583,7 @@ def handle_event(slug, event, body_sha256, *, provider=None, request=None) -> Ev
         .select_related("host_account")
         .order_by("pk")
     )
-    ours = [lr for lr in found if lr.host_account.credential_set == slug]
+    ours = [lr for lr in found if lr.host_account.zoom_connection_id == connection.pk]
     if not ours:
         if found:
             logger.warning(
@@ -2653,7 +2678,7 @@ def link_request_from_start_token(token):
     if type(pk) is not int or not isinstance(meeting_id, str) or not meeting_id:
         return None
     link_request = (
-        LinkRequest.objects.select_related("host_account")
+        LinkRequest.objects.select_related("host_account__zoom_connection")
         .filter(pk=pk, status__in=[LinkRequest.Status.APPROVED, LinkRequest.Status.CANCELLED])
         .first()
     )
@@ -2764,7 +2789,7 @@ def reveal_host_key(account, *, by) -> str:
 
     The one place a key is decrypted for showing. Every reveal writes one ``HostKeyReveal``
     row and one INFO line with the label and the user name; neither holds the key. Raises
-    ``NoHostKeySaved`` or ``HostKeyUnreadable`` (logged at WARNING with the label), and then
+    ``NoHostKeySaved`` or ``SecretUnreadable`` (logged at WARNING with the label), and then
     records nothing. The key goes back to the view only, and ``plain`` is masked in error
     reports (criterion 43).
     """
@@ -2772,7 +2797,7 @@ def reveal_host_key(account, *, by) -> str:
         raise NoHostKeySaved()
     try:
         plain = account.get_host_key()
-    except HostKeyUnreadable:
+    except SecretUnreadable:
         logger.warning("Host key for %s can't be read: InvalidToken", account.label)
         raise
     HostKeyReveal.objects.create(host_account=account, shown_by=by)
@@ -2799,18 +2824,21 @@ def check_connection(account, provider=None) -> ConnectionResult:
     """Does this account's Zoom connection work? (criterion 36, D12).
 
     Always the live ``ZoomProvider``, whatever ``ZOOM_PROVIDER`` says, so a connection can be
-    proved before switching the site over. With no name, or a name the server doesn't have,
-    nothing is sent anywhere. The messages name the account, its email and the connection
-    name, never a credential or a token.
+    proved before switching the site over. With no connection chosen, or one whose client
+    secret can't be read, nothing is sent anywhere (brief 015, criterion 22). The connection is
+    the row as loaded for this check, so a secret saved a moment ago is the one proved. The
+    messages name the account, its email and the connection name, never an ID, a secret or a
+    token.
     """
     provider = provider or ZoomProvider()
-    label, slug, email = account.label, account.credential_set, account.email
+    label, email = account.label, account.email
     error = message_levels.ERROR
     state = account.zoom_connection_state
     if state == "none":
-        return ConnectionResult(error, CHECK_NO_NAME.format(label=label))
-    if state == "missing":
-        return ConnectionResult(error, CHECK_NOT_ON_SERVER.format(slug=slug))
+        return ConnectionResult(error, CHECK_NO_CONNECTION.format(label=label))
+    slug = account.zoom_connection.slug
+    if state == "unreadable":
+        return ConnectionResult(error, CHECK_UNREADABLE.format(slug=slug))
     try:
         user_type = provider.check_connection(account)
     except ZoomAuthFailed:
@@ -2837,6 +2865,37 @@ def check_connection(account, provider=None) -> ConnectionResult:
             message_levels.WARNING, CHECK_BASIC_USER.format(label=label, email=email)
         )
     return ConnectionResult(message_levels.SUCCESS, CHECK_WORKS.format(label=label))
+
+
+# Brief 015, criteria 11 and 12: the Zoom connections pages' success flashes.
+CONNECTION_ADDED = (
+    "Added the Zoom connection {slug}. Next, choose it on the Zoom account that uses it, then "
+    "press Check connection there."
+)
+CONNECTION_SAVED_UNUSED = (
+    "Saved the Zoom connection {slug}. Next, choose it on the Zoom account that uses it, then "
+    "press Check connection there."
+)
+CONNECTION_SAVED_USED = (
+    "Saved the Zoom connection {slug}. To make sure Zoom accepts it, press Check connection on "
+    "{labels}."
+)
+
+
+def connection_saved_message(connection, accounts, *, added=False) -> str:
+    """The flash after a connection is added or saved (criteria 11-12).
+
+    It says what to do next: choose the connection on an account, or, when accounts already
+    use it, press Check connection on each, named with the one word-joining rule
+    (``Zoom 01, Zoom 02 and Zoom 03``). The same text whether or not anything changed, so a
+    Save that changed nothing reads the same (criterion 12). Names only, never a value.
+    """
+    if added:
+        return CONNECTION_ADDED.format(slug=connection.slug)
+    labels = [account.label for account in accounts]
+    if not labels:
+        return CONNECTION_SAVED_UNUSED.format(slug=connection.slug)
+    return CONNECTION_SAVED_USED.format(slug=connection.slug, labels=join_words(labels))
 
 
 def _mysql_code(exc):

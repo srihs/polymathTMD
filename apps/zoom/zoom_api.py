@@ -17,9 +17,19 @@ Why it is shaped like this:
   it's read at all is a ``429``, to choose between two fixed errors (``_is_daily_limit``).
 - **The token cache** (D4) lives in this process's memory only: never the database, never
   Django's cache (which could later be the database or Redis) and never a log. One token per
-  credential set, reused until 300 seconds before it expires. Threads (the preview's parallel
-  lookups) share it under a lock; each set has its own fetch lock, so a slow token fetch for
-  one account doesn't hold up the others.
+  Zoom connection, **credentials version and Client ID** (brief 015, criterion 24, D8, D21),
+  reused until 300 seconds before it expires. Every operation reads its connection row,
+  version included, so after IT saves new details every Gunicorn worker fetches a fresh token
+  on its next call, with no restart, no signal and no message between processes. The Client
+  ID is in the key because a connection deleted and re-added under the same name starts again
+  at version 1: the version alone can't tell the old Zoom app from the new one, and the old
+  app's token would book on the wrong Zoom account. Building a client drops that connection's
+  tokens for every **lower** version, so a replaced secret's token isn't kept, but never a
+  higher one: a client built from a stale read mustn't evict a newer version's token.
+  Threads (the preview's parallel lookups) share the cache under a lock; each key has its
+  own fetch lock, so a slow token fetch for one account doesn't hold up the others.
+- **Credentials come from the database** (brief 015): ``ZoomConnection.credentials()`` builds
+  a ``ZoomCredentials`` for one operation. Nothing here keeps them between operations.
 - **Secrets stay out of error reports**: every function that holds a credential, a token or
   Zoom's answer (which carries join links, and on a create the ``start_url``) is
   ``@sensitive_variables``, and errors are raised ``from None``, so a traceback never shows
@@ -33,6 +43,7 @@ texts can repeat.
 
 import threading
 import time
+from dataclasses import dataclass, field
 from urllib.parse import quote
 
 import requests
@@ -77,9 +88,28 @@ DAILY_WORD = "daily"
 # The clock the token cache uses; a module name so tests can move time forward.
 monotonic = time.monotonic
 
-_token_cache: dict[tuple[str, str], tuple[str, float]] = {}
-_fetch_locks: dict[tuple[str, str], threading.Lock] = {}
+# Keyed by (connection name, credentials version, Client ID); see the module docstring.
+_token_cache: dict[tuple[str, int, str], tuple[str, float]] = {}
+_fetch_locks: dict[tuple[str, int, str], threading.Lock] = {}
 _cache_lock = threading.Lock()
+
+
+@dataclass(frozen=True)
+class ZoomCredentials:
+    """One Zoom connection's token parts, as read for one operation (brief 015, criterion 2).
+
+    Built only by ``ZoomConnection.credentials()``, from the row as read in that operation, and
+    dropped when it ends. ``version`` is the row's ``credentials_version``, which keys the token
+    cache. Every field but the connection name is ``repr=False``, so a traceback, a log line or
+    an error report that shows one names the connection and nothing else. There's no webhook
+    secret here: it isn't part of a token, and the webhook reads it on its own.
+    """
+
+    slug: str
+    version: int = field(repr=False)
+    account_id: str = field(repr=False)
+    client_id: str = field(repr=False)
+    client_secret: str = field(repr=False)
 
 
 def reset_token_cache() -> None:
@@ -87,6 +117,22 @@ def reset_token_cache() -> None:
     with _cache_lock:
         _token_cache.clear()
         _fetch_locks.clear()
+
+
+def _forget_lower_versions(cache_key) -> None:
+    """Drop this connection's cached tokens for every version lower than ``cache_key``'s (c. 24).
+
+    A token fetched with replaced details must not outlive them in this process, whatever its
+    Client ID. Only *lower* versions go: a client built from an older, stale read of the row
+    (another worker saved in between) must not evict the newer version's token, which the next
+    fresh read will want again (review round 1, N4). A same-version key with another Client ID
+    is a re-added connection's old app; it's simply never looked up again.
+    """
+    slug, version, _ = cache_key
+    with _cache_lock:
+        for cache in (_token_cache, _fetch_locks):
+            for key in [key for key in cache if key[0] == slug and key[1] < version]:
+                del cache[key]
 
 
 def user_path(email: str, *rest: str) -> str:
@@ -167,7 +213,7 @@ def _is_missing_scope(response) -> bool:
 
 
 class ZoomClient:
-    """Calls Zoom's API for one credential set. Cheap to make: one per lookup or thread.
+    """Calls Zoom's API for one Zoom connection. Cheap to make: one per lookup or thread.
 
     Each client has its own ``requests.Session`` (connection reuse within a lookup's pages);
     sessions aren't shared across threads. Tokens are shared through the module cache.
@@ -182,7 +228,8 @@ class ZoomClient:
     def __init__(self, credentials):
         self.slug = credentials.slug
         self._credentials = credentials
-        self._cache_key = (credentials.slug, credentials.client_id)
+        self._cache_key = (credentials.slug, credentials.version, credentials.client_id)
+        _forget_lower_versions(self._cache_key)
         self._session = requests.Session()
 
     def __repr__(self):

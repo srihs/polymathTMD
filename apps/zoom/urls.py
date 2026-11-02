@@ -43,4 +43,13 @@ urlpatterns = [
     path("accounts/<int:pk>/edit/", views.HostAccountUpdateView.as_view(), name="account_edit"),
     path("accounts/<int:pk>/check/", views.HostAccountCheckView.as_view(), name="account_check"),
     path("accounts/<int:pk>/host-key/", views.HostKeyRevealView.as_view(), name="account_host_key"),
+    # Brief 015: the Zoom apps the accounts book through. No reveal route: secrets are
+    # write-only (D7), so the only reveal stays account_host_key above.
+    path("connections/", views.ZoomConnectionListView.as_view(), name="connections"),
+    path("connections/add/", views.ZoomConnectionCreateView.as_view(), name="connection_add"),
+    path(
+        "connections/<int:pk>/edit/",
+        views.ZoomConnectionUpdateView.as_view(),
+        name="connection_edit",
+    ),
 ]

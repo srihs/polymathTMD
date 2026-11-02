@@ -1,11 +1,14 @@
-"""Encryption at rest for Zoom host keys (brief 005, D17).
+"""Encryption at rest for the secrets the database holds (brief 005, D17; brief 015, D3).
 
-This is the only module that imports ``cryptography``. Host keys are the one secret the
-database holds, so the rules are kept small and in one place:
+This is the only module that imports ``cryptography``. Two kinds of secret are stored, both
+through here and under the same keys, so there is one key list, one rotation and one backup
+rule: Zoom host keys (brief 005) and each Zoom connection's Client Secret and webhook Secret
+Token (brief 015). The rules are kept small and in one place:
 
 - The key list comes from ``settings.HOST_KEY_ENCRYPTION_KEYS`` (read from the environment in
   ``config/settings/base.py`` only). The first key encrypts; every key decrypts. That is what
-  makes rotation possible (``manage.py rotate_host_keys``).
+  makes rotation possible (``manage.py rotate_encryption_keys``, which re-encrypts every
+  stored secret in one go, so removing the old key can never strand one kind of secret).
 - The ``MultiFernet`` is built on every call, not at import time. ``collectstatic`` runs at
   image build time without any keys, and tests swap the key list with ``override_settings``;
   a cached cipher would break both. Building it costs microseconds.
@@ -20,12 +23,14 @@ from django.views.decorators.debug import sensitive_variables
 KEYS_ERROR = "HOST_KEY_ENCRYPTION_KEYS is missing or not a list of valid Fernet keys."
 
 
-class HostKeyUnreadable(Exception):
-    """A stored host key can't be decrypted with any configured key.
+class SecretUnreadable(Exception):
+    """A stored secret can't be decrypted with any configured key.
 
-    It wraps ``cryptography``'s ``InvalidToken`` so callers never import ``cryptography``.
-    The usual cause is a key removed from ``HOST_KEY_ENCRYPTION_KEYS`` before
-    ``rotate_host_keys`` ran; the fix is to type the host key again on the Zoom accounts page.
+    It wraps ``cryptography``'s ``InvalidToken`` so callers never import ``cryptography``. One
+    name for every stored secret (a host key, a client secret or a webhook secret), so an
+    ``except`` around any of them reads truthfully (brief 015, D13). The usual cause is a key
+    removed from ``HOST_KEY_ENCRYPTION_KEYS`` before ``rotate_encryption_keys`` ran; the fix
+    is to type the secret again on its page. Its arguments never carry a value or a key.
     """
 
 
@@ -64,11 +69,11 @@ def encrypt(plain: str) -> str:
 
 @sensitive_variables("token")
 def decrypt(token: str) -> str:
-    """Decrypt with whichever configured key works, or raise ``HostKeyUnreadable``."""
+    """Decrypt with whichever configured key works, or raise ``SecretUnreadable``."""
     try:
         return _cipher().decrypt(token.encode()).decode()
     except InvalidToken as exc:
-        raise HostKeyUnreadable("InvalidToken") from exc
+        raise SecretUnreadable("InvalidToken") from exc
 
 
 @sensitive_variables("token")
@@ -77,4 +82,4 @@ def rotate(token: str) -> str:
     try:
         return _cipher().rotate(token.encode()).decode()
     except InvalidToken as exc:
-        raise HostKeyUnreadable("InvalidToken") from exc
+        raise SecretUnreadable("InvalidToken") from exc

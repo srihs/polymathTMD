@@ -33,6 +33,7 @@ This brief connects the app to Zoom, with one Server-to-Server OAuth app for eac
 4. The IT desk can see and set each account's Zoom connection on the Zoom accounts page, and can **check the connection** there.
 
 Credentials come only from the server's environment, never from the database or the repo. `manual` stays available as a fallback.
+*Amended by 015 (2026-11-02):* Zoom credentials now live in the database (`ZoomConnection`, typed on the in-app Zoom connections screens, brief 015, D1-D3). The "never from the database" rule above is superseded. See `docs/tasks/015-zoom-connections-in-the-app.md`.
 
 ## Scope
 <!-- owner: tmd-planner — In scope / Out of scope bullets -->
@@ -115,6 +116,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
 - Showing Zoom-only meetings on the timetable (brief 009). That is a follow-up for the changelog.
 - Per-occurrence meetings as a fallback (D5: never needed for our patterns).
 - Storing connection-check results, tokens or any Zoom credential in the database.
+  *Amended by 015 (2026-11-02):* credentials are now stored (the Client Secret and webhook secret encrypted); tokens still aren't (015 D3).
 - Changing the approval email's wording, the host-key rules, the public form or the queue.
 - Any import of past or future bookings.
 
@@ -129,6 +131,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
   - the rule on pinned copy: the designer may propose changes through the main session, and they are made here first.
 - **"Mocked Zoom"** means HTTP responses registered with `responses`. **No test reaches the network** (criterion 45).
 - **"Zoom-connected account"** means an active paid account whose `credential_set` names a set present in `settings.ZOOM_S2S_SECRETS`. Tests set `ZOOM_S2S_SECRETS` through the `settings` fixture, with obviously fake values such as `test-account-id`.
+  *Amended by 015 (2026-11-02):* a "Zoom-connected account" is now an active paid account whose chosen `ZoomConnection` is readable (015 criterion 3). Tests create `ZoomConnection` rows instead of setting `ZOOM_S2S_SECRETS`.
 - **"The zoom provider"** means `ZoomProvider`, selected by `ZOOM_PROVIDER=zoom`, or constructed directly in a test.
 - The owner's answers to Q1–Q3 are recorded as D19–D21. The criteria below already reflect them.
 
@@ -138,6 +141,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
    - Any other `ZOOM_PROVIDER` fails `manage.py check` with `zoom.E002`, and its message lists all three values.
    - The default in `base.py` stays `manual`.
 2. **Credentials come from env only.**
+   *Amended by 015 (2026-11-02):* **superseded** by 015 criteria 1-6: credentials are in the database. The source scan is inverted: no `ZOOM_S2S` or `ZOOM_CREDENTIAL` anywhere (015 criterion 36).
    - `base.py` reads `ZOOM_CREDENTIAL_SETS`, a comma-separated list of slugs such as `zoom-01,zoom-02`.
    - For each slug it reads `ZOOM_S2S_<NAME>_ACCOUNT_ID`, `ZOOM_S2S_<NAME>_CLIENT_ID` and `ZOOM_S2S_<NAME>_CLIENT_SECRET`, where `<NAME>` is the slug upper-cased with `-` turned into `_`. So `zoom-01` gives `ZOOM_S2S_ZOOM_01_ACCOUNT_ID`.
    - They go into `settings.ZOOM_S2S_SECRETS`: `{slug: ZoomCredentials(account_id, client_id, client_secret)}`, where `ZoomCredentials` is a frozen dataclass whose `repr` shows only the slug.
@@ -145,7 +149,9 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
    - A source scan finds no `ZOOM_S2S_` env read outside `config/settings/base.py`.
    - No model field, migration or fixture holds any of these values.
 3. **Masked in error reports.** `SafeExceptionReporterFilter().get_safe_settings()["ZOOM_S2S_SECRETS"]` equals the cleansed substitute (`********************`), and so does `ZOOM_CREDENTIAL_SETS` if it is ever matched. The setting's name contains `SECRET` so that Django masks it. A test proves this.
+   *Amended by 015 (2026-11-02):* env masking of `ZOOM_S2S_SECRETS` is retired. Secrets are kept out of error reports by `sensitive_post_parameters` and `sensitive_variables` (015 criterion 17).
 4. **`zoom.E005` (untagged, no database).** It applies when `ZOOM_PROVIDER=zoom`. `manage.py check` reports `zoom.E005` when any of these is true:
+   *Amended by 015 (2026-11-02):* **retired.** `zoom.E005` validated env variables, which no longer exist. Its id isn't reused (015 D10, criterion 30).
    - `ZOOM_CREDENTIAL_SETS` is empty;
    - a listed slug is missing any of its three values;
    - a slug doesn't match `^[a-z0-9]+(-[a-z0-9]+)*$`;
@@ -158,10 +164,12 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
    - **New `zoom.W001`** (deploy only), with `manual`: `ZOOM_PROVIDER=manual can't see meetings made directly in Zoom, so it can double-book them. Set ZOOM_PROVIDER=zoom before taking real requests.`
    - With `zoom` and valid sets, `check --deploy` adds nothing, and only W021 stays accepted.
 6. **`zoom.E004` (tagged `database`).** It runs with `manage.py check --database default`. When `ZOOM_PROVIDER=zoom`, every active paid `HostAccount` must have a non-empty `credential_set` that is a key of `ZOOM_S2S_SECRETS`. Each offender gets one error: `{label} has no working Zoom connection: {reason}.`, where the reason is either `no Zoom connection name is set` or `the server has no connection details called {slug}`.
+   *Amended by 015 (2026-11-02):* E004's reasons are now "no Zoom connection is chosen" and "the details can't be read with the current encryption keys" (015 criterion 32).
    - Inactive or free accounts never trigger it.
    - With the `zoom_hostaccount` table missing (before `migrate`), it returns no errors instead of crashing.
    - It is silent for `fake` and `manual`.
 7. **Env plumbing (`tmd-devops`).**
+   *Amended by 015 (2026-11-02):* the env plumbing is removed: no `env_file` in `compose.yaml`, no `zoom-credentials.env.example`, no credential block in `base.py`. The `urllib3` pin stays (015 criteria 36-39).
    - `compose.yaml`'s `web` gains `env_file: [{path: ./zoom-credentials.env, required: false}]`. The stack starts with or without the file.
    - The repo has `zoom-credentials.env.example`, which lists every variable name with empty values and a comment per line. It has no real value.
    - `zoom-credentials.env` is listed in `.gitignore` and `.dockerignore`.
@@ -176,6 +184,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
    - A source scan finds no `verify=False` and no `http://` in `apps/zoom/`.
    - A test with mocked Zoom asserts the scheme and host of every recorded call.
 9. **Token.**
+   *Amended by 015 (2026-11-02):* the token cache is now keyed by `(slug, credentials_version, client_id)`, not per credential set, and is read per operation (015 criterion 24, D8, D21).
    - The token request is a `POST` with HTTP Basic auth made from the client ID and secret, `grant_type=account_credentials` and the account ID. The backend confirms against Zoom's docs whether the account ID must go in the body or the query, and records which.
    - The token is cached **in process memory only**, per credential set, until 300 seconds before `expires_in`. Two API calls within that time make one token request. After it expires, the next call makes a new one.
    - An API `401` with a cached token drops the token, fetches one new token, and retries the call **once**. A second `401` raises the auth error (criterion 10).
@@ -375,6 +384,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
 ### Zoom accounts page (amends brief 008)
 
 34. **Connection name field.** `HostAccountForm` gains `credential_set`, labelled `Zoom connection name`, and placed after `sort_order`.
+   *Amended by 015 (2026-11-02):* the free-text name becomes `zoom_connection`, a select of Zoom connections (015 criterion 18).
     - Help text: `The name of this account's Zoom connection on the server, like zoom-01. Whoever looks after the server tells you the name.`
     - It is optional. A value must match `^[a-z0-9]+(-[a-z0-9]+)*$` and be at most 40 characters. Otherwise the error is `Use lower-case letters, numbers and hyphens only, like zoom-01.`
     - A value the server doesn't have yet **is allowed**. The state line says so (criterion 35).
@@ -385,6 +395,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
       - `Meta.fields` and `field_order` put `credential_set` straight after `sort_order`: `label, email, notes, is_paid, is_active, sort_order, credential_set, host_key, remove_host_key`.
       - A test checks the rendered attributes and the field order.
 35. **Connection state.** `HostAccount.zoom_connection_state` reads only `settings.ZOOM_S2S_SECRETS`, with no HTTP and no query. It returns:
+   *Amended by 015 (2026-11-02):* the state is now read from `HostAccount.zoom_connection`: `none`, `unreadable` or `ready`. `missing` became `unreadable`, and the list shows `Can't be read` instead of `Missing on the server` (015 criteria 3, 19, 21).
     - `"none"` when no name is set;
     - `"missing"` when the name is set but isn't on the server;
     - `"ready"` otherwise.
@@ -395,6 +406,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
 
     Rendering the list, add and change pages makes **no** HTTP call (mocked Zoom registry empty, no error).
 36. **Check connection.** `POST zoom:account_check` (pk):
+   *Amended by 015 (2026-11-02):* three message rows change: no connection chosen, connection unreadable, and `ZoomAuthFailed` now names the connection. The "name not on the server" row is retired (015 criterion 22).
     - It needs `zoom.change_hostaccount`: anonymous users are sent to log in, a plain user or key-less viewer gets 403, and `GET` gets 405. It is non-atomic.
     - With a `ready` connection, it calls the token endpoint, then `GET /users/{email}`, then `GET /users/{email}/meetings?page_size=1`. It uses `ZoomProvider` whatever `ZOOM_PROVIDER` is, so the connection can be proved before switching.
     - It redirects (302) to `zoom:account_edit` with one message:
@@ -428,6 +440,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
 39. **No webhooks.** No URL name or path in `apps/zoom/urls.py` contains `webhook`, and no view accepts requests from Zoom.
     - *Amended by 013 (2026-11-02, D7):* replaced. Brief 013 deliberately adds `zoom:webhook` (`zoom/webhooks/<slug>/`), so this criterion no longer holds. Its test is now `test_the_only_webhook_url_is_brief_013s`.
 40. **No token or credential in the browser.** None of the following contains any credential value or token: the detail page, the accounts pages, the check redirect's messages, or the approval email. This is tested by searching the rendered output for the fake credential values.
+   *Amended by 015 (2026-11-02):* the Account ID and Client ID may appear on the connection change page, inside their own inputs, and nowhere else (015 criterion 41). Secret values never appear.
 
 ### Tests, dependencies, template rules
 
@@ -448,6 +461,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
 
     The detail and accounts pages work without JavaScript. The layout and accessibility rules of 005 criterion 54 and 008 criterion 28 hold for the new states at 320, 400, 1024 and 1440 px, in both modes.
 44. **Delivered early (2026-09-25, `tmd-devops`, an urgent fix ahead of this brief).** Devops's notes go in its Implementation notes, pasted in by the main session. The verifier still re-checks this criterion in step 4, including the `zoom-credentials.env` entry if the early fix didn't add it. **Secrets stay out of the image.** `.dockerignore` excludes `zoom-credentials.env` and the root-anchored office-file patterns `.gitignore` already has (`/Dashboard 2A.xlsx`, `/*.xlsx`, `/*.xlsm`, `/*.xls`, `/*.ods`, `/*.csv`, `/data/private/`). After `docker compose build`, `docker compose run --rm --no-deps web ls /app` lists neither `Dashboard 2A.xlsx` nor `zoom-credentials.env`.
+   *Amended by 015 (2026-11-02):* `zoom-credentials.env` no longer exists. The `.gitignore` and `.dockerignore` line stays as a guard, with a "retired" comment (015 D12, criterion 37).
 45. **No test reaches the network.**
     - An autouse fixture in the project-level `conftest.py` starts a `responses.RequestsMock` for **every** test, so any unregistered `requests` call raises `ConnectionError`. A test proves that a call to `https://api.zoom.us/v2/users/x` with nothing registered raises.
     - `test.py` keeps `ZOOM_PROVIDER = "fake"`.
@@ -456,6 +470,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
 ### Verification (CLAUDE.md "Verify a change", all five, plus the owner's live check)
 
 46. **Automated checks.** These all pass:
+   *Amended by 015 (2026-11-02):* sub-step 1 of the `check --deploy` runs needs no credential variable at all (015 criterion 46). See `docs/tasks/015-zoom-connections-in-the-app.md`.
     - `ruff check .` and `ruff format --check .`;
     - `pytest --create-db`;
     - `makemigrations --check --dry-run`;
@@ -466,6 +481,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
     1. with `ZOOM_PROVIDER=zoom`, `ZOOM_CREDENTIAL_SETS=zoom-test` and dummy values for its three variables. Only W021 may appear. The check makes no HTTP call;
     2. with `ZOOM_PROVIDER=manual`. Only W021 and **`zoom.W001`** may appear, which proves the warning fires.
 47. **Prod stack walkthrough** (the verifier does **not** contact Zoom). The verifier runs `ZOOM_PROVIDER=manual docker compose up -d --build`, waits for `web` to be healthy, and works over HTTP on 8010:
+   *Amended by 015 (2026-11-02):* step 3 is now "choose a connection on a test account" (015 criterion 47), not typing `zoom-test` as a name. See `docs/tasks/015-zoom-connections-in-the-app.md`.
     1. The manual-mode notice (criterion 18) appears on a waiting request's detail.
     2. The accounts list shows the `Zoom connection` column.
     3. Setting `Zoom connection name` to `zoom-test` on a test account shows `Missing on the server`.
@@ -479,6 +495,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
 
     The verifier restores the stack that was running before.
 48. **The owner's live check.** The owner runs this with one real paid account and credentials they supply at runtime; the verifier never sees them. The main session gives the owner these steps, and the verifier records the owner's reported results in Verification. Before starting, the owner puts the three values in `zoom-credentials.env`, sets `ZOOM_PROVIDER=zoom`, and leaves that account's **host key empty** on the Zoom accounts page, so no real key reaches the console email log.
+   *Amended by 015 (2026-11-02):* the setup step is now "add the connection on the Zoom connections page and choose it on the account", step 4's "wrong secret (restart)" is replaced by 015 criterion 50 step 2 (a wrong secret typed on the page, no restart), and no `zoom-credentials.env` step remains. See `docs/tasks/015-zoom-connections-in-the-app.md`.
     1. `Check connection` shows `The Zoom connection works for {label}.`
     2. The owner creates a meeting **directly in Zoom** on that account for a future time T. A request overlapping T shows that account `Busy` with `In Zoom: {topic}`, and doesn't offer it.
     3. A weekly request (2 weeks, 2 days, `Record this class` ticked) approved on that account appears in Zoom as one recurring meeting. It has 4 occurrences at the right Colombo times and automatic cloud recording on. The emailed link, ID and passcode match Zoom.
@@ -518,6 +535,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
 
 - **D1: 007 is dropped, and 011 stays separate** (see Scope). 006 includes `delete_meeting` and stores `Occurrence.zoom_occurrence_id`, so 011 can cancel a whole series (`DELETE /meetings/{id}`) or one class (`?occurrence_id=`) with no new Zoom plumbing.
 - **D2: Credentials. Three variables per set, one explicit list, a git-ignored env file, and nothing in the database.** This supersedes 005's D16 naming idea of one colon-joined variable per set.
+  *Amended by 015 (2026-11-02):* **superseded and reversed.** The owner decided that credentials are typed in the app and stored encrypted in the database, with no env fallback (015, D1-D3). There is no `zoom-credentials.env` and no `ZOOM_S2S_*` variable any more. See `docs/tasks/015-zoom-connections-in-the-app.md`.
   - **Why three variables:**
     - Zoom's Marketplace shows the account ID, client ID and client secret as three separate values to copy.
     - Nothing documents that they can never contain `:`.
@@ -605,6 +623,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
   - The passcode is Zoom's own (`password`, at most 10 characters, which fits `LinkRequest.passcode`).
   - `start_url` is dropped where the response is parsed.
 - **D11: Checks.**
+  *Amended by 015 (2026-11-02):* `zoom.E005` is retired (015 D10, criterion 30) and `zoom.E004` and `zoom.W002` read the database. See `docs/tasks/015-zoom-connections-in-the-app.md`.
   - **E005** (untagged, settings only) blocks `check` and `migrate` when `zoom` is chosen but the credential sets are broken. That is a whole-site misconfiguration.
   - **E004** needs the database, so it is tagged `database` and runs with `check --database default`. The README and the gate tell ops to run it. At runtime, an account that isn't connected is simply never offered or booked (criteria 15, 29). One unconnected account doesn't stop the site from starting, because that would take the public form down with it.
   - **W001** makes the "manual can't see Zoom" risk visible in `check --deploy`.
@@ -618,6 +637,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
   - Results are shown, not stored. That means no new fields and no stale "last checked" data.
   - The command reuses `services.check_connection` for scripted checks after a secret rotation.
 - **D13: Security.**
+  *Amended by 015 (2026-11-02):* its line "credentials ... never the database" no longer holds. Credentials are in the database, with the Client Secret and webhook secret Fernet-encrypted (015 D3). Tokens still never are. See `docs/tasks/015-zoom-connections-in-the-app.md`.
   - **Least-privilege scopes (granular names; the backend confirms them):**
     - `meeting:write:meeting:admin` (create a meeting);
     - `meeting:read:list_meetings:admin` (list a user's meetings);
@@ -638,6 +658,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
   - The second or two between the lookup and the create (D6).
   - The timetable shows only app bookings (follow-up).
 - **D16: The owner's setup, for each of the 11 paid accounts** (the docs writer turns this into the README section; no values ever go in the repo):
+  *Amended by 015 (2026-11-02):* steps 8-11 are replaced: the Account ID, Client ID and Client Secret are typed on the Zoom connections page (no `zoom-credentials.env`, no recreate), the connection is chosen on the account, and rotating a secret is typing the new value on the connection page. See the README's "Connecting an account to Zoom". See `docs/tasks/015-zoom-connections-in-the-app.md`.
   1. Sign in at `marketplace.zoom.us` as the **owner or an admin of that Zoom subscription**. An admin's role needs the "Server-to-Server OAuth app" permission, under User Management → Roles.
   2. **Develop → Build App → Server-to-Server OAuth App → Create.** Name it `Polymath TMD`.
   3. **App Credentials:** copy the **Account ID**, **Client ID** and **Client Secret**.

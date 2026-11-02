@@ -2,6 +2,66 @@
 
 Newest first. One entry per task. Each entry lists user-visible changes, then technical notes.
 
+## 2026-11-02 — 013: Zoom webhook sync (awaiting the owner's live check)
+
+- When someone changes or deletes a class directly in Zoom, the app now finds out and keeps its
+  bookings in step, so an account no longer looks busy for a class that is gone, and a requester's
+  link no longer stops working without anyone knowing. Zoom calls the app when a meeting changes,
+  and the app asks Zoom for the meeting's current state before it does anything.
+  - A class deleted in Zoom is cancelled here and its time is freed.
+  - A class moved in Zoom is moved here, if the account is free at the new time.
+  - Anything the app can't copy safely is marked **Needs a look**: a tag in the queue and a notice
+    on the booking's page, plus one email to the IT desk. Examples are a class moved in Zoom onto
+    another booking's time, a class added in Zoom that isn't booked here, and a new time that can't
+    be booked here.
+  - The requester gets the usual cancellation or moved email, now worded as `… directly in Zoom`
+    (the app doesn't know who made the change, so it never says the IT desk did).
+  - Cancelling or moving in the app is never copied back: Zoom's echo of it changes nothing and
+    sends no second email.
+- A new **Check against Zoom** button on an approved booking's page does the same check for that
+  booking on demand, and ends with one plain message saying what it found. A class changed in Zoom
+  shows `Moved directly in Zoom` or `Cancelled directly in Zoom` with the date it was copied.
+- A new nightly command, `sync_zoom_bookings`, checks every booking with classes still to come, as
+  a backstop for an event that never arrived. It prints one line per booking that changed, needs a
+  look or couldn't be checked, then a summary, and exits 1 if any booking couldn't be checked.
+- A Zoom account's change page now says whether changes made in Zoom are seen here, with
+  `Last heard from Zoom on {when}`, or a warning when its connection has no webhook secret.
+- Safety: the app cancels nothing when it can't be sure. If Zoom says a meeting is gone, the app
+  first confirms Zoom knows that account's user, so a wrong connection name or credentials file
+  can't cancel a whole account's bookings. If the booking changed in the app while Zoom was being
+  asked, the app asks again, then gives up and changes nothing.
+- **Owner setup needed before this goes live:** for each paid account, add an event subscription
+  in its Zoom app (Meeting deleted, Meeting updated), copy its Secret Token into
+  `zoom-credentials.env`, and make the production domain's `/zoom/webhooks/` path reachable over
+  HTTPS. Schedule the nightly command. See the README's "Keeping in step with Zoom". The owner's
+  live check (criterion 26) is still to do, and also confirms that Marketplace asks for no new
+  scope.
+- Technical notes:
+  - **New migration:** `zoom/0009_zoom_sync` (schema only, reversible): `LinkRequest.zoom_attention`
+    and the `ZoomEvent` table (unique on `(slug, body_sha256)`; holds a hash, never the body).
+  - **New env var (optional):** `ZOOM_S2S_<NAME>_WEBHOOK_SECRET`, a fourth variable per credential
+    set, in `zoom-credentials.env` only. A set is complete without it. It is masked with the other
+    credentials. New check `zoom.W002` (database-tagged, `zoom` provider only) warns for each active
+    paid account whose set has none. Recreate `web` after editing the file. No rebuild is needed.
+  - **New endpoint:** `zoom:webhook` at `zoom/webhooks/<slug>/`, POST only, the one `csrf_exempt`
+    view. It checks the `v0` HMAC signature over the raw body, a 300-second window and the set's
+    Zoom account ID, and answers `endpoint.url_validation`. Add the production domain to
+    `ALLOWED_HOSTS` (first, because the nightly command builds email links from it).
+  - **One sync path:** `services.reconcile()` serves the webhook, the button and the command. It
+    asks Zoom before taking locks, compares a booking fingerprint under the lock and re-asks once
+    on a mismatch (`LOCK_RACE` after that), and double-checks a "gone" answer with a host-user
+    lookup. 006's criterion 39 and D13 ("no webhooks") are amended by this task.
+  - **Requester emails:** `cancelled_body.txt` and `moved_body.txt` gain `in_zoom` (default false),
+    so 011's and 012's emails are unchanged when the change is made in the app. 011's `cancel()`
+    now also clears `zoom_attention`.
+  - **No new dependency, no `LOGGING` change.** A new IT email: `attention_subject.txt` and
+    `attention_body.txt`.
+  - **Follow-ups, not built:** a `Needs a look` tab with a count in the queue (P8), pruning old
+    `ZoomEvent` rows (keep the newest per slug), and an explicit site-URL setting for the nightly
+    command's email links.
+  - **Next:** brief 015 will later move the Zoom credentials, webhook secret included, into the
+    database and remove `zoom-credentials.env`. It is planned, not built.
+
 ## 2026-10-02 — 012: Move a class (awaiting the owner's live check)
 
 - From an approved booking's own detail page, the IT desk can now move one class to a different

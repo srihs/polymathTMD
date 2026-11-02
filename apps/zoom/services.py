@@ -31,6 +31,14 @@
   back to the times the database holds, under the same locks: one ``PATCH`` for one class;
   for a series, the restoring ``PATCH``, the forward path's read-back-and-delete, a ``PATCH``
   per flattened class and a final check (brief 012, criterion 32).
+- ``reconcile()`` (brief 013): the one place a booking is brought into line with a change made
+  directly in Zoom, for the webhook (``handle_event``), the ``Check against Zoom`` button and
+  the nightly ``sync_zoom_bookings``. It asks Zoom first, with no transaction open, then locks
+  request → account → classes as ``cancel()`` and the moves do, compares (``sync.compare``),
+  and writes through the same model operations they use, with nobody named and no Zoom call
+  (Zoom already has the change). Because ``cancel()`` and the moves change Zoom while holding
+  the request lock, a webhook about the app's own change waits for that commit and then finds
+  nothing to do (D1).
 - The emails. They're sent after the model change, synchronously, and a send failure is
   logged and reported but never undoes a decision (D9).
 
@@ -62,20 +70,28 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
 
+from . import sync
 from .models import (
     CANCEL_REASON_REQUIRED,
+    CANCELLED_IN_ZOOM_REASON,
     CLASS_ALREADY_CANCELLED,
     MOVE_CLASS_CANCELLED,
     MOVE_SHOWN_SALT,
     NOTHING_LEFT_TO_CANCEL,
     NOTHING_LEFT_TO_MOVE,
+    ZOOM_CLASS_NOT_BOOKED,
+    ZOOM_MOVE_CLASHES,
+    ZOOM_MOVE_NOT_BOOKABLE,
     HostAccount,
     HostKeyReveal,
     HostKeyUnreadable,
     HostSlot,
     LinkRequest,
     Occurrence,
+    ZoomEvent,
     class_date,
+    class_moment,
+    class_span,
     class_time,
 )
 from .providers import (
@@ -1042,21 +1058,11 @@ def _cancel_once(link_request_id, occurrence_id, *, by, reason, provider, progre
             if blocked:
                 return CancelResult(Outcome.NOTHING_TO_DO, blocked, link_request)
 
-            ids = [occurrence.pk for occurrence in targets]
-            Occurrence.objects.filter(pk__in=ids).update(
-                cancelled_at=now, cancelled_by=by, cancel_reason=reason
+            # The writes are the model's, shared with brief 013's reconcile (criterion 28: the
+            # booking's "needs a look" flag is cleared there when it becomes cancelled).
+            link_request.record_cancel(
+                targets, by=by, reason=reason, now=now, occurrences=occurrences
             )
-            for occurrence in targets:
-                occurrence.cancelled_at, occurrence.cancelled_by = now, by
-                occurrence.cancel_reason = reason
-            HostSlot.objects.filter(occurrence_id__in=ids).delete()
-            if link_request.status_after_cancel(now, occurrences=occurrences) != (
-                link_request.status
-            ):
-                link_request.status = LinkRequest.Status.CANCELLED
-                link_request.cancelled_at = now
-                link_request.cancelled_by = by
-                link_request.save(update_fields=["status", "cancelled_at", "cancelled_by"])
 
             progress.meeting_id = link_request.meeting_id
             one_class = (
@@ -1072,11 +1078,7 @@ def _cancel_once(link_request_id, occurrence_id, *, by, reason, provider, progre
             return CancelResult(Outcome.PROVIDER_ERROR, CANCEL_MAYBE_DONE)
         return CancelResult(Outcome.PROVIDER_ERROR, cancel_failed_message(exc, label))
 
-    remaining = [
-        occurrence
-        for occurrence in occurrences
-        if occurrence.cancelled_at is None and occurrence.ends_at > now
-    ]
+    remaining = link_request.classes_still_on(now, occurrences=occurrences)
     logger.info("Cancelled %s class(es) of %s on %s.", len(targets), link_request.reference, label)
     return CancelResult(Outcome.CANCELLED, "", link_request, list(targets), remaining, whole)
 
@@ -1672,21 +1674,14 @@ def _move_once(
             zoom_occurrence_id = _zoom_occurrence_id(provider, link_request, account, moving[0])
             progress.zoom_occurrence_id = zoom_occurrence_id or ""
 
-        done = []
-        HostSlot.objects.filter(occurrence_id__in=[o.pk for o in moving]).delete()
-        for occurrence, start, end in moves:
-            done.append(MovedClass(occurrence.starts_at, occurrence.ends_at, occurrence))
-            occurrence.starts_at, occurrence.ends_at = start, end
-            occurrence.moved_at, occurrence.moved_by = now, by
-            # Not a change of account (D1: a move never changes it; ``host_account`` isn't in
-            # the ``bulk_update`` below). ``new_slots()`` reads ``host_account``: handing it the
-            # account row locked above saves a query per class and builds the slots on exactly
-            # the row this transaction holds.
-            occurrence.host_account = account
-        HostSlot.objects.bulk_create(slot for o in moving for slot in o.new_slots())
-        Occurrence.objects.bulk_update(
-            moving, ["starts_at", "ends_at", "moved_at", "moved_by", "zoom_occurrence_id"]
-        )
+        # The writes are the model's, shared with brief 013's reconcile. ``account`` is the row
+        # locked above: never a change of account (D1), it only saves a query per class.
+        done = [
+            MovedClass(old_start, old_end, occurrence)
+            for old_start, old_end, occurrence in link_request.record_moves(
+                moves, by=by, now=now, account=account
+            )
+        ]
         if series:
             link_request.start_time, link_request.end_time = times
             link_request.save(update_fields=["start_time", "end_time"])
@@ -2039,6 +2034,584 @@ def moved_message(result, *, emailed, checks_zoom) -> tuple[int, str]:
     if not checks_zoom:
         text += MOVED_NOT_IN_ZOOM
     return level, text
+
+
+# --------------------------------------------------------------------------- Keeping in step (013)
+
+# Criterion 18: what "Check against Zoom" says, exactly one message per press (P1-P5, P10, G4
+# and G5). ``{s}`` is the plural ending of ``{n}`` (``1 change``, ``3 changes``).
+SYNC_MATCHES = "Checked with Zoom: this booking matches Zoom."
+SYNC_COPIED = "Checked with Zoom: {n} change{s} copied here. We emailed {email}."
+SYNC_COPIED_EMAIL_FAILED = (
+    "Checked with Zoom: {n} change{s} copied here, but the email to {email} didn't send. Tell "
+    "them yourself."
+)
+SYNC_COPIED_AND_LOOK = (
+    "Checked with Zoom: {n} change{s} copied here, and some changes need a look. We emailed "
+    "{email}."
+)
+SYNC_COPIED_AND_LOOK_EMAIL_FAILED = (
+    "Checked with Zoom: {n} change{s} copied here, and some changes need a look. The email to "
+    "{email} didn't send, so tell them about the copied change{s} yourself."
+)
+SYNC_NEEDS_A_LOOK = "Checked with Zoom: some changes need a look."
+SYNC_FAILED = "We couldn't check with Zoom: {phrase}. {next_step}"
+# G4: nothing to check (a stale page or a hand-made POST). The provider is asked first.
+SYNC_CANT_REACH_ZOOM = "This system can't reach Zoom, so it can't check this booking."
+NOTHING_LEFT_TO_CHECK = "There are no classes left to check in this booking."
+# Every message the button can show, for the scan that none offers another account (c. 18).
+SYNC_MESSAGES = (
+    SYNC_MATCHES,
+    SYNC_COPIED,
+    SYNC_COPIED_EMAIL_FAILED,
+    SYNC_COPIED_AND_LOOK,
+    SYNC_COPIED_AND_LOOK_EMAIL_FAILED,
+    SYNC_NEEDS_A_LOOK,
+    SYNC_FAILED,
+    SYNC_CANT_REACH_ZOOM,
+    NOTHING_LEFT_TO_CHECK,
+    MOVING_AT_THE_SAME_MOMENT,
+)
+RECONCILE_ATTEMPTS = 2
+# Criterion 30 (D16): how many times reconcile asks Zoom when the booking changes between the
+# ``GET`` and the lock. A second change in a row is a lock race.
+RECONCILE_LOOKS = 2
+# Criterion 9: the events reconcile acts on. Anything else is recorded as ``ignored`` (014
+# adds recordings).
+HANDLED_EVENTS = ("meeting.deleted", "meeting.updated")
+# ``ReconcileResult`` / ``EventResult`` outcomes beyond ``ZoomEvent.Outcome``'s.
+DUPLICATE = "duplicate"
+PROVIDER_FAILED = "provider_error"
+LOCK_RACE = "conflict"
+FAILED = "error"
+# Criterion 18 (review round 1, N2; D18): the booking had nothing left to check by the time
+# reconcile ran (no remaining class, not approved, or a provider that can't reach Zoom), so
+# Zoom wasn't asked. The button says so, never "matches Zoom"; the webhook records it as
+# ``no_change``.
+NOT_ASKED = "not_asked"
+# Inside reconcile: the state it compares with when Zoom wasn't asked.
+_NOT_ASKED = object()
+
+
+@dataclass(frozen=True)
+class ReconcileResult:
+    """What ``reconcile()`` did to one booking (criteria 14-18; G6).
+
+    ``outcome`` is a ``ZoomEvent.Outcome`` value (``changed``, ``no_change``,
+    ``needs_a_look``), or ``not_asked`` (nothing left to check, so Zoom wasn't asked, N2),
+    ``provider_error`` (Zoom couldn't be asked, ``error`` says why), ``conflict`` (a lock race:
+    a deadlock after its one retry, a lock-wait timeout, or the booking changing under two
+    ``GET``s in a row, criterion 30; ``cause`` names which, for the log) or ``duplicate``
+    (the webhook's event was already recorded). ``cancelled`` and ``moved`` are what was copied here
+    (``Occurrence`` and ``MovedClass`` items); ``attention`` is the booking's needs-a-look
+    sentences now, and ``attention_changed`` says they're new or different, so IT was
+    emailed (``it_emailed``). ``emailed`` is G6's: true only when a requester email was due
+    and every one sent.
+    """
+
+    outcome: str
+    link_request: LinkRequest | None = None
+    cancelled: list = field(default_factory=list)
+    moved: list = field(default_factory=list)
+    attention: list = field(default_factory=list)
+    attention_changed: bool = False
+    emailed: bool = False
+    it_emailed: bool = False
+    error: ProviderError | None = None
+    cause: str = ""
+
+    @property
+    def copied(self) -> int:
+        """Criterion 18's ``{n}``: the classes copied here, ``len(cancelled) + len(moved)``."""
+        return len(self.cancelled) + len(self.moved)
+
+    @property
+    def needs_a_look(self) -> bool:
+        return bool(self.attention)
+
+
+@dataclass(frozen=True)
+class EventRecord:
+    """The ``ZoomEvent`` row a webhook delivery asks ``reconcile()`` to write with its changes."""
+
+    slug: str
+    event: str
+    body_sha256: str
+    event_ts: int | None = None
+
+
+@dataclass(frozen=True)
+class EventResult:
+    """What ``handle_event()`` did, for the webhook view to map to a status code (c. 10).
+
+    ``outcome`` is a ``ZoomEvent.Outcome`` value or ``duplicate`` (200), ``provider_error``
+    (503: Zoom retries) or ``error`` (500, already logged once).
+    """
+
+    outcome: str
+
+
+class _Duplicate(Exception):
+    """This event's row already exists: another delivery of the same body got there first."""
+
+
+class BookingChangedMeanwhile(Exception):
+    """The booking changed between reconcile's Zoom ``GET`` and its lock (criterion 30, D16).
+
+    Zoom's answer may then be older than the database, so it isn't compared: the transaction
+    rolls back and reconcile asks Zoom again. Its class name is what the webhook's ``ERROR``
+    line names when it happens twice in a row.
+    """
+
+
+def sync_blocked_message(link_request, *, provider, now=None, occurrences=None):
+    """Why ``Check against Zoom`` has nothing to check (G4), else ``None``.
+
+    The provider is asked first: with ``manual`` there's never anything to check, whatever
+    the booking. Then the booking must be approved with at least one remaining class. The
+    detail page's ``can_sync`` is this being ``None``, so the button and the refusal agree.
+    """
+    if not provider.checks_zoom:
+        return SYNC_CANT_REACH_ZOOM
+    if link_request.status != LinkRequest.Status.APPROVED or not link_request.remaining_classes(
+        now, occurrences=occurrences
+    ):
+        return NOTHING_LEFT_TO_CHECK
+    return None
+
+
+def sync_failed_message(error, label) -> str:
+    """Criterion 18's "Zoom couldn't be asked" row, with P4's next step.
+
+    The daily limit is checked before ``lasting`` (012 criterion 34): the reset sentence
+    alone. A lasting error gets 011's Check-connection step, because a check is about one
+    booking on one account, so "choose another account" would mean nothing here.
+    """
+    if isinstance(error, ZoomDailyLimit):
+        step = daily_reset_sentence()
+    elif error.lasting:
+        step = CANCEL_NEXT_STEP_LASTING.format(label=label)
+    else:
+        step = NEXT_STEP_TEMPORARY
+    return SYNC_FAILED.format(phrase=error.user_message, next_step=step)
+
+
+def sync_message(result) -> tuple[int, str]:
+    """``(message level, text)`` for the detail page after ``Check against Zoom`` (c. 18)."""
+    link_request = result.link_request
+    if result.outcome == PROVIDER_FAILED:
+        return message_levels.ERROR, sync_failed_message(
+            result.error, link_request.host_account.label
+        )
+    if result.outcome == LOCK_RACE:
+        return message_levels.ERROR, MOVING_AT_THE_SAME_MOMENT
+    if result.outcome == NOT_ASKED:
+        return message_levels.ERROR, NOTHING_LEFT_TO_CHECK
+    n = result.copied
+    if not n:
+        if result.needs_a_look:
+            return message_levels.WARNING, SYNC_NEEDS_A_LOOK
+        return message_levels.SUCCESS, SYNC_MATCHES
+    values = {"n": n, "s": "" if n == 1 else "s", "email": link_request.requester_email}
+    if result.needs_a_look:
+        template = SYNC_COPIED_AND_LOOK if result.emailed else SYNC_COPIED_AND_LOOK_EMAIL_FAILED
+        return message_levels.WARNING, template.format(**values)
+    if result.emailed:
+        return message_levels.SUCCESS, SYNC_COPIED.format(**values)
+    return message_levels.WARNING, SYNC_COPIED_EMAIL_FAILED.format(**values)
+
+
+def reconcile(link_request, *, provider=None, request=None, zoom_event=None) -> ReconcileResult:
+    """Bring one booking into line with its meeting as Zoom holds it now (criteria 12-17, 30).
+
+    1. **No transaction, no lock** (criterion 13): read the booking and its **fingerprint**
+       (``LinkRequest.sync_fingerprint``). If it's approved with a remaining class, ask Zoom
+       for the meeting (``provider.meeting_state``). A fresh ``GET`` and never the webhook's
+       payload, so events arriving out of order or with a partial payload can't mislead it
+       (D4). If Zoom can't be asked, nothing changes. Otherwise Zoom isn't asked at all, and
+       the outcome is ``not_asked`` (N2).
+    2. **One transaction** (``_reconcile_once``): write the webhook's ``ZoomEvent`` row first,
+       when there is one (criterion 10: the same transaction as the changes; a duplicate
+       stops here). Then lock the request, the account and the classes, in 011's order, and
+       check the fingerprint again from the locked rows, **before** comparing or writing.
+       Then compare the locked rows with Zoom's answer (``sync.compare``). Cancels and moves
+       go through ``LinkRequest.record_cancel`` / ``record_moves``, with nobody named (G1),
+       and no Zoom call: Zoom already has them. A move is copied only if the account is free
+       then; anything not copied becomes a needs-a-look sentence (criteria 14-15).
+    3. **After the commit**, the emails (criterion 16): the requester's (011's or 012's, with
+       ``in_zoom``), and IT's when the needs-a-look sentences are new or different.
+
+    **Why the fingerprint** (criterion 30, D16): Zoom is asked before the lock, so no HTTP runs
+    under one, which leaves a gap. A move or cancel made here can commit between the ``GET``
+    and the lock, and comparing Zoom's older answer with it would copy the old time back as a
+    change "made in Zoom", with a false email. If the fingerprint differs under the lock,
+    nothing is written, and the whole round runs once more: a new fingerprint, a new ``GET``,
+    the locks again. A second change in a row is ``conflict`` (a lock race), having changed
+    nothing.
+
+    Separately, a deadlock (MySQL 1213) is retried once, as ``approve()``, ``cancel()`` and
+    the moves do, without asking Zoom again; a second one, or a lock-wait timeout, is
+    ``conflict`` too (G5). Call it outside an open transaction: the views are
+    ``non_atomic_requests``.
+    """
+    provider = provider or get_provider()
+    for look in range(1, RECONCILE_LOOKS + 1):
+        current = LinkRequest.objects.select_related("host_account").get(pk=link_request.pk)
+        classes = list(current.occurrences.all())
+        expected = current.sync_fingerprint(classes)
+        reference, label = current.reference, current.host_account.label
+        state = _NOT_ASKED
+        if (
+            current.status == LinkRequest.Status.APPROVED
+            and provider.checks_zoom
+            and current.remaining_classes(occurrences=classes)
+        ):
+            try:
+                state = provider.meeting_state(
+                    host_account=current.host_account, meeting_id=current.meeting_id
+                )
+            except ProviderError as exc:
+                logger.warning(
+                    "Couldn't check %s with Zoom on %s: %s", reference, label, type(exc).__name__
+                )
+                return ReconcileResult(PROVIDER_FAILED, current, error=exc)
+        try:
+            done = _reconcile_locked(current.pk, state, zoom_event, expected)
+        except BookingChangedMeanwhile as exc:
+            if look < RECONCILE_LOOKS:
+                logger.info("%s changed while Zoom was being asked; asking again.", reference)
+                continue
+            logger.warning(
+                "Checking %s with Zoom lost a lock race: it changed twice while Zoom was asked.",
+                reference,
+            )
+            return ReconcileResult(LOCK_RACE, current, cause=type(exc).__name__)
+        if isinstance(done, ReconcileResult):
+            return done
+        return _reconcile_emails(done, request)
+    raise AssertionError("unreachable: the last look returns")
+
+
+def _reconcile_locked(link_request_id, state, zoom_event, expected):
+    """``_reconcile_once`` with the one deadlock retry (G5).
+
+    A ``_Reconciled``, or the final ``ReconcileResult`` for a duplicate or a lock race.
+    ``BookingChangedMeanwhile`` propagates, for ``reconcile()`` to ask Zoom again.
+    """
+    reference = LinkRequest(pk=link_request_id).reference
+    for attempt in range(1, RECONCILE_ATTEMPTS + 1):
+        try:
+            return _reconcile_once(link_request_id, state, zoom_event, expected)
+        except _Duplicate:
+            logger.info("A repeated Zoom event for %s was ignored.", reference)
+            return ReconcileResult(DUPLICATE, _booking(link_request_id))
+        except OperationalError as exc:
+            code = _mysql_code(exc)
+            if code == MYSQL_DEADLOCK and attempt < RECONCILE_ATTEMPTS:
+                logger.warning("Checking %s with Zoom hit a deadlock; trying once more.", reference)
+                continue
+            if code in (MYSQL_DEADLOCK, MYSQL_LOCK_WAIT_TIMEOUT):
+                logger.warning(
+                    "Checking %s with Zoom lost a lock race (MySQL %s).", reference, code
+                )
+                return ReconcileResult(
+                    LOCK_RACE, _booking(link_request_id), cause=type(exc).__name__
+                )
+            raise
+    raise AssertionError("unreachable: the last attempt returns or raises")
+
+
+def _booking(link_request_id) -> LinkRequest:
+    return LinkRequest.objects.select_related("host_account").get(pk=link_request_id)
+
+
+@dataclass
+class _Reconciled:
+    """What ``_reconcile_once`` committed, for the emails that follow it."""
+
+    outcome: str
+    link_request: LinkRequest
+    cancelled: list
+    remaining: list
+    moved: list
+    attention: list
+    attention_changed: bool
+
+
+def _reconcile_once(link_request_id, state, zoom_event, expected) -> _Reconciled:
+    """Step 2 of ``reconcile()``; MySQL lock errors propagate so the caller can retry.
+
+    ``expected`` is the fingerprint read before Zoom was asked. If the locked rows differ,
+    ``BookingChangedMeanwhile`` rolls the transaction back (the ``ZoomEvent`` row with it)
+    before anything is compared or written (criterion 30).
+    """
+    with transaction.atomic():
+        event_row = None
+        if zoom_event is not None:
+            try:
+                event_row = ZoomEvent.objects.create(
+                    slug=zoom_event.slug,
+                    event=zoom_event.event,
+                    body_sha256=zoom_event.body_sha256,
+                    event_ts=zoom_event.event_ts,
+                    outcome=ZoomEvent.Outcome.NO_CHANGE,
+                )
+            except IntegrityError as exc:
+                if _mysql_code(exc) == MYSQL_DUPLICATE_ENTRY:
+                    raise _Duplicate() from None
+                raise
+        link_request = LinkRequest.objects.select_for_update().get(pk=link_request_id)
+        approved = link_request.status == LinkRequest.Status.APPROVED
+        if approved:
+            account = HostAccount.objects.select_for_update().get(pk=link_request.host_account_id)
+            link_request.host_account = account
+            classes = list(link_request.occurrences.select_for_update().order_by("starts_at", "pk"))
+        else:
+            # Nothing changes a booking that isn't approved, and every change takes the request
+            # lock first, so here the classes are read only for the fingerprint.
+            classes = list(link_request.occurrences.order_by("starts_at", "pk"))
+        if link_request.sync_fingerprint(classes) != expected:
+            raise BookingChangedMeanwhile()
+
+        before = link_request.zoom_attention
+        now = timezone.now()
+        asked = state is not _NOT_ASKED
+        # Unless Zoom was asked, the sentences stay as they are: not asking isn't "finding
+        # nothing to flag" (criterion 15). Only G3 below may clear them without asking.
+        cancelled, moved = [], []
+        lines = link_request.zoom_attention_lines
+        if approved and asked:
+            found = sync.compare(link_request, classes, state, now)
+            if found.cancel:
+                link_request.record_cancel(
+                    found.cancel,
+                    by=None,
+                    reason=CANCELLED_IN_ZOOM_REASON,
+                    now=now,
+                    occurrences=classes,
+                )
+                cancelled = found.cancel
+            accepted, lines = _moves_to_copy(account, found.moves, now)
+            if accepted:
+                moved = [
+                    MovedClass(old_start, old_end, occurrence)
+                    for old_start, old_end, occurrence in link_request.record_moves(
+                        accepted, by=None, now=now, account=account
+                    )
+                ]
+            lines += [
+                ZOOM_CLASS_NOT_BOOKED.format(when=class_span(item.starts_at, item.ends_at))
+                for item in found.extra
+            ]
+        # G3 (criterion 28): a booking with nothing left to come keeps no flag.
+        if link_request.status != LinkRequest.Status.APPROVED or not (
+            link_request.remaining_classes(now, occurrences=classes)
+        ):
+            lines = []
+        attention = "\n".join(lines)
+        if attention != link_request.zoom_attention:
+            LinkRequest.objects.filter(pk=link_request.pk).update(zoom_attention=attention)
+            link_request.zoom_attention = attention
+
+        if not asked:
+            outcome = NOT_ASKED
+        elif cancelled or moved:
+            outcome = ZoomEvent.Outcome.CHANGED
+        elif lines:
+            outcome = ZoomEvent.Outcome.NEEDS_A_LOOK
+        else:
+            outcome = ZoomEvent.Outcome.NO_CHANGE
+        if event_row is not None:
+            ZoomEvent.objects.filter(pk=event_row.pk).update(
+                outcome=ZoomEvent.Outcome.NO_CHANGE if outcome == NOT_ASKED else outcome,
+                link_request=link_request,
+            )
+    if outcome in (ZoomEvent.Outcome.CHANGED, ZoomEvent.Outcome.NEEDS_A_LOOK):
+        logger.info(
+            "Copied from Zoom for %s on %s: %s class(es) cancelled, %s moved, %s to look at.",
+            link_request.reference,
+            link_request.host_account.label,
+            len(cancelled),
+            len(moved),
+            len(lines),
+        )
+    return _Reconciled(
+        outcome,
+        link_request,
+        list(cancelled),
+        link_request.classes_still_on(now, occurrences=classes),
+        moved,
+        lines,
+        attention_changed=bool(attention) and attention != before,
+    )
+
+
+def _moves_to_copy(account, candidates, now) -> tuple[list, list]:
+    """``(moves to copy, needs-a-look sentences)`` for the classes Zoom has at another time.
+
+    A move is copied only when 012's time rules allow the new time (``move_errors``: the
+    5-minute step, the same day, not passed, within a year) and no other booked class on the
+    account overlaps it (criterion 14), checked with a locking read, as a move made here is.
+    The booking's own classes count, except those being moved; a class already accepted in
+    this round counts at its new time. Otherwise it stays as it is and IT is told why.
+    """
+    accepted, lines = [], []
+    for occurrence, found in candidates:
+        start, end = found.starts_at, found.ends_at
+        old, new = class_moment(occurrence.starts_at), class_span(start, end)
+        if occurrence.move_errors(starts_at=start, ends_at=end, now=now):
+            lines.append(ZOOM_MOVE_NOT_BOOKABLE.format(old=old, new=new))
+            continue
+        others = Occurrence.objects.clashing(
+            account,
+            [(start, end)],
+            exclude_ids=[occurrence.pk, *(o.pk for o, _, _ in accepted)],
+            lock=True,
+        ) or [o for o, s, e in accepted if s < end and start < e]
+        if others:
+            lines.append(
+                ZOOM_MOVE_CLASHES.format(
+                    old=old, new=new, label=account.label, booking=others[0].link_request
+                )
+            )
+            continue
+        if found.occurrence_id and not occurrence.zoom_occurrence_id:
+            occurrence.zoom_occurrence_id = found.occurrence_id
+        accepted.append((occurrence, start, end))
+    return accepted, lines
+
+
+def _reconcile_emails(done, request) -> ReconcileResult:
+    """Criterion 16's emails, after the commit, and the final ``ReconcileResult``.
+
+    The requester hears about classes cancelled or moved (one email of each kind at most),
+    in the ``in_zoom`` form, which never claims the IT desk made the change (P6). IT hears
+    only when the needs-a-look sentences are new or different, never twice for the same ones.
+    """
+    link_request = done.link_request
+    sent = []
+    if done.cancelled:
+        sent.append(
+            send_cancelled_email(
+                request,
+                link_request,
+                done.cancelled,
+                done.remaining,
+                CANCELLED_IN_ZOOM_REASON,
+                in_zoom=True,
+            )
+        )
+    if done.moved:
+        sent.append(send_moved_email(request, link_request, done.moved, in_zoom=True))
+    it_emailed = False
+    if done.attention_changed:
+        it_emailed = send_attention_email(request, link_request, done.attention)
+    return ReconcileResult(
+        done.outcome,
+        link_request,
+        cancelled=done.cancelled,
+        moved=done.moved,
+        attention=done.attention,
+        attention_changed=done.attention_changed,
+        emailed=bool(sent) and all(sent),
+        it_emailed=it_emailed,
+    )
+
+
+# The parsed body holds join links (and, from 014, recording download tokens): masked in error
+# reports (criterion 20, review round 1, N1).
+@sensitive_variables("event")
+def handle_event(slug, event, body_sha256, *, provider=None, request=None) -> EventResult:
+    """Act on one verified webhook event from connection ``slug`` (criteria 8-12, D13).
+
+    - The same body again (Zoom's retry): ``duplicate``, with no Zoom call (criterion 8).
+    - An event this brief doesn't handle, or any meeting event with a provider that can't
+      ask Zoom (``manual``, D13): recorded ``ignored``. A 503 would only make Zoom retry.
+    - A meeting with no booking here, or one booked on another connection's account (which
+      is never touched, and logged): recorded ``not_ours``, with no Zoom call (criterion 12).
+    - Otherwise ``reconcile()``, which writes the row with the changes. If it raises, or
+      loses a lock race (criterion 30's second change in a row included), one ``ERROR`` line
+      names the booking and the exception class, nothing is kept, and the view answers 500,
+      so Zoom's retry does the work. ``not_asked`` (a cancelled booking's echo) is recorded
+      and answered as ``no_change``.
+
+    ``event`` is the parsed body; only its event name, time and meeting ID are read here.
+    """
+    provider = provider or get_provider()
+    name = str(event.get("event") or "")[:60]
+    event_ts = event.get("event_ts")
+    record = EventRecord(
+        slug, name, body_sha256, event_ts if type(event_ts) is int and event_ts >= 0 else None
+    )
+    if ZoomEvent.objects.filter(slug=slug, body_sha256=body_sha256).exists():
+        logger.info("A repeated Zoom event on %s was ignored.", slug)
+        return EventResult(DUPLICATE)
+    meeting_id = _event_meeting_id(event)
+    if name not in HANDLED_EVENTS or not provider.checks_zoom or not meeting_id:
+        return _record_only(record, ZoomEvent.Outcome.IGNORED)
+
+    found = list(
+        LinkRequest.objects.filter(
+            meeting_id=meeting_id,
+            status__in=[LinkRequest.Status.APPROVED, LinkRequest.Status.CANCELLED],
+        )
+        .select_related("host_account")
+        .order_by("pk")
+    )
+    ours = [lr for lr in found if lr.host_account.credential_set == slug]
+    if not ours:
+        if found:
+            logger.warning(
+                "A Zoom event on %s named meeting %s, which is booked on another connection's "
+                "account; it wasn't touched.",
+                slug,
+                meeting_id,
+            )
+        return _record_only(record, ZoomEvent.Outcome.NOT_OURS)
+    link_request = next((lr for lr in ours if lr.status == LinkRequest.Status.APPROVED), ours[0])
+    reference = link_request.reference
+    try:
+        result = reconcile(link_request, provider=provider, request=request, zoom_event=record)
+    except Exception as exc:  # criterion 10: one ERROR line, a 500, and Zoom retries
+        logger.error("A Zoom event for %s on %s failed: %s", reference, slug, type(exc).__name__)
+        return EventResult(FAILED)
+    if result.outcome == LOCK_RACE:
+        logger.error("A Zoom event for %s on %s failed: %s", reference, slug, result.cause)
+        return EventResult(FAILED)
+    if result.outcome == NOT_ASKED:
+        return EventResult(ZoomEvent.Outcome.NO_CHANGE)
+    return EventResult(result.outcome)
+
+
+@sensitive_variables("event", "payload", "item")
+def _event_meeting_id(event):
+    """``payload.object.id`` as digits, or ``None`` when the event doesn't carry one."""
+    payload = event.get("payload")
+    item = payload.get("object") if isinstance(payload, dict) else None
+    value = item.get("id") if isinstance(item, dict) else None
+    if type(value) is int and value > 0:
+        return str(value)
+    if isinstance(value, str) and value.isdigit() and len(value) <= 32:
+        return value
+    return None
+
+
+def _record_only(record, outcome) -> EventResult:
+    """Write an event's row on its own, for an event that changes no booking."""
+    try:
+        with transaction.atomic():
+            ZoomEvent.objects.create(
+                slug=record.slug,
+                event=record.event,
+                body_sha256=record.body_sha256,
+                event_ts=record.event_ts,
+                outcome=outcome,
+            )
+    except IntegrityError as exc:
+        if _mysql_code(exc) != MYSQL_DUPLICATE_ENTRY:
+            raise
+        return EventResult(DUPLICATE)
+    return EventResult(outcome)
 
 
 # --------------------------------------------------------------------------- Start link (011)
@@ -2447,40 +3020,86 @@ def send_approved_email(request, link_request) -> bool:
     return _send("approval", "approved", context, [link_request.requester_email], link_request)
 
 
-def send_cancelled_email(request, link_request, cancelled, remaining, reason) -> bool:
+def absolute_url(request, path) -> str:
+    """``path`` as an absolute URL, for emails, with or without a request (brief 013).
+
+    With a request it's ``build_absolute_uri``, as every email had until now: the webhook's
+    request comes to the production domain, so its links do too. ``sync_zoom_bookings`` runs
+    with no request, so it uses the first concrete name in ``ALLOWED_HOSTS`` (production
+    refuses to start with none) and ``USE_HTTPS`` for the scheme. Settings only, no env read.
+    """
+    if request is not None:
+        return request.build_absolute_uri(path)
+    hosts = [h for h in settings.ALLOWED_HOSTS if h and not h.startswith(".") and "*" not in h]
+    scheme = "https" if settings.USE_HTTPS else "http"
+    return f"{scheme}://{hosts[0] if hosts else 'localhost'}{path}"
+
+
+def send_cancelled_email(
+    request, link_request, cancelled, remaining, reason, *, in_zoom=False
+) -> bool:
     """Tell the requester what was cancelled and why (brief 011, criterion 17).
 
     To the requester only. It carries no join link, passcode, start link or host key: the
     cancelled classes don't need one, and the others keep what the approval email gave.
     ``can_start`` picks the "still on" sentence, so the manual provider's version doesn't
-    mention a start link it never sent (G5, P3).
+    mention a start link it never sent (G5, P3). ``in_zoom`` (brief 013, G2) is for a cancel
+    copied from Zoom: the opening says it was cancelled directly in Zoom instead of naming the
+    IT desk, which may not have made it (P6). ``request`` may be ``None`` (the nightly run).
     """
     context = {
         "link_request": link_request,
         "cancelled": list(cancelled),
         "remaining": list(remaining),
         "reason": reason,
-        "request_url": request.build_absolute_uri(reverse("zoom:request")),
+        "request_url": absolute_url(request, reverse("zoom:request")),
         "can_start": get_provider().can_start,
+        "in_zoom": in_zoom,
     }
     return _send("cancellation", "cancelled", context, [link_request.requester_email], link_request)
 
 
-def send_moved_email(request, link_request, moves) -> bool:
+def send_moved_email(request, link_request, moves, *, in_zoom=False) -> bool:
     """Tell the requester the old and new times of every class a move changed (brief 012, 18).
 
     To the requester only, after the commit. ``moves`` is the ``MoveResult``'s list of
     ``MovedClass`` (``old_start``, ``old_end``, ``occurrence``), soonest first. It carries no
     join link, passcode, start link or host key: the links don't change (D1), so the email only
     says so, and ``can_start`` keeps the manual provider's version from mentioning a start
-    link it never sent (G3, P3). ``request`` is unused, kept so every sender has one shape.
+    link it never sent (G3, P3). ``in_zoom`` as for ``send_cancelled_email`` (brief 013, P6).
+    ``request`` is unused, kept so every sender has one shape.
     """
     context = {
         "link_request": link_request,
         "moves": list(moves),
         "can_start": get_provider().can_start,
+        "in_zoom": in_zoom,
     }
     return _send("classes moved", "moved", context, [link_request.requester_email], link_request)
+
+
+def send_attention_email(request, link_request, lines) -> bool:
+    """Tell IT what couldn't be copied from Zoom, and where to fix it (brief 013, c. 16).
+
+    To every IT recipient (005 D9), one message each. Sent only when the sentences are new or
+    different (``reconcile`` decides), so the same mismatch never mails IT twice. It names the
+    booking and the account, never a link other than the booking's own page. ``request`` may
+    be ``None`` (the nightly run): ``absolute_url`` then builds ``detail_url``.
+    """
+    recipients = it_recipients()
+    if not recipients:
+        logger.warning(
+            "Nobody can be told %s needs a look: no active user has %s.",
+            link_request.reference,
+            REVIEW_PERMISSION,
+        )
+        return False
+    context = {
+        "link_request": link_request,
+        "lines": list(lines),
+        "detail_url": absolute_url(request, reverse("zoom:detail", args=[link_request.pk])),
+    }
+    return _send("needs a look", "attention", context, recipients, link_request)
 
 
 def send_rejected_email(request, link_request) -> bool:

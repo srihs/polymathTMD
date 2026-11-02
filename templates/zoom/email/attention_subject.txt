@@ -1,0 +1,1 @@
+{# Subject of the "needs a look" message to every IT desk reviewer (brief 013, criterion 16, pinned; D.5.3), sent when a booking's needs-a-look sentences are set or changed. One line. Context: link_request (LinkRequest: reference). #}{% autoescape off %}Needs a look: {{ link_request.reference }} was changed in Zoom{% endautoescape %}

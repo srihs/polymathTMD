@@ -1,6 +1,6 @@
 # Class rows (`.classrows`)
 
-Origin: brief 011, criterion 8 (the request detail's Classes list gains a `Cancel this class` action per class and a `Cancelled` tag with who, when and why). Amended by brief 012, criterion 6: a `Move this class` action beside the cancel action, and a `Moved` tag and note. Use it for any numbered list of a booking's classes where a class can carry its own status or action. The plain `.occurrences` list (`zoom/partials/occurrence_list.html`) stays for read-only lists: the public confirm page, and the cancel confirm page's "will be cancelled" and "stay as they were" lists.
+Origin: brief 011, criterion 8 (the request detail's Classes list gains a `Cancel this class` action per class and a `Cancelled` tag with who, when and why). Amended by brief 012, criterion 6: a `Move this class` action beside the cancel action, and a `Moved` tag and note. Amended by brief 013: the notes say when a change was made directly in Zoom. Use it for any numbered list of a booking's classes where a class can carry its own status or action. The plain `.occurrences` list (`zoom/partials/occurrence_list.html`) stays for read-only lists: the public confirm page, and the cancel confirm page's "will be cancelled" and "stay as they were" lists.
 
 **Why it's new:** `.occurrences` is one line of text per class, laid out in CSS columns. It has no room for a tag, a 44px action, or a reason on a second line. `.worklist` rows aren't numbered, and they're built around a reference link rather than a date. `.avail` is one row per account.
 
@@ -46,13 +46,16 @@ Partial `zoom/partials/class_rows.html`, included with `only`:
 | `Cancelled` tag | `cancelled_at` | `span.tag.tag--plain` with `slash` |
 | `Move this class` (brief 012) | `pk in movable_ids` | `a.classrows__action` → `zoom:move_class link_request_pk occurrence.pk`, then visually hidden ` on {date}` |
 | `Cancel this class` | `pk in cancellable_ids` | `a.classrows__action` → `zoom:cancel_class`, then visually hidden ` on {date}` |
-| Moved note (brief 012) | `moved_at`, cancelled or not (it's history) | `p.classrows__note`: `Moved by {name} on {when}.` |
-| Cancelled note | `cancelled_at` | `p.classrows__note`: `Cancelled by {name} on {when}: {reason}` |
+| Moved note (brief 012) | `moved_at` and not `moved_in_zoom`, cancelled or not (it's history) | `p.classrows__note`: `Moved by {name} on {when}.` |
+| Moved note, in Zoom (brief 013) | `moved_in_zoom` | `p.classrows__note`: `Moved directly in Zoom. Copied here on {when}.` (`when` = `moved_at`, when the app copied it, not when Zoom was changed) |
+| Cancelled note | `cancelled_at` and not `cancelled_in_zoom` | `p.classrows__note`: `Cancelled by {name} on {when}: {reason}` |
+| Cancelled note, in Zoom (brief 013) | `cancelled_in_zoom` | `p.classrows__note`: `Cancelled directly in Zoom. Copied here on {when}.` The stored reason isn't printed: it's the same words |
 
 - A cancelled or in-progress class is never in `movable_ids` or `cancellable_ids`. So a row has either a status tag and no actions, or up to two actions. `Moved` is the one tag that can sit beside the actions.
 - `Moved` is hidden on a cancelled class, so the row keeps a single status word. Its `Moved by …` note still shows, before the cancelled note, so the notes read in the order things happened.
 - `Move this class` comes before `Cancel this class`: the less final action comes first in reading and tab order.
 - A one-off booking has an empty `cancellable_ids` (the whole-booking cancel covers its one class), but its class can be in `movable_ids`. So its single row shows only `Move this class`.
+- **Where a change came from** (brief 013) is decided on the model, never in the template: `Occurrence.moved_in_zoom` and `cancelled_in_zoom` are true when the timestamp is set and the `*_by` user is empty. The tags don't change: `Moved` and `Cancelled` describe the class's state, whoever changed it. Only the note says the source.
 - Keep whitespace between the spans in the markup, so the accessible names have their spaces.
 
 ## Values
@@ -79,9 +82,9 @@ Contrast: all existing pairs. `--c-text` 12.44 / 6.45, `--c-muted` 5.61 / 5.26, 
 | Can be moved and cancelled (in both `movable_ids` and `cancellable_ids`; brief 012) | date, then `Move this class`, then `Cancel this class` (each accessible name includes the date) |
 | Can be moved only (a one-off booking's class; brief 012) | date, then `Move this class` |
 | Can be cancelled only | date, then `Cancel this class` |
-| Moved (`moved_at`; brief 012) | the new date, the `tag--plain` / `calendar` tag `Moved`, any actions it still has, then the note `Moved by {name} on {when}.` |
+| Moved (`moved_at`; brief 012) | the new date, the `tag--plain` / `calendar` tag `Moved`, any actions it still has, then the note `Moved by {name} on {when}.`, or the Zoom note `Moved directly in Zoom. Copied here on {when}.` (brief 013) |
 | In progress (`pk == in_progress_id`) | date, then the `tag--note` / `clock` tag `In progress` (plus `Moved` and its note if it was moved) |
-| Cancelled (`cancelled_at`) | muted date, the `tag--plain` / `slash` tag `Cancelled`, then the moved note if it was moved, then the note `Cancelled by {name} on {when}: {reason}` |
+| Cancelled (`cancelled_at`) | muted date, the `tag--plain` / `slash` tag `Cancelled`, then the moved note if it was moved, then the note `Cancelled by {name} on {when}: {reason}`, or the Zoom note `Cancelled directly in Zoom. Copied here on {when}.` (brief 013) |
 | Held, or anything else (a waiting request) | date only (plus `Moved` and its note if it was moved) |
 
 ## Behaviour

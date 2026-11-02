@@ -1,4 +1,4 @@
-{# IT's Zoom link request queue (brief 005, D.4), in the shell; only for zoom.review_linkrequest. The share line with the public form's address, then one box: status tabs (links carrying only ?status, so each count matches its list), the search form (GET, within the current tab), the result line, the table (a card per row below 768px, explicit table roles), the pager, or an empty state. Never shows a host key or whether one is saved. Context: link_requests (page of LinkRequest: pk, reference, class_name, wants_recording, requester_name, requester_email, requester_phone_display, status, get_status_display, first_start, occurrence_count), page_obj / paginator / is_paginated (Django's), tabs (list of dict: value, label, count, current; brief 011 adds cancelled, between rejected and all), status (str, the current tab; "cancelled" has its own result line, caption and empty state, D.3.2), q (str, "" if none), public_form_url (str, absolute). Partials: partials/crumb, zoom/partials/status_tag, zoom/partials/recording_tag. Filters: zoom_format (class_date, class_time). #}{% extends "base.html" %}
+{# IT's Zoom link request queue (brief 005, D.4), in the shell; only for zoom.review_linkrequest. The share line with the public form's address, then one box: status tabs (links carrying only ?status, so each count matches its list), the search form (GET, within the current tab), the result line, the table (a card per row below 768px, explicit table roles), the pager, or an empty state. Never shows a host key or whether one is saved. Context: link_requests (page of LinkRequest: pk, reference, class_name, wants_recording, requester_name, requester_email, requester_phone_display, status, get_status_display, first_start, occurrence_count, zoom_attention (str; truthy shows the Needs a look tag beside the status, inside the Status cell's span.tags, brief 013 D.3.2)), page_obj / paginator / is_paginated (Django's), tabs (list of dict: value, label, count, current; brief 011 adds cancelled, between rejected and all), status (str, the current tab; "cancelled" has its own result line, caption and empty state, D.3.2; its empty state says bookings show there when cancelled here or directly in Zoom, brief 013 D.3.3), q (str, "" if none), public_form_url (str, absolute). Partials: partials/crumb, zoom/partials/status_tag, zoom/partials/attention_tag, zoom/partials/recording_tag. Filters: zoom_format (class_date, class_time). #}{% extends "base.html" %}
 {% load zoom_format %}
 
 {% block title %}Zoom link requests{% endblock %}
@@ -57,7 +57,7 @@
             <td role="cell"><span class="datagrid__label" aria-hidden="true">Requested by</span><span class="datagrid__stack"><span class="datagrid__strong break-anywhere">{{ link_request.requester_name }}</span><span class="text-muted break-anywhere">{{ link_request.requester_email }}</span><span class="text-muted break-anywhere">{{ link_request.requester_phone_display }}</span></span></td>
             <td role="cell"><span class="datagrid__label" aria-hidden="true">First class</span><span class="datagrid__stack"><time datetime="{{ link_request.first_start|date:'c' }}">{{ link_request.first_start|class_date }}</time><span>{{ link_request.first_start|class_time }}</span></span></td>
             <td role="cell"><span class="datagrid__label" aria-hidden="true">Classes</span><span>{{ link_request.occurrence_count }}</span></td>
-            <td role="cell"><span class="datagrid__label" aria-hidden="true">Status</span><span>{% include "zoom/partials/status_tag.html" with status=link_request.status label=link_request.get_status_display only %}</span></td>
+            <td role="cell"><span class="datagrid__label" aria-hidden="true">Status</span><span class="tags">{% include "zoom/partials/status_tag.html" with status=link_request.status label=link_request.get_status_display only %}{% if link_request.zoom_attention %}{% include "zoom/partials/attention_tag.html" only %}{% endif %}</span></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -85,7 +85,7 @@
     <div class="empty">
       <span class="disc disc--64"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-slash"></use></svg></span>
       <h2>No cancelled bookings.</h2>
-      <p>Bookings show here when the IT desk cancels them.</p>
+      <p>Bookings show here when they're cancelled, here or directly in Zoom.</p>
     </div>
     {% else %}
     <div class="empty">

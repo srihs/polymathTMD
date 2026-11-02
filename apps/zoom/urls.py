@@ -27,6 +27,10 @@ urlpatterns = [
         name="move_class",
     ),
     path("requests/<int:pk>/move/", views.MoveSeriesView.as_view(), name="move_series"),
+    path("requests/<int:pk>/sync/", views.SyncBookingView.as_view(), name="sync"),
+    # Brief 013: one address per Zoom connection, called by Zoom only. Not a secret-bearing
+    # path (the name isn't a secret), so it needs no rule in config/log_filters.py.
+    path("webhooks/<slug:slug>/", views.ZoomWebhookView.as_view(), name="webhook"),
     path("start/<str:token>/", views.StartClassView.as_view(), name="start"),
     path("timetable/", views.TimetableMonthView.as_view(), name="timetable"),
     path(

@@ -25,6 +25,12 @@ provider is in use:
   ``ZoomClass`` items (start, end and occurrence ID), for the read-back checks. The update
   bodies carry only the times (``update_payload``), never ``settings``, ``topic`` or
   ``agenda`` (006 D19). A provider that can't see Zoom changes nothing there.
+- Keeping in step (brief 013): ``meeting_state(*, host_account, meeting_id) -> MeetingState |
+  None`` reads a meeting as Zoom holds it now, ``None`` when Zoom has no such meeting (the live
+  provider double-checks that against the account's host user first, criterion 31). Only
+  providers that ``checks_zoom`` are asked; ``services.reconcile()`` compares the answer with
+  the stored classes. ``MeetingState`` holds times, occurrence IDs and whether the meeting
+  repeats: no topic, no link, no ``start_url``.
 - failures raise a ``ProviderError`` subclass (``errors.py``, re-exported here).
 
 ``Meeting`` never carries Zoom's ``start_url``: it would let anyone start the meeting as host
@@ -108,6 +114,24 @@ class ZoomClass(NamedTuple):
     starts_at: datetime
     ends_at: datetime
     occurrence_id: str
+
+
+@dataclass(frozen=True)
+class MeetingState:
+    """A meeting as Zoom holds it now, for brief 013's reconcile. Times and IDs only.
+
+    - ``recurring``: Zoom has it as a weekly series (type 8) rather than one meeting (type 2).
+    - ``classes``: its classes that aren't deleted, soonest first. A one-off meeting is one
+      ``ZoomClass`` with an empty occurrence ID.
+    - ``deleted_ids``: occurrence IDs Zoom reports as deleted, when its answer lists them.
+
+    Nothing else from Zoom's answer is kept: not the topic, the agenda, the join link or the
+    ``start_url`` (brief 005, criterion 46), so a state can be compared and passed on safely.
+    """
+
+    recurring: bool
+    classes: tuple = ()
+    deleted_ids: frozenset = frozenset()
 
 
 @dataclass(frozen=True)
@@ -245,6 +269,10 @@ class MeetingProvider:
         """A provider that can't see Zoom has no classes to read back."""
         return ()
 
+    def meeting_state(self, *, host_account, meeting_id) -> MeetingState | None:
+        """Only providers that ``checks_zoom`` can say what Zoom holds (brief 013)."""
+        raise NotImplementedError
+
 
 def weekly_starts(starts_at, weekdays, count) -> list[datetime]:
     """The first ``count`` weekly starts from ``starts_at`` on the ISO ``weekdays`` (``"1,3"``).
@@ -288,6 +316,12 @@ class FakeProvider(MeetingProvider):
       delete of one of its occurrences removes it there, and an update of one moves it there,
       so ``meeting_snapshot`` answers what Zoom would. ``snapshot_errors`` steers the next
       read-backs the same way as ``update_errors`` (brief 012, criterion 32's failure tests).
+    - Brief 013: ``meeting_state`` answers ``meeting_states[meeting_id]`` when a test steered
+      it (a ``MeetingState``, ``None`` for "gone", or a ``ProviderError`` to raise), and
+      records each call in ``state_calls``. Otherwise it answers from ``meetings``, the
+      meetings this fake made itself, which its own deletes and updates keep current, so the
+      app's own changes read back as no change; for any other meeting it has no answer
+      (``ZoomUnavailable``), so a dev "Check against Zoom" never invents a change.
 
     ``reset()`` clears all of it. With nothing steered every account is connected and free, so
     brief 005's behaviour is unchanged (criterion 33).
@@ -310,6 +344,9 @@ class FakeProvider(MeetingProvider):
     update_errors: list = []
     snapshot_errors: list = []
     series: dict = {}
+    meeting_states: dict = {}
+    state_calls: list = []
+    meetings: dict = {}
     _lock = threading.Lock()
 
     @classmethod
@@ -330,6 +367,9 @@ class FakeProvider(MeetingProvider):
             cls.update_errors = []
             cls.snapshot_errors = []
             cls.series = {}
+            cls.meeting_states = {}
+            cls.state_calls = []
+            cls.meetings = {}
 
     def is_connected(self, host_account) -> bool:
         return host_account.pk not in type(self).not_connected
@@ -361,6 +401,21 @@ class FakeProvider(MeetingProvider):
                 }
             )
         meeting_id = str(90_000_000_000 + link_request.pk)
+        weekly = link_request.repeat == link_request.Repeat.WEEKLY
+        with self._lock:
+            type(self).meetings[meeting_id] = MeetingState(
+                recurring=weekly,
+                classes=tuple(
+                    sorted(
+                        ZoomClass(
+                            o.starts_at,
+                            o.ends_at,
+                            str(int(o.starts_at.timestamp() * 1000)) if weekly else "",
+                        )
+                        for o in occurrences
+                    )
+                ),
+            )
         return Meeting(
             meeting_id=meeting_id,
             join_url=f"https://zoom.example.invalid/j/{meeting_id}",
@@ -374,12 +429,51 @@ class FakeProvider(MeetingProvider):
                 type(self).delete_error = None
                 raise error
             type(self).deleted.append((host_account.pk, meeting_id, occurrence_id))
+            type(self)._forget(meeting_id, occurrence_id)
             if occurrence_id and meeting_id in type(self).series:
                 type(self).series[meeting_id] = [
                     item
                     for item in type(self).series[meeting_id]
                     if item.occurrence_id != occurrence_id
                 ]
+
+    @classmethod
+    def _forget(cls, meeting_id, occurrence_id) -> None:
+        """Keep ``meetings`` current after a delete (under the lock)."""
+        state = cls.meetings.get(meeting_id)
+        if state is None:
+            return
+        if not occurrence_id:
+            cls.meetings[meeting_id] = None
+            return
+        cls.meetings[meeting_id] = MeetingState(
+            recurring=state.recurring,
+            classes=tuple(c for c in state.classes if c.occurrence_id != occurrence_id),
+            deleted_ids=state.deleted_ids | {occurrence_id},
+        )
+
+    def occurrence_id_for(self, *, host_account, meeting_id, starts_at) -> str | None:
+        """The ID of a class of a meeting this fake made, found by its start; else ``None``."""
+        with self._lock:
+            state = type(self).meetings.get(meeting_id)
+        for item in state.classes if state else ():
+            if item.starts_at == starts_at and item.occurrence_id:
+                return item.occurrence_id
+        return None
+
+    def meeting_state(self, *, host_account, meeting_id) -> MeetingState | None:
+        cls = type(self)
+        with cls._lock:
+            cls.state_calls.append((host_account.pk, meeting_id))
+            if meeting_id in cls.meeting_states:
+                answer = cls.meeting_states[meeting_id]
+            elif meeting_id in cls.meetings:
+                answer = cls.meetings[meeting_id]
+            else:
+                answer = ZoomUnavailable()
+        if isinstance(answer, ProviderError):
+            raise answer
+        return answer
 
     def start_url(self, *, host_account, meeting_id) -> str:
         """A start link on the reserved ``.invalid`` TLD, so it can never start a real meeting."""
@@ -399,6 +493,7 @@ class FakeProvider(MeetingProvider):
             if error is not None:
                 raise error
             cls.patched.append(record)
+            cls._remember_update(record)
             meeting_id, occurrence_id = record["meeting_id"], record["occurrence_id"]
             if record["weekdays"] is not None:
                 length = record["ends_at"] - record["starts_at"]
@@ -417,6 +512,32 @@ class FakeProvider(MeetingProvider):
                     else item
                     for item in cls.series[meeting_id]
                 ]
+
+    @classmethod
+    def _remember_update(cls, record) -> None:
+        """Keep ``meetings`` current after an update, as Zoom would (under the lock)."""
+        meeting_id = record["meeting_id"]
+        state = cls.meetings.get(meeting_id)
+        if state is None:
+            return
+        start, end = record["starts_at"], record["ends_at"]
+        if record["weekdays"] is not None:
+            classes = tuple(
+                ZoomClass(first, first + (end - start), str(int(first.timestamp() * 1000)))
+                for first in weekly_starts(start, record["weekdays"], record["count"])
+            )
+        elif state.recurring:
+            classes = tuple(
+                sorted(
+                    ZoomClass(start, end, c.occurrence_id)
+                    if c.occurrence_id == record["occurrence_id"]
+                    else c
+                    for c in state.classes
+                )
+            )
+        else:
+            classes = (ZoomClass(start, end, ""),)
+        cls.meetings[meeting_id] = MeetingState(state.recurring, classes, state.deleted_ids)
 
     def update_occurrence(
         self, *, host_account, meeting_id, occurrence_id=None, starts_at, ends_at
@@ -668,6 +789,32 @@ class ZoomProvider(MeetingProvider):
         except UNREADABLE_ANSWER:
             raise ZoomUnavailable() from None
 
+    @sensitive_variables("detail")
+    def meeting_state(self, *, host_account, meeting_id) -> MeetingState | None:
+        """The meeting as Zoom holds it now, from one ``GET /meetings/{id}`` (brief 013, c. 13).
+
+        ``None`` when the meeting is confirmed gone. Zoom answers ``404`` with code 3001 both
+        for a deleted meeting and for one that belongs to **another** Zoom account, so a wrong
+        connection name or a swapped credentials file would make every meeting look deleted,
+        and reconcile would cancel a whole account's bookings (review round 1, S1). So a 3001
+        is double-checked (criterion 31, D17): one ``GET /users/{email}`` on the same
+        connection, 006's Check connection call. Only when Zoom has that user is the meeting
+        gone. A ``1001`` raises ``ZoomUserNotFound`` and any other failure its own
+        ``ProviderError``, so the caller changes nothing and the booking "couldn't be checked".
+        The user check runs only on a 3001: a normal answer costs one call.
+
+        Every other failure raises its ``ProviderError`` too. Only times and occurrence IDs are
+        read; the answer, which carries the ``start_url`` and the join link, is dropped here
+        and masked in error reports.
+        """
+        with self._client(host_account) as client:
+            try:
+                detail = client.get(zoom_api.meeting_path(meeting_id))
+            except ZoomMeetingNotFound:
+                client.get(zoom_api.user_path(host_account.email))
+                return None
+        return read_meeting_state(detail)
+
     def check_connection(self, host_account):
         """Prove the token, the user and the list scope (criterion 36, D12).
 
@@ -709,6 +856,38 @@ def _series_busy(detail) -> list[BusyTime]:
         minutes = _duration(occurrence, default=_duration(detail))
         busy.append(BusyTime(start, start + timedelta(minutes=minutes), topic, meeting_id, agenda))
     return busy
+
+
+@sensitive_variables("detail")
+def read_meeting_state(detail) -> MeetingState:
+    """``GET /meetings/{id}``'s answer as a ``MeetingState`` (brief 013).
+
+    A scheduled meeting (type 2) is one class at its ``start_time`` for its ``duration``. A
+    weekly series (type 8) is its occurrences: deleted ones go to ``deleted_ids``, the rest to
+    ``classes``. Any other type has no dated classes to compare (an instant meeting, or one
+    "with no fixed time"), and an answer that can't be read is the same: ``ZoomUnavailable``,
+    so reconcile changes nothing rather than cancelling classes it simply couldn't see.
+    """
+    try:
+        kind = detail.get("type")
+        if kind == SCHEDULED:
+            start = parse_zoom_time(detail["start_time"])
+            end = start + timedelta(minutes=_duration(detail))
+            return MeetingState(recurring=False, classes=(ZoomClass(start, end, ""),))
+        if kind != RECURRING_FIXED:
+            raise ZoomUnavailable()
+        classes, deleted = [], set()
+        for item in detail.get("occurrences") or []:
+            occurrence_id = str(item["occurrence_id"])
+            if item.get("status") == "deleted":
+                deleted.add(occurrence_id)
+                continue
+            start = parse_zoom_time(item["start_time"])
+            minutes = _duration(item, default=_duration(detail))
+            classes.append(ZoomClass(start, start + timedelta(minutes=minutes), occurrence_id))
+        return MeetingState(True, tuple(sorted(classes)), frozenset(deleted))
+    except UNREADABLE_ANSWER:
+        raise ZoomUnavailable() from None
 
 
 def _duration(item, default=60) -> int:

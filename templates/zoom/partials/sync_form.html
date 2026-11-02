@@ -1,0 +1,8 @@
+{# The one "Check against Zoom" form (brief 013, criterion 18; D.1.4): an empty POST to zoom:sync, which copies here whatever Zoom now says about the booking and redirects back to the detail with one message. It renders in one of two places on zoom/detail.html, never both: inside the "Changed in Zoom: needs a look" notice, or in its own box after Classes. A real form with a CSRF token, so it works with no JS; app.js's busy-button block only adds "Checking with Zoom…" (docs/design/busy-button.md). with: link_request_pk (int), csrf_token (the request's token; an only-include doesn't see it otherwise, and every press would then be a 403). #}
+<form method="post" action="{% url 'zoom:sync' link_request_pk %}" data-busy-form>
+  {% csrf_token %}
+  <div class="form-actions">
+    <button class="button button--secondary" type="submit" data-busy-text="Checking with Zoom…">Check against Zoom</button>
+    <p class="visually-hidden" role="status" data-busy-status></p>
+  </div>
+</form>

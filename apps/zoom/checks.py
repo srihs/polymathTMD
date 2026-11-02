@@ -13,6 +13,8 @@ Registered explicitly in ``ZoomConfig.ready()``. Which check runs when:
 - **Database** (``check --database default``): ``zoom.E004``, every active paid account has a
   working connection name. It needs the database, and one unconnected account mustn't stop
   the site from starting (the public form would go down with it), so it isn't untagged (D11).
+  ``zoom.W002`` (brief 013, criterion 2), every such connected account's connection has a
+  webhook secret, for the same reasons; a warning, because bookings still work without it.
 
 No message ever echoes a key or a credential value; E005 names variables, never values.
 """
@@ -34,7 +36,7 @@ from django.db import DatabaseError
 from config.settings.base import zoom_credential_env_prefix
 
 from . import crypto
-from .models import HostAccount
+from .models import HostAccount, webhook_secret_set_for
 from .providers import PROVIDERS
 from .validators import CREDENTIAL_SET_ERROR, CREDENTIAL_SET_PATTERN, normalise_phone
 
@@ -195,3 +197,36 @@ def check_accounts_connected(app_configs=None, databases=None, **kwargs):
             )
         )
     return errors
+
+
+WEBHOOK_SECRET_MISSING = (
+    "{label}'s Zoom connection has no webhook secret, so changes made directly in Zoom to its "
+    "meetings aren't seen here."
+)
+
+
+def check_webhook_secrets(app_configs=None, databases=None, **kwargs):
+    """``zoom.W002``: each connected active paid account's connection has a webhook secret.
+
+    Brief 013, criterion 2. Without one, Zoom can't tell this system about a class changed or
+    deleted directly in Zoom, so it stays as it was here until its booking is checked. Only
+    with ``ZOOM_PROVIDER=zoom`` and ``check --database default``; silent before ``migrate``.
+    An account whose connection isn't set up at all is ``zoom.E004``'s, so it isn't repeated
+    here. The message names the account, never the variable's value.
+    """
+    if getattr(settings, "ZOOM_PROVIDER", None) != "zoom" or "default" not in (databases or ()):
+        return []
+    try:
+        accounts = list(HostAccount.objects.bookable())  # Meta.ordering: order, then name
+    except DatabaseError:
+        return []
+    return [
+        CheckWarning(
+            WEBHOOK_SECRET_MISSING.format(label=account.label),
+            hint="Add ZOOM_S2S_<NAME>_WEBHOOK_SECRET for the connection to zoom-credentials.env "
+            "(the README explains how), then recreate web.",
+            id="zoom.W002",
+        )
+        for account in accounts
+        if account.is_zoom_connected() and not webhook_secret_set_for(account.credential_set)
+    ]

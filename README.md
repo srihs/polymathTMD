@@ -163,7 +163,7 @@ Set these environment variables on the host:
 | Variable | Notes |
 |---|---|
 | `SECRET_KEY` | Required |
-| `ALLOWED_HOSTS` | e.g. `tmd.example.com` |
+| `ALLOWED_HOSTS` | e.g. `tmd.example.com`. Put the public domain **first**, and make sure it is in the list before you ask Zoom to validate the webhook (a call to any other host is refused before the app sees it). The nightly `sync_zoom_bookings` command has no web request, so it builds the links in its emails from the first entry; see "Keeping in step with Zoom" below |
 | `CSRF_TRUSTED_ORIGINS` | e.g. `https://tmd.example.com` |
 | `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD` | Database name and login |
 | `DB_HOST`, `DB_PORT` | MySQL server address (default `127.0.0.1:3306`) |
@@ -175,7 +175,8 @@ Set these environment variables on the host:
 | `HOST_KEY_ENCRYPTION_KEYS` | Required. Comma-separated Fernet key(s) that encrypt Zoom host keys at rest — see "Zoom link requests" below |
 | `IT_DESK_PHONE` | Optional, empty by default. A phone number the public "Start this class" page shows as a tap-to-call link when it can't start a class, e.g. `011 234 5678`. Leave it empty and the page just says "Contact the IT desk." instead. `manage.py check` fails with `zoom.E006` if it's set to something that isn't a phone number |
 
-Zoom credentials (`ZOOM_CREDENTIAL_SETS` and the three `ZOOM_S2S_<NAME>_*` variables per account)
+Zoom credentials (`ZOOM_CREDENTIAL_SETS` and the four `ZOOM_S2S_<NAME>_*` variables per account:
+account ID, client ID, client secret and, optionally, the webhook secret)
 don't go in this table or in `compose.yaml`'s `web.environment` — they live in
 `zoom-credentials.env`, git-ignored and loaded through `env_file`. See "Connecting an account to
 Zoom" above.
@@ -419,7 +420,10 @@ https://developers.zoom.us/docs/api/meetings/.**
 8. On the server, copy `zoom-credentials.env.example` to `zoom-credentials.env`, next to `.env`.
    It's git-ignored and never baked into the image. Add the account's slug to
    `ZOOM_CREDENTIAL_SETS` (for example `zoom-01`), then set `ZOOM_S2S_ZOOM_01_ACCOUNT_ID`,
-   `ZOOM_S2S_ZOOM_01_CLIENT_ID` and `ZOOM_S2S_ZOOM_01_CLIENT_SECRET`.
+   `ZOOM_S2S_ZOOM_01_CLIENT_ID` and `ZOOM_S2S_ZOOM_01_CLIENT_SECRET`. A fourth variable,
+   `ZOOM_S2S_ZOOM_01_WEBHOOK_SECRET`, is optional and is set later, in "Keeping in step with Zoom"
+   below. Without it the account still works, but the app doesn't see changes made directly in Zoom
+   (`manage.py check --database default` warns with `zoom.W002`).
 9. Recreate `web` (`docker compose up -d`) so it reads the file.
 10. On the Zoom accounts page, set that account's **Zoom connection name** to the slug, save, then
     press **Check connection**.
@@ -472,9 +476,11 @@ booked, and IT sees a plain message saying what happened and what to try next.
 - Whether a teacher with only the host key can get into a meeting depends on that account's own
   "join before host" and "waiting room" settings; the app leaves both alone.
 - Changes made directly in Zoom to a meeting the app created — moving it, or deleting it or one of
-  its classes — aren't seen by the app. It keeps treating the class as booked, so an account can
-  look busy when it isn't. That errs on the side of caution. Cancelling a booking from the app
-  (task 011) is the supported way to free it.
+  its classes — are now picked up (task 013), but only for an account whose webhook is set up, or
+  when someone presses **Check against Zoom**, or when the nightly command runs. Until one of those
+  happens the app keeps treating the class as booked, so an account can look busy when it isn't.
+  See "Keeping in step with Zoom" below. Cancelling a booking from the app (task 011) is still the
+  supported way to free it.
 - There's a gap of a second or two between the app checking Zoom and creating the meeting: a
   meeting typed into Zoom by hand in that window is accepted.
 - An account's recurring series are read one at a time. An account with many of them (20 or more)
@@ -492,6 +498,147 @@ booked, and IT sees a plain message saying what happened and what to try next.
   resets, instead of a plain "try again in a few minutes" that would keep failing until morning.
   Zoom's own wording for the error is read only to tell a daily limit apart from an ordinary "too
   busy right now" refusal — it's never shown on a page, in an email or in a log (task 012 D19).
+
+### Keeping in step with Zoom
+
+Task 013. Someone with a Zoom login can still move or delete a class in Zoom itself. The app finds
+out in three ways, and all three run the same code (`services.reconcile()`), so the rules and the
+emails are the same whichever way a change is found:
+
+1. **A webhook.** Zoom calls the app when a meeting is changed or deleted.
+2. **The `Check against Zoom` button** on an approved booking's detail page.
+3. **A nightly command**, `sync_zoom_bookings`, for any event that was missed.
+
+Each time, the app asks Zoom for the meeting's current state, so events that arrive late or out of
+order can't mislead it. It then brings the booking into line:
+
+- A class deleted in Zoom is cancelled here and its time is freed.
+- A class moved in Zoom is moved here, if the account is free at the new time.
+- Anything it can't copy safely is flagged for IT as **Needs a look** (a tag in the queue and a
+  notice on the booking's page), and IT gets one email. For example: a class moved in Zoom onto
+  another booking's time, or a class added in Zoom that isn't booked here. IT then moves or cancels
+  the class here, or changes it back in Zoom, and presses **Check against Zoom**.
+- The requester is emailed when a class is cancelled or moved, and the email says it was changed
+  directly in Zoom (the app doesn't know who did it).
+
+Only a booking's classes that are still to come are ever changed. A change made in the app itself
+(cancel or move) is never copied back: when Zoom's echo of it arrives, the booking already matches.
+
+#### Setting up the webhook
+
+**Once, for the server:**
+
+1. Zoom must be able to reach the app at its real production domain over `https://`, with a
+   certificate from a public authority, through your TLS proxy. Keep `USE_HTTPS=True`, and make
+   sure the proxy sends `X-Forwarded-Proto`.
+2. **The domain must be in `ALLOWED_HOSTS` before Zoom can validate the endpoint.** Put it first
+   (see the environment table above).
+3. If the rest of the app is internal-only, expose only the webhook path: at the proxy, allow
+   requests from the internet to `/zoom/webhooks/` and everything under it, and nothing else. The
+   signature is what protects this path. An allow-list of Zoom's addresses at the proxy is optional
+   extra hardening; the app never relies on one.
+4. The proxy must pass the request through **unchanged**: no rewriting, re-encoding or compression
+   of the request body, because the signature covers the exact bytes. It must also pass the
+   `x-zm-signature` and `x-zm-request-timestamp` headers, and allow bodies up to 256 KB.
+
+**Then, for each paid Zoom account:**
+
+1. On marketplace.zoom.us, open the account's `Polymath TMD` Server-to-Server OAuth app, then
+   **Features → General Features → Event Subscriptions**, and switch it on. Name it
+   `Polymath TMD sync`.
+2. **Event notification endpoint URL:** `https://{your domain}/zoom/webhooks/{connection name}/`,
+   where the connection name is the account's **Zoom connection name** on the Zoom accounts page,
+   like `zoom-01`. Each account has its own path and its own secret.
+3. **Events:** Meeting → **Meeting has been deleted** and **Meeting has been updated**. Nothing
+   else. (The app answers any other event with "OK" and ignores it.)
+4. Copy the app's **Secret Token** into `zoom-credentials.env` as
+   `ZOOM_S2S_ZOOM_01_WEBHOOK_SECRET` (use the account's own name in place of `ZOOM_01`), then
+   recreate `web` (`docker compose up -d`). A `restart` isn't enough.
+5. Press **Validate** in Marketplace, then save. Validation passes only once the server has the
+   secret. Zoom sends an `endpoint.url_validation` event with a `plainToken`. The app checks the
+   request's signature like any other, then answers with the token and its HMAC-SHA256 under the
+   secret. It refuses a `plainToken` that isn't made of letters, numbers, `-` and `_`, so the
+   endpoint can't be used to sign text of someone else's choosing.
+6. Run `python manage.py check --database default`. No `zoom.W002` warning ("… has no webhook
+   secret …") should remain for that account.
+
+No new API scope is expected: the app makes no new kind of Zoom call for this, only the meeting
+lookup it already makes under `meeting:read:meeting:admin`. This is to be confirmed by the owner's
+live check against Marketplace (task 013, criterion 26). If Marketplace asks for a scope, note its
+name here.
+
+**How the app protects the endpoint.** A call is accepted only if all of these hold:
+
+- its `x-zm-signature` is the `v0=` HMAC-SHA256 of `v0:{timestamp}:{raw body}` under that
+  account's secret;
+- its timestamp is within 300 seconds of now;
+- its Zoom account ID is the one for that connection.
+
+A bad call gets a `401` and a warning in the log that names the connection and the reason, never a
+header or the body. Each accepted event is remembered by a hash of its body (nothing else is
+stored), so Zoom's retries are ignored. This is the one URL in the app that is exempt from CSRF
+protection: the signature takes its place. If Zoom can't be asked (a `503`) or a lock race happens
+(a `500`), the event is not remembered, so Zoom's retry (after 5, 20 and 60 minutes) does the work.
+
+**Is it working?** On the Zoom accounts page, an account's change page shows **Last heard from Zoom
+on {when}** in its Zoom connection section. Every cancel or move made in the app echoes back within
+seconds, so a stale time means the webhook has stopped arriving (the proxy is closed, the secret is
+wrong, or the server was down). An account whose connection has no webhook secret shows **Changes
+made in Zoom aren't seen here** instead.
+
+**Rotating a webhook secret:** regenerate the Secret Token in Marketplace, update
+`zoom-credentials.env`, and recreate `web`. Until `web` has the new secret, Zoom's calls are refused
+with a `401`, and the nightly command and the button cover the gap.
+
+#### The `Check against Zoom` button
+
+On an approved booking's detail page, **Check against Zoom** (shown when the booking has classes
+still to come and `ZOOM_PROVIDER=zoom`) asks Zoom about that one booking and copies what it finds.
+It ends with one message saying what happened: that the booking matches Zoom, how many changes were
+copied here and whether the requester was emailed, or that some changes need a look. If Zoom can't
+be asked, the message says why and what to try next. With `ZOOM_PROVIDER=manual` the button isn't
+offered, because the app can't ask Zoom.
+
+#### The nightly command
+
+Schedule this to run every night on the host (cron, or Task Scheduler on Windows), as a backstop
+for an event that never arrived, such as when the server was down for longer than Zoom's three
+retries:
+
+```
+docker compose exec -T web python manage.py sync_zoom_bookings
+```
+
+It checks every approved booking that still has classes to come, on an account with a working
+Zoom connection. It prints one line for each booking that changed, needs a look, or couldn't be
+checked, then a summary:
+
+```
+ZL-0042 (Zoom 02): couldn't be checked: Zoom is busy right now.
+Checked 12 bookings: 2 changed, 0 need a look, 1 couldn't be checked.
+```
+
+The lines hold only booking references, account labels and counts: no class name, email address,
+link or token, so the output is safe to keep in a scheduler's log. The command also quietly clears
+the "needs a look" flag on any approved booking that has no classes left to come.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Every booking was checked, whether or not anything changed. Also the result under `ZOOM_PROVIDER=manual`, where it checks nothing and prints only `This system can't reach Zoom, so no bookings were checked.` (`zoom.W001` already reports that setup) |
+| `1` | At least one booking couldn't be checked. Make your scheduler alert on this |
+
+One booking's failure never stops the run: the rest are still checked.
+
+**If a line says `couldn't be checked: Zoom has no user with this account's sign-in email`,** the
+account's **Zoom connection name**, or the credentials in `zoom-credentials.env`, are wrong. Zoom
+said a meeting doesn't exist, and the app found that Zoom doesn't know the account's user either,
+so it is most likely looking at the wrong Zoom account. **Nothing is cancelled** until that is
+fixed. Press **Check connection** on that account's page to see which part is wrong.
+
+**Email links from the nightly command:** it has no web request to take the site address from, so
+the links in its emails use the first entry in `ALLOWED_HOSTS` (with `https` when `USE_HTTPS=True`).
+That is why the public domain must be first. A dedicated site-address setting may replace this
+later.
 
 **Manual mode, the fallback:** with `ZOOM_PROVIDER=manual`, the app can't see meetings in Zoom at
 all. When IT approves a request, they first create the meeting in Zoom on the account the system
@@ -519,7 +666,10 @@ account:
 3. **012, move a class** — moving one class or changing a weekly booking's remaining classes to a
    new time, without a new meeting or new links. Built and passing every automated check; waiting
    on the owner's live check (`docs/tasks/012-move-a-class.md`).
-4. **013, Zoom webhook sync** — not yet built. Picks up changes made directly in Zoom.
+4. **013, Zoom webhook sync** — picks up changes made directly in Zoom (see "Keeping in step with
+   Zoom" above). Built and passing every automated check; waiting on the owner's live check, which
+   needs the production domain's webhook path reachable
+   (`docs/tasks/013-zoom-webhook-sync.md`).
 5. **014, recording links** — not yet built. Emails the recording link once Zoom finishes
    processing it.
 

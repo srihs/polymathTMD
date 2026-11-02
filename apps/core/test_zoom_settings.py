@@ -2,8 +2,9 @@
 
 They pin what the zoom app relies on but doesn't own: how credentials are read from the
 environment and named (criterion 2), that Django masks them (criterion 3), the env files and
-logging (criterion 7), and the project-wide network block (criterion 45). The zoom app's
-checks, client and provider are tested in apps/zoom/tests/.
+logging (criterion 7), and the project-wide network block (criterion 45). Brief 013's
+criterion 1 adds the optional webhook secret to the same plumbing, so its tests live here too.
+The zoom app's checks, client and provider are tested in apps/zoom/tests/.
 """
 
 import logging
@@ -31,7 +32,9 @@ FAKE = ZoomCredentials(
     account_id="test-account-id",
     client_id="test-client-id",
     client_secret="test-client-secret-value",
+    webhook_secret="test-webhook-secret-value",
 )
+SECRET_VALUES = (FAKE.account_id, FAKE.client_id, FAKE.client_secret, FAKE.webhook_secret)
 
 
 # --------------------------------------------------------------------------- criterion 2
@@ -61,10 +64,60 @@ def test_read_zoom_credentials_keeps_complete_sets_and_names_missing_variables(m
     assert missing == {"zoom-02": ["ZOOM_S2S_ZOOM_02_CLIENT_ID", "ZOOM_S2S_ZOOM_02_CLIENT_SECRET"]}
 
 
+def _set_required_parts(monkeypatch, prefix):
+    monkeypatch.setenv(f"{prefix}_ACCOUNT_ID", "test-account-id")
+    monkeypatch.setenv(f"{prefix}_CLIENT_ID", "test-client-id")
+    monkeypatch.setenv(f"{prefix}_CLIENT_SECRET", "test-client-secret")
+
+
+def test_webhook_secret_is_read_and_stripped(monkeypatch):
+    """Brief 013, criterion 1: the fourth variable follows the same naming rule."""
+    _set_required_parts(monkeypatch, "ZOOM_S2S_ZOOM_01")
+    monkeypatch.setenv("ZOOM_S2S_ZOOM_01_WEBHOOK_SECRET", " test-webhook-secret ")
+
+    secrets, missing = read_zoom_credentials(environ.Env(), ["zoom-01"])
+
+    assert secrets["zoom-01"].webhook_secret == "test-webhook-secret"
+    assert missing == {}
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_a_set_is_complete_without_a_webhook_secret(monkeypatch, value):
+    """Brief 013, criterion 1: the webhook secret is optional, so it's never "missing"."""
+    _set_required_parts(monkeypatch, "ZOOM_S2S_ZOOM_01")
+    if value is None:
+        monkeypatch.delenv("ZOOM_S2S_ZOOM_01_WEBHOOK_SECRET", raising=False)
+    else:
+        monkeypatch.setenv("ZOOM_S2S_ZOOM_01_WEBHOOK_SECRET", value)
+
+    secrets, missing = read_zoom_credentials(environ.Env(), ["zoom-01"])
+
+    assert secrets["zoom-01"].webhook_secret == ""
+    assert missing == {}
+
+
+def test_a_webhook_secret_never_completes_an_incomplete_set(monkeypatch):
+    monkeypatch.setenv("ZOOM_S2S_ZOOM_02_ACCOUNT_ID", "test-account-id")
+    monkeypatch.delenv("ZOOM_S2S_ZOOM_02_CLIENT_ID", raising=False)
+    monkeypatch.delenv("ZOOM_S2S_ZOOM_02_CLIENT_SECRET", raising=False)
+    monkeypatch.setenv("ZOOM_S2S_ZOOM_02_WEBHOOK_SECRET", "test-webhook-secret")
+
+    secrets, missing = read_zoom_credentials(environ.Env(), ["zoom-02"])
+
+    assert secrets == {}
+    assert missing == {"zoom-02": ["ZOOM_S2S_ZOOM_02_CLIENT_ID", "ZOOM_S2S_ZOOM_02_CLIENT_SECRET"]}
+
+
+def test_credentials_default_to_no_webhook_secret():
+    """Code that builds a set by hand (the zoom app's test helpers) needn't name the field."""
+    plain = ZoomCredentials(slug="zoom-x", account_id="a", client_id="b", client_secret="c")
+    assert plain.webhook_secret == ""
+
+
 def test_credentials_repr_shows_only_the_slug():
     text = repr(FAKE) + str(FAKE)
     assert "zoom-test" in text
-    for value in (FAKE.account_id, FAKE.client_id, FAKE.client_secret):
+    for value in SECRET_VALUES:
         assert value not in text
 
 
@@ -90,6 +143,7 @@ def test_zoom_secrets_are_masked_in_error_reports(settings):
     safe = reporter_filter.get_safe_settings()
 
     assert safe["ZOOM_S2S_SECRETS"] == reporter_filter.cleansed_substitute
+    assert not any(value in repr(safe) for value in SECRET_VALUES)
     # The list holds slugs only; if Django ever matches its name, it must be masked too.
     assert safe["ZOOM_CREDENTIAL_SETS"] in (["zoom-test"], reporter_filter.cleansed_substitute)
 
@@ -101,7 +155,7 @@ def test_debug_page_never_shows_zoom_credentials(settings):
         raise RuntimeError("boom")
     except RuntimeError:
         html = ExceptionReporter(request, *sys.exc_info()).get_traceback_html()
-    for value in (FAKE.account_id, FAKE.client_id, FAKE.client_secret):
+    for value in SECRET_VALUES:
         assert value not in html
 
 
@@ -157,6 +211,7 @@ def test_credentials_example_names_every_variable_with_no_values():
         f"{prefix}_ACCOUNT_ID",
         f"{prefix}_CLIENT_ID",
         f"{prefix}_CLIENT_SECRET",
+        f"{prefix}_WEBHOOK_SECRET",
     ]
     assert all(line.endswith("=") for line in assignments), "the example must hold no value"
     # One comment line straight above each variable.

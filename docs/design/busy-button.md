@@ -61,3 +61,4 @@ The busy text says what the system is doing, in the user's words, as a present-t
 | `zoom/start.html` (brief 011) | `Start this class` | `Opening Zoom…` |
 | `zoom/move_form.html`, one class (brief 012) | `Move the class and email the requester` | `Moving the class in Zoom…` when `checks_zoom`; `Moving the class…` otherwise |
 | `zoom/move_form.html`, the remaining classes (brief 012) | `Change the times and email the requester` | `Changing the times in Zoom…` when `checks_zoom` (P1); `Changing the times…` otherwise |
+| `zoom/detail.html` (brief 013) | `Check against Zoom` (`.button--secondary`, in the needs-a-look notice or its own box; `zoom/partials/sync_form.html`) | `Checking with Zoom…` |

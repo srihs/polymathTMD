@@ -214,6 +214,7 @@ The owner's answers to this brief's questions (2026-09-26, relayed):
     - **(c)** A whole cancel and a class cancel of the same booking: one Zoom `DELETE` for the whole meeting, and at most one more that gets 3001. The final state is `cancelled` with every not-started class cancelled.
 
     The verifier records the output. A flaky thread test is a FAIL, never a skip.
+    - *Amended by 013 (2026-11-02, criteria 16 and 28):* the email gains an `in_zoom` form (default false) that reconcile uses when it copies a deletion made directly in Zoom: the opening sentence says `… was cancelled directly in Zoom.` and a closing line says `If you didn't expect this, reply to the IT desk.`. `cancel()` leaves `in_zoom` false, so this email is unchanged for a cancel made in the app. Also, `cancel()` now clears `LinkRequest.zoom_attention` in the same transaction that makes a booking `cancelled`.
 17. **The cancellation email** goes to `requester_email` only (no cc or bcc), plain text, after the commit.
     - **Subject:** `Cancelled: {reference} {class_name}`.
     - **Body:**

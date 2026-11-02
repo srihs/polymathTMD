@@ -445,9 +445,15 @@ def test_e004_is_quiet_before_the_table_exists(settings):
 # --------------------------------------------------------------------------- 39, 41
 
 
-def test_there_is_no_webhook_url():
-    for pattern in zoom_urls.urlpatterns:
-        assert "webhook" not in (pattern.name or "") and "webhook" not in str(pattern.pattern)
+def test_the_only_webhook_url_is_brief_013s():
+    # Criterion 39 said "no webhook URL"; brief 013 (D7) amends it deliberately: there is now
+    # exactly one, ``zoom:webhook``, one address per Zoom connection.
+    found = [
+        (pattern.name, str(pattern.pattern))
+        for pattern in zoom_urls.urlpatterns
+        if "webhook" in (pattern.name or "") or "webhook" in str(pattern.pattern)
+    ]
+    assert found == [("webhook", "webhooks/<slug:slug>/")]
 
 
 def test_the_occurrence_id_field_is_labelled_and_optional():

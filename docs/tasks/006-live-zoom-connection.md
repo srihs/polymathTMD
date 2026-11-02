@@ -111,6 +111,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
 
 - Cancelling or changing bookings, a `cancelled` status, and deleting Zoom meetings from any screen (011).
 - Webhooks (D13). The app doesn't learn about changes made directly in Zoom to meetings it created. The limits are listed in D15.
+  - *Amended by 013 (2026-11-02, D7):* webhooks are now built. Changes made directly in Zoom are copied by `services.reconcile()` (webhook, the `Check against Zoom` button, and the nightly `sync_zoom_bookings` command). D15's "not seen" limit is resolved for meetings the app booked.
 - Showing Zoom-only meetings on the timetable (brief 009). That is a follow-up for the changelog.
 - Per-occurrence meetings as a fallback (D5: never needed for our patterns).
 - Storing connection-check results, tokens or any Zoom credential in the database.
@@ -425,6 +426,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
 
 38. **Least-privilege scopes.** The README lists the exact scopes: create a meeting, list a user's meetings, view a meeting, delete a meeting, and view a user (D13). **No others.** The backend confirms the exact scope names against Zoom's Marketplace and endpoint docs at build time, and records them in the Implementation notes. The README uses those names.
 39. **No webhooks.** No URL name or path in `apps/zoom/urls.py` contains `webhook`, and no view accepts requests from Zoom.
+    - *Amended by 013 (2026-11-02, D7):* replaced. Brief 013 deliberately adds `zoom:webhook` (`zoom/webhooks/<slug>/`), so this criterion no longer holds. Its test is now `test_the_only_webhook_url_is_brief_013s`.
 40. **No token or credential in the browser.** None of the following contains any credential value or token: the detail page, the accounts pages, the check redirect's messages, or the approval email. This is tested by searching the rendered output for the fake credential values.
 
 ### Tests, dependencies, template rules
@@ -626,6 +628,7 @@ With `manual`, the app can't see meetings made in Zoom. That is why `manual` now
   - **Not requested:** recording, user write, report, account, webinar or webhook scopes.
   - **HTTPS only**, with fixed hosts and certificate checks always on.
   - **No webhooks.** Nothing in this brief needs Zoom to call us: availability is asked for live at decision time. A public inbound endpoint would add a verification secret and an attack surface for no gain. They can be revisited if D15's drift matters in practice.
+    - *Amended by 013 (2026-11-02, D7):* replaced. Brief 013 builds the webhook endpoint (`zoom:webhook`, one signed path per credential set), with the secret token as a fourth, optional env variable per set. See `docs/tasks/013-zoom-webhook-sync.md`.
   - **The spreadsheet leaves the image** (criterion 44).
 - **D14: The go-live gate** is 006, running `zoom` with every paid account connected, plus 011 (see Scope). It replaces 005's D14 and D19, and item 1 of 008's prerequisites.
 - **D15: Known limits (for the README), with no code in this brief:**

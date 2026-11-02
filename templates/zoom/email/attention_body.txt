@@ -1,0 +1,18 @@
+{# Body of the "needs a look" message to every IT desk reviewer (brief 013, criterion 16; D.5.3), sent after the commit when a booking's needs-a-look sentences are set or changed, never for the same sentences twice. Plain text. Says the booking was changed directly in Zoom in a way this system couldn't copy safely, the facts block (laid out like it_new_body.txt, plus Booked on, because every line names the account), the pinned sentences as given (criterion 15), the pinned next step (the detail page's notice sentence, so the email and the page give the same instruction), the detail link, and that the requester hasn't been told. Holds no join link, passcode, start link, host key or token. Context: link_request (LinkRequest: reference, class_name, requester_name, host_account.label; G8), lines (list of str, the pinned sentences), detail_url (str, absolute, zoom:detail). #}{% autoescape off %}{{ link_request.reference }} was changed directly in Zoom, and this system couldn't copy the change safely. The booking here and the meeting in Zoom don't match.
+
+Reference: {{ link_request.reference }}
+Class: {{ link_request.class_name }}
+Booked on: {{ link_request.host_account.label }}
+Requested by: {{ link_request.requester_name }}
+
+What doesn't match:
+{% for line in lines %}- {{ line }}
+{% endfor %}
+What to do:
+Move or cancel the class here, or change it back in Zoom, then press Check against Zoom on the booking's page:
+{{ detail_url }}
+
+The requester hasn't been told about these. If you move or cancel a class here, they get an email as usual.
+
+You get these emails because you're in the IT desk group on the Technology Management Desk.
+{% endautoescape %}

@@ -209,6 +209,7 @@ Zoom is changed through `PATCH /meetings/{id}`, and the requester is emailed the
     - **(b)** A move and an approval of another request into the same new time on the same account: exactly one wins, and no two booked classes overlap.
     - **(c)** A move and a cancel (011) of the same class: the final state is either cancelled, or moved and not cancelled. At most one email per committed action. The loser redirects with `That class was cancelled.` or proceeds on the moved class.
 18. **The email** goes to the requester only, after the commit.
+    - *Amended by 013 (2026-11-02, criterion 16):* the email gains an `in_zoom` form (default false) that reconcile uses when it copies a move made directly in Zoom: the opening sentence says `… was changed directly in Zoom.`, and it never says `The IT desk has`. `move_class()` and `move_series()` leave `in_zoom` false, so this email is unchanged for a move made in the app.
     - **Subject:** `Class times changed: {reference} {class_name}`.
     - **Body:** one pair per moved class, **on two lines** (P4, D14), with a blank line between pairs:
       ```

@@ -27,3 +27,4 @@ class ZoomConfig(AppConfig):
             zoom_checks.check_manual_provider_not_deployed, checks.Tags.security, deploy=True
         )
         checks.register(zoom_checks.check_accounts_connected, checks.Tags.database)
+        checks.register(zoom_checks.check_webhook_secrets, checks.Tags.database)

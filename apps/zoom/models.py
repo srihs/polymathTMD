@@ -33,6 +33,15 @@ Why the data is shaped like this (brief 005):
   log). "Remaining classes" (booked, not started) has one definition, ``remaining_classes``,
   which cancelling and moving both use. The time rules of a move reuse 005's copy and live
   here (``move_errors``, ``series_move_errors``), so the forms and ``services`` agree.
+- Keeping in step with Zoom (brief 013). A change made directly in Zoom is copied here by
+  ``services.reconcile()`` through the same model operations the app's own cancel and move use
+  (``LinkRequest.record_cancel`` / ``record_moves``), with the person left empty. Because user
+  keys are ``PROTECT`` (nobody is deleted), an empty ``*_by`` with its time set can only mean
+  the change came from Zoom; ``moved_in_zoom`` / ``cancelled_in_zoom`` are the one place that
+  rule is written, so no template tests ``*_by`` itself. What couldn't be copied safely is kept
+  as plain sentences in ``LinkRequest.zoom_attention``. ``ZoomEvent`` records each webhook
+  event Zoom sent, by a hash of its body only, so a repeat is recognised without keeping the
+  body, which carries join links.
 """
 
 import re
@@ -160,6 +169,26 @@ MOVE_SERIES_OFF_PATTERN = (
 # token signed for another purpose (a start link, a confirm link) never reads as one.
 MOVE_SHOWN_SALT = "apps.zoom.move-shown"
 
+# Brief 013, criterion 14: the stored reason of a class cancelled directly in Zoom. It's also
+# the reason line of the requester's email, so the email and the page say the same words.
+CANCELLED_IN_ZOOM_REASON = "Cancelled directly in Zoom."
+# Criterion 15: what IT is told when a change made in Zoom couldn't be copied here safely. One
+# sentence per line of ``LinkRequest.zoom_attention``. ``{old}`` is the class's date and start
+# as stored here; ``{new}`` and ``{when}`` are a span (``class_span``); ``{booking}`` is the
+# other booking's ``str()`` (``ZL-0051 Grade 10 Chemistry``).
+ZOOM_MOVE_CLASHES = (
+    "The class on {old} was moved in Zoom to {new}, but {label} already has {booking} then, so "
+    "it wasn't moved here."
+)
+ZOOM_CLASS_NOT_BOOKED = "Zoom has a class on {when} that isn't booked here."
+# Not pinned by the brief (reported in the Implementation notes): a class Zoom moved to a time
+# this system can't book at all (off the 5-minute step, across midnight, already passed or
+# more than a year ahead), so copying it would break the slot rules every booking keeps.
+ZOOM_MOVE_NOT_BOOKABLE = (
+    "The class on {old} was moved in Zoom to {new}, but that time can't be booked here, so it "
+    "wasn't moved here."
+)
+
 
 class InvalidTransition(Exception):
     """A status change was asked for from a status that doesn't allow it.
@@ -194,6 +223,20 @@ def class_date(value, *, year=True) -> str:
     if isinstance(value, datetime) and timezone.is_aware(value):
         value = timezone.localtime(value)
     return dateformat.format(value, "D j M Y" if year else "D j M")
+
+
+def class_span(start, end) -> str:
+    """``Tue 6 Oct 2026, 9:00 am to 12:00 pm``: one class's date and times (``Occurrence.__str__``).
+
+    A function as well as ``__str__``, because brief 013's attention sentences name times Zoom
+    has that aren't any stored class.
+    """
+    return f"{class_date(start)}, {class_time(start)} to {class_time(end)}"
+
+
+def class_moment(start) -> str:
+    """``Mon 5 Oct 2026, 8:30 am``: a class's date and start, as criterion 15 names it."""
+    return f"{class_date(start)}, {class_time(start)}"
 
 
 def is_on_slot_step(value) -> bool:
@@ -236,6 +279,17 @@ def zoom_connection_state_for(credential_set) -> str:
     if credential_set not in settings.ZOOM_S2S_SECRETS:
         return "missing"
     return "ready"
+
+
+def webhook_secret_set_for(credential_set) -> bool:
+    """True when the server has a webhook secret for this connection name (brief 013, c. 29).
+
+    Beside ``zoom_connection_state_for`` and like it: settings only, no query, no HTTP. It
+    answers whether there is a secret, never what it is, so the account page and ``zoom.W002``
+    can say "changes made in Zoom aren't seen here" without the value ever leaving settings.
+    """
+    credentials = settings.ZOOM_S2S_SECRETS.get(credential_set) if credential_set else None
+    return bool(credentials is not None and credentials.webhook_secret)
 
 
 class HostAccountQuerySet(models.QuerySet):
@@ -739,6 +793,44 @@ class LinkRequestQuerySet(models.QuerySet):
             item.first_overlap = first_overlap[item.pk]
         return sorted(found, key=lambda item: (item.first_overlap, item.pk))
 
+    @staticmethod
+    def _remaining_class(now):
+        """``EXISTS`` a remaining class (booked, not started) of the outer request.
+
+        Written without ``link_request__status``: the callers already filter the outer request
+        on ``approved``, and MySQL refuses an ``UPDATE`` whose subquery reads the table being
+        updated (error 1093), which a join back to ``zoom_linkrequest`` would do.
+        """
+        return Exists(
+            Occurrence.objects.filter(
+                link_request=OuterRef("pk"),
+                host_account__isnull=False,
+                cancelled_at__isnull=True,
+                starts_at__gt=now,
+            )
+        )
+
+    def with_remaining_classes(self, now=None):
+        """Approved bookings with at least one remaining class: what ``sync_zoom_bookings``
+        checks against Zoom (brief 013, criterion 19)."""
+        now = now or timezone.now()
+        return self.filter(self._remaining_class(now), status=LinkRequest.Status.APPROVED)
+
+    def clear_stale_attention(self, now=None) -> int:
+        """Clear ``zoom_attention`` on approved bookings with no remaining class (criterion 28).
+
+        Once every class has been held, nothing can clear a "needs a look" flag (the button
+        and the nightly check skip such a booking), so it would sit in the queue for good. One
+        ``UPDATE``; it sends no email. Returns the number of bookings cleared.
+        """
+        now = now or timezone.now()
+        return (
+            self.filter(status=LinkRequest.Status.APPROVED)
+            .exclude(zoom_attention="")
+            .exclude(self._remaining_class(now))
+            .update(zoom_attention="")
+        )
+
     def earlier_from_same_requester(self, link_request, limit=5):
         """Up to ``limit`` other requests IT can see from the same email, newest first."""
         return (
@@ -848,10 +940,15 @@ class LinkRequest(models.Model):
     join_url = models.URLField("Zoom link", max_length=1000, blank=True)
     # The meeting passcode is given to the requester; it isn't an account credential.
     passcode = models.CharField("passcode", max_length=10, blank=True)
-    # Brief 011: who cancelled the whole booking, and when. Set only by ``services.cancel()``,
-    # when no class of the booking is left to come.
+    # Brief 011: who cancelled the whole booking, and when. Set by ``record_cancel``, when no
+    # class of the booking is left to come. Brief 013: ``cancelled_by`` stays empty when the
+    # last class was cancelled directly in Zoom (``cancelled_in_zoom``).
     cancelled_at = models.DateTimeField(
-        "cancelled", null=True, blank=True, help_text="When the IT desk cancelled the booking."
+        "cancelled",
+        null=True,
+        blank=True,
+        help_text="When the booking was cancelled here, or when a cancel made directly in Zoom "
+        "was copied here.",
     )
     cancelled_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -860,7 +957,18 @@ class LinkRequest(models.Model):
         blank=True,
         related_name="+",
         verbose_name="cancelled by",
-        help_text="Who in the IT desk cancelled the booking.",
+        help_text="Who in the IT desk cancelled the booking. Empty when it was cancelled "
+        "directly in Zoom.",
+    )
+    # Brief 013, criterion 15: the changes made in Zoom that couldn't be copied here safely,
+    # one pinned sentence per line, set and cleared only by ``services.reconcile()`` and the
+    # cancel operation (criterion 28). Plain text, never a link or anything from Zoom's answer
+    # beyond times.
+    zoom_attention = models.TextField(
+        "needs a look",
+        blank=True,
+        help_text="Changes made directly in Zoom that weren't copied here, one per line. "
+        "Cleared by the next check against Zoom that finds nothing to flag.",
     )
 
     objects = LinkRequestQuerySet.as_manager()
@@ -935,6 +1043,21 @@ class LinkRequest(models.Model):
         if not self.pk or not agenda:
             return False
         return re.search(re.escape(self.zoom_marker) + r"(?!\d)", agenda) is not None
+
+    @property
+    def cancelled_in_zoom(self) -> bool:
+        """The whole booking was cancelled by copying a change made directly in Zoom (G1).
+
+        True when ``cancelled_at`` is set and ``cancelled_by_id`` is empty. User keys are
+        ``PROTECT`` and nobody is deleted, so an app cancel always keeps its person; only
+        ``services.reconcile()`` leaves it empty. No query.
+        """
+        return self.cancelled_at is not None and self.cancelled_by_id is None
+
+    @property
+    def zoom_attention_lines(self) -> list[str]:
+        """``zoom_attention`` as a list of sentences, empty when nothing needs a look."""
+        return [line for line in (self.zoom_attention or "").splitlines() if line.strip()]
 
     @property
     def weekday_numbers(self) -> list[int]:
@@ -1061,6 +1184,40 @@ class LinkRequest(models.Model):
         now = now or timezone.now()
         return [o for o in self._classes(occurrences) if o.is_remaining(now)]
 
+    def classes_still_on(self, now=None, *, occurrences=None) -> list["Occurrence"]:
+        """Classes not cancelled and not ended, soonest first: what a booking still has to come.
+
+        Wider than ``remaining_classes``: a class in progress is still on. It decides whether a
+        cancel ends the booking (``status_after_cancel``) and is the cancellation email's
+        "still on" list, for 011's ``cancel()`` and 013's ``reconcile()`` alike, so the rule is
+        written once (brief 013, review round 1, N4; criterion 21).
+        """
+        now = now or timezone.now()
+        return [
+            occurrence
+            for occurrence in self._classes(occurrences)
+            if occurrence.cancelled_at is None and occurrence.ends_at > now
+        ]
+
+    def sync_fingerprint(self, occurrences=None) -> tuple:
+        """What ``reconcile()`` asked Zoom about: the status and each class's times (c. 30).
+
+        ``(status, ((pk, starts_at, ends_at, cancelled_at), ...))``, the classes sorted by pk.
+        Taken before the Zoom ``GET`` and again from the locked rows; if they differ, something
+        committed in between (a move, a cancel, another reconcile), so Zoom's answer may be
+        older than the database and must not be copied over it (brief 013, review round 1, B1;
+        D16). Every class counts, not only those reconcile would touch, because any of them can
+        change what the rules decide. Built from ``occurrences`` when given: no query then.
+        """
+        found = self.occurrences.all() if occurrences is None else occurrences
+        return (
+            self.status,
+            tuple(
+                (o.pk, o.starts_at, o.ends_at, o.cancelled_at)
+                for o in sorted(found, key=lambda occurrence: occurrence.pk)
+            ),
+        )
+
     def kept_classes(self, now=None, *, occurrences=None) -> list["Occurrence"]:
         """Booked classes that have started (in progress or over), soonest first.
 
@@ -1106,11 +1263,7 @@ class LinkRequest(models.Model):
         A class that has ended stays as it was (criterion 4), so a booking whose remaining
         classes are all cancelled is over, even though its held classes keep their history.
         """
-        now = now or timezone.now()
-        still_on = any(
-            occurrence.cancelled_at is None and occurrence.ends_at > now
-            for occurrence in self._classes(occurrences)
-        )
+        still_on = self.classes_still_on(now, occurrences=occurrences)
         return self.Status.APPROVED if still_on else self.Status.CANCELLED
 
     # ----------------------------------------------------------------------- moving (012)
@@ -1382,6 +1535,59 @@ class LinkRequest(models.Model):
         self.decided_by = by
         self.decided_at = now
 
+    # ----------------------------------------------------------------------- locked writes
+    #
+    # The writes of a cancel (011) and a move (012), shared with brief 013's reconcile, which
+    # copies a change Zoom already has and so must make no Zoom call of its own. The callers
+    # hold the locks (request, then account, then classes) and pass the locked rows, so these
+    # write exactly what was checked. ``by`` is ``None`` only for a change copied from Zoom.
+
+    def record_cancel(self, targets, *, by, reason, now, occurrences) -> None:
+        """Mark ``targets`` cancelled, free their slots, and end the booking if nothing is left.
+
+        ``occurrences`` is every class of the booking, ``targets`` among them (the same
+        objects), so ``status_after_cancel`` sees the cancellation. When the booking becomes
+        ``cancelled`` its ``cancelled_at`` / ``cancelled_by`` are set and ``zoom_attention`` is
+        cleared in the same write (brief 013, criterion 28): a booking with nothing left can't
+        be checked against Zoom any more, so a "needs a look" flag could never be cleared.
+        """
+        ids = [occurrence.pk for occurrence in targets]
+        Occurrence.objects.filter(pk__in=ids).update(
+            cancelled_at=now, cancelled_by=by, cancel_reason=reason
+        )
+        for occurrence in targets:
+            occurrence.cancelled_at, occurrence.cancelled_by = now, by
+            occurrence.cancel_reason = reason
+        HostSlot.objects.filter(occurrence_id__in=ids).delete()
+        if self.status_after_cancel(now, occurrences=occurrences) != self.status:
+            self.status = self.Status.CANCELLED
+            self.cancelled_at = now
+            self.cancelled_by = by
+            self.zoom_attention = ""
+            self.save(update_fields=["status", "cancelled_at", "cancelled_by", "zoom_attention"])
+
+    def record_moves(self, moves, *, by, now, account) -> list[tuple]:
+        """Move each ``(occurrence, new start, new end)`` in place: ``[(old start, old end, o)]``.
+
+        The old times' slots are deleted and the new times' inserted (the unique slot index is
+        the backstop, brief 012 D2); ``moved_at`` / ``moved_by`` are set. The account never
+        changes (D1): ``account`` is the row the caller locked, handed to ``new_slots()`` so it
+        builds the slots on exactly that row without a query per class.
+        """
+        moving = [occurrence for occurrence, _, _ in moves]
+        done = []
+        HostSlot.objects.filter(occurrence_id__in=[o.pk for o in moving]).delete()
+        for occurrence, start, end in moves:
+            done.append((occurrence.starts_at, occurrence.ends_at, occurrence))
+            occurrence.starts_at, occurrence.ends_at = start, end
+            occurrence.moved_at, occurrence.moved_by = now, by
+            occurrence.host_account = account
+        HostSlot.objects.bulk_create(slot for o in moving for slot in o.new_slots())
+        Occurrence.objects.bulk_update(
+            moving, ["starts_at", "ends_at", "moved_at", "moved_by", "zoom_occurrence_id"]
+        )
+        return done
+
 
 # --------------------------------------------------------------------------- Classes and slots
 
@@ -1509,10 +1715,15 @@ class Occurrence(models.Model):
         blank=True,
         help_text="Zoom's ID for this class within its weekly meeting, when Zoom made it.",
     )
-    # Brief 011: set together by ``services.cancel()``. A class that has started is never
-    # cancelled, so these always describe a class that didn't happen.
+    # Brief 011: set together by ``LinkRequest.record_cancel``. A class that has started is
+    # never cancelled, so these always describe a class that didn't happen. Brief 013 leaves
+    # ``cancelled_by`` empty for a class cancelled directly in Zoom (``cancelled_in_zoom``).
     cancelled_at = models.DateTimeField(
-        "cancelled", null=True, blank=True, help_text="When the IT desk cancelled this class."
+        "cancelled",
+        null=True,
+        blank=True,
+        help_text="When this class was cancelled here, or when a cancel made directly in Zoom "
+        "was copied here.",
     )
     cancelled_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -1521,7 +1732,8 @@ class Occurrence(models.Model):
         blank=True,
         related_name="+",
         verbose_name="cancelled by",
-        help_text="Who in the IT desk cancelled this class.",
+        help_text="Who in the IT desk cancelled this class. Empty when it was cancelled "
+        "directly in Zoom.",
     )
     cancel_reason = models.TextField(
         "reason for cancelling",
@@ -1532,7 +1744,11 @@ class Occurrence(models.Model):
     # class a move changes. The only record of who moved it, since there's no admin log. Brief
     # 013 leaves ``moved_by`` empty for a move made in Zoom itself.
     moved_at = models.DateTimeField(
-        "moved", null=True, blank=True, help_text="When the IT desk last moved this class."
+        "moved",
+        null=True,
+        blank=True,
+        help_text="When this class was last moved here, or when a move made directly in Zoom "
+        "was copied here.",
     )
     moved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -1541,7 +1757,8 @@ class Occurrence(models.Model):
         blank=True,
         related_name="+",
         verbose_name="moved by",
-        help_text="Who in the IT desk last moved this class to a new time.",
+        help_text="Who in the IT desk last moved this class to a new time. Empty when it was "
+        "moved directly in Zoom.",
     )
 
     objects = OccurrenceQuerySet.as_manager()
@@ -1565,13 +1782,29 @@ class Occurrence(models.Model):
         ]
 
     def __str__(self):
-        start = timezone.localtime(self.starts_at)
-        end = timezone.localtime(self.ends_at)
-        return f"{class_date(start)}, {class_time(start)} to {class_time(end)}"
+        return class_span(self.starts_at, self.ends_at)
 
     def overlaps(self, other) -> bool:
         """``a.start < b.end and b.start < a.end`` (D6): back-to-back classes don't clash."""
         return self.starts_at < other.ends_at and other.starts_at < self.ends_at
+
+    # ----------------------------------------------------------------------- brief 013
+
+    @property
+    def moved_in_zoom(self) -> bool:
+        """This class's last move was copied from Zoom: ``moved_at`` set, ``moved_by_id`` empty.
+
+        G1: the one place the rule is written (see the module docstring for why it holds), so
+        the class rows pick their note from this and never test ``moved_by`` themselves. No
+        query.
+        """
+        return self.moved_at is not None and self.moved_by_id is None
+
+    @property
+    def cancelled_in_zoom(self) -> bool:
+        """This class was cancelled by copying Zoom: ``cancelled_at`` set, ``cancelled_by_id``
+        empty (G1). No query."""
+        return self.cancelled_at is not None and self.cancelled_by_id is None
 
     # ----------------------------------------------------------------------- brief 011
 
@@ -1775,3 +2008,93 @@ class HostKeyReveal(models.Model):
 
     def __str__(self):
         return f"{self.host_account.label} shown to {self.shown_by}"
+
+
+# --------------------------------------------------------------------------- Zoom events (013)
+
+
+class ZoomEventQuerySet(models.QuerySet):
+    def last_received_at(self, slug):
+        """The newest ``received_at`` for a connection name, or ``None`` (brief 013, D12).
+
+        One aggregate query. Derived rather than stored on the account, because one connection
+        can serve several accounts and every accepted event is already recorded here: the
+        account page's "Last heard from Zoom" can't disagree between two accounts that share
+        a connection. Any recorded event counts, ``ignored`` and ``not_ours`` included.
+        """
+        if not slug:
+            return None
+        return self.filter(slug=slug).aggregate(latest=Max("received_at"))["latest"]
+
+
+class ZoomEvent(models.Model):
+    """One event Zoom sent to the webhook and the app accepted (brief 013, criteria 8-11).
+
+    It's the idempotency record: ``(slug, body_sha256)`` is unique, and the row is written in
+    the same transaction as the booking changes it led to, so an event is never marked done
+    without its changes, and a second delivery of the same body (Zoom's retry, or two at the
+    same moment) can't change anything twice (D3). Two concurrent inserts of one key serialise
+    on the unique index: the second waits, then fails as a duplicate.
+
+    Why only a hash of the body is kept, and no header, URL or body: Zoom's payloads carry join
+    links, and from brief 014 recording download tokens. The hash is enough to recognise a
+    repeat, and holds nothing anyone could use. ``link_request`` is ``SET_NULL`` so this
+    record never holds a booking back; ``received_at`` is what the account page's "Last heard
+    from Zoom" reads (D12), so pruning must keep the newest row per slug.
+    """
+
+    class Outcome(models.TextChoices):
+        CHANGED = "changed", "Copied here"
+        NO_CHANGE = "no_change", "Already matched"
+        NEEDS_A_LOOK = "needs_a_look", "Needs a look"
+        IGNORED = "ignored", "Not handled"
+        NOT_OURS = "not_ours", "Not booked here"
+
+    slug = models.SlugField(
+        "Zoom connection name",
+        max_length=40,
+        db_index=False,  # the two indexes below both lead with it
+        help_text="The connection whose webhook address the event came to, like zoom-01.",
+    )
+    event = models.CharField(
+        "event", max_length=60, help_text="Zoom's name for what happened, like meeting.deleted."
+    )
+    body_sha256 = models.CharField(
+        "body fingerprint",
+        max_length=64,
+        help_text="A SHA-256 of the event exactly as Zoom sent it, to recognise a repeat. The "
+        "event itself isn't kept.",
+    )
+    event_ts = models.BigIntegerField(
+        "Zoom's event time",
+        null=True,
+        blank=True,
+        help_text="When Zoom says the event happened, in milliseconds since 1970.",
+    )
+    received_at = models.DateTimeField("received", auto_now_add=True)
+    outcome = models.CharField("what happened here", max_length=20, choices=Outcome)
+    link_request = models.ForeignKey(
+        LinkRequest,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="booking",
+        help_text="The booking the event was about, when it's one booked here.",
+    )
+
+    objects = ZoomEventQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-received_at", "-pk"]
+        verbose_name = "Zoom event"
+        verbose_name_plural = "Zoom events"
+        constraints = [
+            models.UniqueConstraint(fields=["slug", "body_sha256"], name="zoom_event_once"),
+        ]
+        indexes = [
+            models.Index(fields=["slug", "received_at"], name="zoom_event_slug_received"),
+        ]
+
+    def __str__(self):
+        return f"{self.slug} {self.event} ({self.outcome})"

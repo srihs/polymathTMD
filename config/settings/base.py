@@ -178,12 +178,18 @@ IT_DESK_PHONE = env("IT_DESK_PHONE", default="")
 # of these names is listed in web.environment: an entry there would override the file.
 @dataclass(frozen=True)
 class ZoomCredentials:
-    """One credential set. Its repr names the slug only, so it can't leak into logs or reprs."""
+    """One credential set. Its repr names the slug only, so it can't leak into logs or reprs.
+
+    ``webhook_secret`` is the Secret Token of the set's Event Subscription (brief 013, D6). It's
+    optional, so it defaults to empty. A set without it still connects; only changes made
+    directly in Zoom go unseen until the booking is checked (the zoom.W002 warning).
+    """
 
     slug: str
     account_id: str = field(repr=False)
     client_id: str = field(repr=False)
     client_secret: str = field(repr=False)
+    webhook_secret: str = field(default="", repr=False)
 
 
 # The three values each set needs, as (ZoomCredentials field, env var suffix).
@@ -192,6 +198,9 @@ ZOOM_CREDENTIAL_PARTS = (
     ("client_id", "CLIENT_ID"),
     ("client_secret", "CLIENT_SECRET"),
 )
+# Values a set may leave out (brief 013, criterion 1): read under the same naming rule, but an
+# empty one never makes the set incomplete, so it's never listed in ZOOM_CREDENTIAL_MISSING.
+ZOOM_CREDENTIAL_OPTIONAL_PARTS = (("webhook_secret", "WEBHOOK_SECRET"),)
 
 
 def zoom_credential_env_prefix(slug):
@@ -204,13 +213,15 @@ def zoom_credential_env_prefix(slug):
 
 
 def read_zoom_credentials(environment, slugs):
-    """Read each listed set's three variables, without judging them.
+    """Read each listed set's three required variables and its optional ones, without judging them.
 
     Returns ``(secrets, missing)``: ``secrets`` maps each **complete** set's slug to its
     ZoomCredentials, and ``missing`` maps each incomplete slug to the missing variable
-    **names** (never values). Nothing raises here: the zoom.E005 check reports empty lists,
-    missing values, bad slugs and colliding names, so a broken set can't stop manage.py from
-    printing a readable error.
+    **names** (never values). Only the required parts decide completeness; an optional part
+    left blank becomes ``""`` (brief 013: no webhook secret means no webhook, not a broken
+    connection). Nothing raises here: the zoom.E005 check reports empty lists, missing values,
+    bad slugs and colliding names, so a broken set can't stop manage.py from printing a
+    readable error.
     """
     secrets, missing = {}, {}
     for slug in slugs:
@@ -221,6 +232,8 @@ def read_zoom_credentials(environment, slugs):
             values[attr] = environment.str(name, default="").strip()
             if not values[attr]:
                 absent.append(name)
+        for attr, suffix in ZOOM_CREDENTIAL_OPTIONAL_PARTS:
+            values[attr] = environment.str(f"{prefix}_{suffix}", default="").strip()
         if absent:
             missing[slug] = absent
         else:
@@ -233,8 +246,9 @@ def read_zoom_credentials(environment, slugs):
 ZOOM_CREDENTIAL_SETS = [
     s.strip() for s in env.list("ZOOM_CREDENTIAL_SETS", default=[]) if s.strip()
 ]
-# Secret. The name must keep "SECRET": Django's SafeExceptionReporterFilter masks any setting
-# whose name matches it, so error pages and reports never show these values (criterion 3).
+# Secret, webhook secrets included. The name must keep "SECRET": Django's
+# SafeExceptionReporterFilter masks any setting whose name matches it, so error pages and
+# reports never show these values (brief 006 criterion 3; brief 013 criterion 1).
 # ZOOM_CREDENTIAL_MISSING holds variable names only ({slug: [name, ...]}), for zoom.E005.
 ZOOM_S2S_SECRETS, ZOOM_CREDENTIAL_MISSING = read_zoom_credentials(env, ZOOM_CREDENTIAL_SETS)
 
@@ -263,7 +277,8 @@ LOGGING = {
         # ADMINS is unset. Don't set ADMINS without first revisiting the start-token
         # redaction of email bodies. The filter hides the subject, but the 500 email's
         # body (the request and the view's local variables, built by ExceptionReporter) can
-        # still hold a working /zoom/start/<token>/ link (brief 011, review round 2).
+        # still hold a working /zoom/start/<token>/ link (brief 011, review round 2), and a
+        # Zoom webhook body, which carries join links (brief 013, review round 1, N1).
         "mail_admins": {
             "class": "django.utils.log.AdminEmailHandler",
             "level": "ERROR",

@@ -30,6 +30,12 @@ Five areas:
 - **Brief 012**: moving one class or changing the time of a booking's remaining classes
   (``zoom.review_linkrequest``, a form page then a POST, ``non_atomic_requests`` because the
   move services own their transaction and call Zoom).
+- **Brief 013**: the Zoom webhook (``zoom:webhook``), the one view without CSRF protection:
+  Zoom's signature replaces it, since a browser can't produce one. No sign-in, POST only,
+  ``non_atomic_requests``. ``webhooks.verify`` decides who's calling and
+  ``services.handle_event`` what to do; the view only maps their answers to status codes.
+  And ``Check against Zoom`` (``zoom:sync``, ``zoom.review_linkrequest``, POST only), which
+  runs ``services.reconcile()`` and comes back to the detail with one message.
 
 The views stay thin: rules are on the models and QuerySets, and anything spanning several
 models, the provider or email is in ``services.py``. Every context variable here is in the
@@ -42,12 +48,13 @@ from functools import wraps
 from django.conf import settings
 from django.contrib import messages
 from django.db import transaction
-from django.http import Http404, HttpResponseRedirect
+from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.utils.http import urlencode
+from django.views.decorators import csrf
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.generic import (
@@ -63,7 +70,7 @@ from django.views.generic.detail import SingleObjectMixin
 
 from apps.core.mixins import SignedInPermissionMixin
 
-from . import services, timetable
+from . import services, timetable, webhooks
 from .forms import (
     ApproveForm,
     CancelForm,
@@ -81,8 +88,10 @@ from .models import (
     InvalidTransition,
     LinkRequest,
     Occurrence,
+    ZoomEvent,
     class_date,
     queue_tab,
+    webhook_secret_set_for,
     zoom_connection_state_for,
 )
 from .providers import get_provider
@@ -354,6 +363,10 @@ class ReviewContextMixin:
         approved = link_request.status == LinkRequest.Status.APPROVED
         now = timezone.now()
         in_progress = link_request.class_in_progress(now, occurrences=occurrences)
+        # Brief 013 (G4): the button shows exactly when pressing it would check something.
+        can_sync = services.sync_blocked_message(
+            link_request, provider=provider, now=now, occurrences=occurrences
+        ) is None and self.request.user.has_perm(services.REVIEW_PERMISSION)
         remaining_ids = {o.pk for o in link_request.remaining_classes(now, occurrences=occurrences)}
 
         return {
@@ -407,6 +420,10 @@ class ReviewContextMixin:
                 if approved and provider.can_start
                 else None
             ),
+            # Brief 013 (criteria 15 and 18). ``link_request.cancelled_in_zoom`` and each
+            # class's ``moved_in_zoom`` / ``cancelled_in_zoom`` are model properties (G1).
+            "zoom_attention_lines": link_request.zoom_attention_lines,
+            "can_sync": can_sync,
         }
 
     @staticmethod
@@ -863,6 +880,101 @@ class MoveSeriesView(_MoveView):
         )
 
 
+# --------------------------------------------------------------------------- Keeping in step (013)
+
+# Criterion 10: the status Zoom is answered with for each ``EventResult`` outcome. 200 means
+# "handled, don't send it again"; 503 makes Zoom retry (it couldn't be asked); 500 too.
+WEBHOOK_STATUS = {
+    ZoomEvent.Outcome.CHANGED: 200,
+    ZoomEvent.Outcome.NO_CHANGE: 200,
+    ZoomEvent.Outcome.NEEDS_A_LOOK: 200,
+    ZoomEvent.Outcome.IGNORED: 200,
+    ZoomEvent.Outcome.NOT_OURS: 200,
+    services.DUPLICATE: 200,
+    services.PROVIDER_FAILED: 503,
+    services.FAILED: 500,
+}
+
+
+# The one view in the app without CSRF protection (criterion 3). ``sensitive_post_parameters()``
+# masks the whole body in error reports; non-atomic, because ``services.reconcile()`` asks Zoom
+# before it opens its own transaction.
+@method_decorator(
+    [csrf.csrf_exempt, sensitive_post_parameters(), transaction.non_atomic_requests],
+    name="dispatch",
+)
+class ZoomWebhookView(View):
+    """Where each connection's Zoom app sends ``meeting.deleted`` and ``meeting.updated``.
+
+    No sign-in: who's calling is proved by the signature (``webhooks.verify``). Answers:
+
+    - ``404`` (the site's normal page) for a name with no webhook secret, ``413`` over 256 KB,
+      ``401`` (empty) for a missing, stale or wrong signature or another account's event,
+      ``400`` for a body that isn't an event or a bad validation token;
+    - URL validation: the JSON reply, with no query and no Zoom call (criterion 6);
+    - any other event: ``services.handle_event()``, mapped by ``WEBHOOK_STATUS``.
+    """
+
+    http_method_names = ["post"]
+
+    @sensitive_variables("credentials", "event", "reply")
+    def post(self, request, slug):
+        credentials = webhooks.verify(request, slug)
+        if isinstance(credentials, webhooks.Refusal):
+            return self.refused(credentials)
+        event = webhooks.read_event(request.body)
+        if isinstance(event, webhooks.Refusal):
+            return self.refused(event)
+        if event["event"] == webhooks.URL_VALIDATION:
+            reply = webhooks.url_validation_reply(credentials, event)
+            if isinstance(reply, webhooks.Refusal):
+                return self.refused(reply)
+            return JsonResponse(reply)
+        if not webhooks.is_from_account(credentials, event, slug):
+            return self.refused(webhooks.WRONG_ACCOUNT)
+        result = services.handle_event(
+            slug, event, webhooks.body_sha256(request.body), request=request
+        )
+        return HttpResponse(status=WEBHOOK_STATUS[result.outcome])
+
+    @staticmethod
+    def refused(refusal):
+        if refusal.status == 404:
+            raise Http404("No webhook for this Zoom connection.")
+        return HttpResponse(status=refusal.status)
+
+
+# Not inside the request-wide transaction: reconcile() asks Zoom with no transaction open, then
+# owns its own and retries a deadlock (brief 013, criteria 13 and 18; as cancel and move).
+@method_decorator(transaction.non_atomic_requests, name="dispatch")
+class SyncBookingView(ReviewerRequiredMixin, SingleObjectMixin, View):
+    """``Check against Zoom``: copy what Zoom has for this booking now (brief 013, c. 18).
+
+    POST only. A request that was never approved is a 404. When there's nothing to check (G4:
+    the provider can't reach Zoom, or no class is left), it says why and asks Zoom nothing;
+    otherwise ``services.reconcile()`` runs, and the detail gets exactly one message.
+    """
+
+    http_method_names = ["post"]
+
+    def get_queryset(self):
+        return LinkRequest.objects.filter(
+            status__in=[LinkRequest.Status.APPROVED, LinkRequest.Status.CANCELLED]
+        ).select_related("host_account")
+
+    def post(self, request, *args, **kwargs):
+        link_request = self.get_object()
+        provider = get_provider()
+        blocked = services.sync_blocked_message(link_request, provider=provider)
+        if blocked:
+            messages.error(request, blocked)
+        else:
+            result = services.reconcile(link_request, provider=provider, request=request)
+            level, text = services.sync_message(result)
+            messages.add_message(request, level, text)
+        return redirect("zoom:detail", pk=link_request.pk)
+
+
 # --------------------------------------------------------------------------- Start link (011)
 
 
@@ -1094,6 +1206,13 @@ class HostAccountFormViewMixin(SignedInPermissionMixin):
         # The *stored* connection name: an invalid submit has already put the typed one on
         # ``self.object``, and the state line describes what's saved (brief 006, criterion 35).
         stored_name = "" if self.is_add else self.saved_credential_set
+        connection_state = zoom_connection_state_for(stored_name)
+        # Brief 013, criterion 29: whether changes made in Zoom reach this page's connection.
+        # ``None`` whenever there's nothing to say (the add page, a connection that isn't set
+        # up, or a provider that can't see Zoom), so the template needs no test of its own.
+        webhook_secret_set = None
+        if account is not None and connection_state == "ready" and get_provider().checks_zoom:
+            webhook_secret_set = webhook_secret_set_for(stored_name)
         context.update(
             account=account,
             is_add=self.is_add,
@@ -1102,8 +1221,12 @@ class HostAccountFormViewMixin(SignedInPermissionMixin):
             can_reveal_host_key=False,
             last_key_reveal=None,
             key_reveal_count=0,
-            zoom_connection_state=zoom_connection_state_for(stored_name),
+            zoom_connection_state=connection_state,
             zoom_connection_name=stored_name,
+            webhook_secret_set=webhook_secret_set,
+            last_zoom_event_at=(
+                ZoomEvent.objects.last_received_at(stored_name) if webhook_secret_set else None
+            ),
             # G5: the check form's action uses account.pk, so it's only offered with an account.
             can_check_connection=account is not None and self.request.user.has_perm(CHANGE_ACCOUNT),
         )

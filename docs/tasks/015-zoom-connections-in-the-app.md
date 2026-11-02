@@ -2143,3 +2143,9 @@ No deviations. Choices the brief left to the backend:
   - `docs/tasks/014-recording-links.md`: criterion 3, the MVT's `handle_recording_completed` and D5.
 
 **Not done on purpose:** the round-2 nits (the re-check's reliance on READ COMMITTED, and pinning `django.template` at `INFO`) are not taken up; they are listed as follow-ups in the CHANGELOG entry. Review N1 (the repeated `{name}` link-or-span) was declined in D21. The README's go-live gate list is unchanged: the brief does not ask for 015 there.
+
+### Step 7 done (2026-11-02, tmd-test-verifier)
+
+- Dev database only. Through the in-app `Change {name}` page (`zoom:account_edit`) over HTTP on port 8011, signed in with a short-lived session for the existing IT desk user (the session was deleted afterwards; no user was created), `In use` was unticked on Zoom 01, Zoom 02 and Zoom 03. Every save redirected (302) to the accounts list with no refusal, since none had booked future classes. Other fields (label, email, paid, sort order, notes, connection) were posted back as they were; the host key was left blank so it stays as saved.
+- Accounts list now shows Zoom 01-03 as `Not in use`. `polymathlesson Paid` and `Zoom free` are untouched and still `In use`.
+- `ZOOM_PROVIDER=zoom` passed inline to `check --database default`: one error remains, `zoom.E004` for `polymathlesson Paid` (no Zoom connection is chosen). No `W002`, and Zoom 01-03 no longer appear. That one is expected until the owner adds its connection.
